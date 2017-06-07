@@ -64,7 +64,8 @@ class DynSpecMS():
                               "ChanFreq":tf.getcol("CHAN_FREQ").ravel(),
                               "ChanWidth":tf.getcol("CHAN_WIDTH").ravel(),
                               "times":ThisTimes,
-                              "Readable":True}
+                              "Readable":True,
+                              "JonesSols":XXXXXX}
             if DicoMSInfos[iMS]["ChanWidth"][0]!=self.ChanWidth:
                 raise ValueError("should have the same chan width")
 
@@ -78,6 +79,12 @@ class DynSpecMS():
         f0,f1=self.Freq_minmax
         self.NChan=int((f1-f0)/self.ChanWidth)+1
         self.IGrid=np.zeros((self.NChan,self.NTimes,4),np.complex128)
+
+        self.NormJones() # Normlise Jones matrices
+    
+    
+    
+
         
     def StackAll(self):
         print "Stacking data"
@@ -98,10 +105,15 @@ class DynSpecMS():
 
             flag=t.getcol("FLAG")
             times=t.getcol("TIME")
+            A0,A1=t.getcol("ANTENNA1"),t.getcol("ANTENNA2")
+
             u,v,w=t.getcol("UVW").T
             d=np.sqrt(u**2+v**2+w**2)
             indUV=np.where((d<uv0)|(d>uv1))[0]
             flag[indUV,:,:]=1
+            
+            
+
 
             data[flag]=0
 
@@ -113,8 +125,16 @@ class DynSpecMS():
                 indRow=np.where(times==self.times[iTime])[0]
                 f=flag[indRow,:,:]
                 d=data[indRow,:,:]
+                A0s=A0[indRow]
+                A1s=A1[indRow]
 
+                iTJones = 
                 
+                # contruct corrected visibilities
+                J0=self.J[iTJones,0,A0s,0,0]
+                J1=self.J[iTJones,0,A1s,0,0]
+                dcorr=J0.conj()*d*J1
+
                 ds=np.sum(d,axis=0)
                 ws=np.sum(1-f,axis=0)
                 self.IGrid[ich0:ich0+nch,iTime,:]=ds
