@@ -294,10 +294,10 @@ class DynSpecMS():
         Gn = G/W 
 
         GOut=np.zeros_like(self.IGrid)
-        GOut[:, :, 0] =  0.5*(Gn[:, :, 0] + Gn[:, :, 3]) # I = 0.5(XX + YY)
-        GOut[:, :, 1] =  0.5*(Gn[:, :, 0] - Gn[:, :, 3]) # Q = 0.5(XX - YY) 
-        GOut[:, :, 2] =  0.5*(Gn[:, :, 1] + Gn[:, :, 2]) # U = 0.5(XY + YX)
-        GOut[:, :, 3] = 0.5j*(Gn[:, :, 1] - Gn[:, :, 2]) # V = -0.5i(XY - YX)
+        GOut[:, :, 0] =   0.5*(Gn[:, :, 0] + Gn[:, :, 3]) # I = 0.5(XX + YY)
+        GOut[:, :, 1] =   0.5*(Gn[:, :, 0] - Gn[:, :, 3]) # Q = 0.5(XX - YY) 
+        GOut[:, :, 2] =   0.5*(Gn[:, :, 1] + Gn[:, :, 2]) # U = 0.5(XY + YX)
+        GOut[:, :, 3] = -0.5j*(Gn[:, :, 1] - Gn[:, :, 2]) # V = -0.5i(XY - YX)
         self.GOut = GOut
 
     def NormJones(self, jMatrices):
