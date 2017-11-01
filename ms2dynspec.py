@@ -56,7 +56,7 @@ def convertSrclist(srclist, ms, fieldradius):
     """ Check that the source list provided is in the correct format
         return a dictionnary
     """
-    tField    = table("%s::FIELD"%ms)
+    tField    = table("%s::FIELD"%ms, ack=False)
     ra0, dec0 = np.degrees(tField.getcol("PHASE_DIR").ravel()) # field center
     srcdict   = {}
     for line in open(srclist):
@@ -106,6 +106,20 @@ def checkArgs(args):
     t.close()
     return # Everything's ok
 
+def progressbar(it, prefix="", size=20):
+    count = len(it)
+    def _show(_i):
+        x = int(size*_i/count)
+        sys.stdout.write("%s[%s%s] %i/%i\r" % (prefix, "#"*x, "."*(size-x), _i, count))
+        sys.stdout.flush()
+
+    _show(0)
+    for i, item in enumerate(it):
+        yield i, item
+        _show(i+1)
+    sys.stdout.write("\n")
+    sys.stdout.flush()
+
 # =========================================================================
 # =========================================================================
 class DynSpecMS():
@@ -120,7 +134,6 @@ class DynSpecMS():
         self.ReadMSInfos()
 
     def ReadMSInfos(self):
-        print "\nReading data..."
         DicoMSInfos = {}
         t0  = table(self.ListMSName[0], ack=False)
         tf0 = table("%s::SPECTRAL_WINDOW"%self.ListMSName[0], ack=False)
@@ -129,13 +142,13 @@ class DynSpecMS():
         self.times = np.unique(t0.getcol("TIME"))
         t0.close()
         
-        for iMS, MSName in enumerate(sorted(self.ListMSName)):
-            print MSName
+        #for iMS, MSName in enumerate(sorted(self.ListMSName)):
+        for iMS, MSName in progressbar(sorted(self.ListMSName), 'Reading data... '):
             try:
                 t = table(MSName, ack=False)
             except:
                 DicoMSInfos[iMS] = {"Readable": False}
-                print "problem reading %s"%MSName
+                print "Problem reading %s"%MSName
                 continue
 
             # Extract Jones matrices that will be appliedto the visibilities
@@ -176,9 +189,7 @@ class DynSpecMS():
         return
         
         
-    def StackAll(self, ra=None, dec=None):   
-        print "Stacking data"
-        
+    def StackAll(self, ra=None, dec=None):           
         f0, _    = self.Freq_minmax
         self.ra  = ra
         self.dec = dec
@@ -187,12 +198,13 @@ class DynSpecMS():
         DicoMSInfos      = self.DicoMSInfos
         uv0, uv1         = np.array(self.UVRange) * 1000
 
-        for iMS, MSName in enumerate(sorted(self.ListMSName)):
-            print "%i/%i"%(iMS, self.nMS)
+        #for iMS, MSName in enumerate(sorted(self.ListMSName)):
+        for iMS, MSName in progressbar(sorted(self.ListMSName), 'Stacking data... '):
+            #print "%i/%i"%(iMS, self.nMS)
             if not DicoMSInfos[iMS]["Readable"]: continue
 
             t      = table(MSName, ack=False)
-            tField = table("%s::FIELD"%MSName)
+            tField = table("%s::FIELD"%MSName, ack=False)
             self.ra0, self.dec0 = tField.getcol("PHASE_DIR").ravel() # radians!
             tField.close()
             phaseCent = coord.SkyCoord(self.ra0, self.dec0, unit=uni.rad)
