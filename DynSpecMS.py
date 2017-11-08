@@ -143,10 +143,11 @@ class DynSpecMS():
 
     def LoadNextMS(self):
         iMS=self.iCurrentMS
-        print>>log, "Reading [%i/%i]: %s"%(iMS+1, self.nMS, self.ListMSName[iMS])
         if not self.DicoMSInfos[iMS]["Readable"]: 
+            print>>log, "Skipping [%i/%i]: %s"%(iMS+1, self.nMS, self.ListMSName[iMS])
             self.iCurrentMS+=1
             return "NotRead"
+        print>>log, "Reading [%i/%i]: %s"%(iMS+1, self.nMS, self.ListMSName[iMS])
 
         MSName=self.ListMSName[self.iCurrentMS]
         t      = table(MSName, ack=False)
