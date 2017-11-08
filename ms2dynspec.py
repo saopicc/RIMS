@@ -38,10 +38,11 @@ from astropy import constants as const
 import numpy as np
 import glob, os
 import pylab
-from DynSpecMS import DynSpecMS
 from DDFacet.Other import MyPickle
 import logo
-
+logo.PrintLogo()
+from DynSpecMS import DynSpecMS
+    
 # =========================================================================
 # =========================================================================
 def angSep(ra1, dec1, ra2, dec2):
@@ -98,10 +99,11 @@ def main(args=None, messages=[]):
     if args is None:
         args = MyPickle.Load(SaveFile)
     
-    logo.PrintLogo()
     D = DynSpecMS(ListMSName=args.ms, ColName=args.data, ModelName=args.model, Sols=args.sols, 
                   UVRange=args.uv,
-                  FileCoords=args.srclist)
+                  FileCoords=args.srclist,Radius=args.rad)
+    if D.NDir==0:
+        return
     D.StackAll()
     #D.WriteFits()
     D.PlotSpec ()
@@ -116,7 +118,7 @@ if __name__ == "__main__":
     parser.add_argument("--model", type=str, help="Name of MODEL column", required=True)
     parser.add_argument("--sols", type=str, help="Jones solutions", required=True)
     parser.add_argument("--srclist", type=str, default=None, help="List of targets --> 'source_name ra dec'", required=True)
-    parser.add_argument("--rad", type=float, default=10, help="Radius of the field", required=False)
+    parser.add_argument("--rad", type=float, default=3., help="Radius of the field", required=False)
     parser.add_argument("--uv", type=list, default=[1., 1000.], help="UV range in km [UVmin, UVmax]", required=False)
     args = parser.parse_args()
     checkArgs(args) # Verify that everything is correct before launching the dynamic spectrum computation

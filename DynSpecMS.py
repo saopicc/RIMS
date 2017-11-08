@@ -19,11 +19,17 @@ from DDFacet.Other.progressbar import ProgressBar
 # deuxieme
 # test git
 
+def AngDist(ra0,ra1,dec0,dec1):
+    AC=np.arccos
+    C=np.cos
+    S=np.sin
+    return AC(S(dec0)*S(dec1)+C(dec0)*C(dec1)*C(ra0-ra1))
 
 class DynSpecMS():
     def __init__(self, ListMSName, ColName="DATA", ModelName="PREDICT_KMS", UVRange=[1.,1000.], 
                  Sols='killMS.ALL_SOLS_1km_KAFCA.p.sols.npz',
-                 FileCoords=None):
+                 FileCoords=None,
+                 Radius=3.):
         self.ListMSName = sorted(ListMSName)#[0:2]
         self.nMS         = len(self.ListMSName)
         self.ColName    = ColName
@@ -32,14 +38,33 @@ class DynSpecMS():
         self.UVRange    = UVRange
         self.Sols       = Sols
         self.source     = None
-        self.PosArray=np.genfromtxt(FileCoords,dtype=[('Name','S200'),('Type','S200'),("ra_deg",np.float64),("dec_deg",np.float64)],delimiter=" ")
-        self.PosArray=self.PosArray.view(np.recarray)
-        
-        self.NDir=self.PosArray.shape[0]
-        print>>log,"There are %i targets"%self.NDir
         self.ReadMSInfos()
+
+
+        self.PosArray=np.genfromtxt(FileCoords,dtype=[('Name','S200'),('Type','S200'),("ra",np.float64),("dec",np.float64)],delimiter=" ")
+        self.PosArray=self.PosArray.view(np.recarray)
+        self.PosArray.ra*=np.pi/180.
+        self.PosArray.dec*=np.pi/180.
+        NOrig=self.PosArray.shape[0]
+        Dist=AngDist(self.ra0,self.PosArray.ra,self.dec0,self.PosArray.dec)
+        ind=np.where(Dist<Radius*np.pi/180)[0]
+        self.PosArray=self.PosArray[ind]
+        self.NDir=self.PosArray.shape[0]
+
+        self.DicoDATA = shared_dict.create("DATA")
+        self.DicoGrids = shared_dict.create("Grids")
+        self.DicoGrids["GridLinPol"] = np.zeros((self.NDir,self.NChan, self.NTimes, 4), np.complex128)
+        self.DicoGrids["GridWeight"] = np.zeros((self.NDir,self.NChan, self.NTimes, 4), np.complex128)
+
         APP.registerJobHandlers(self)
         APP.startWorkers()
+
+        print>>log,"Selected %i target [out of the %i in the original list]"%(self.NDir,NOrig)
+        if self.NDir==0:
+            print>>log,ModColor.Str("   Have found no sources - returning")
+            self.killWorkers()
+            return 
+
 
     def ReadMSInfos(self):
         DicoMSInfos = {}
@@ -106,10 +131,6 @@ class DynSpecMS():
         self.NTimes      = self.times.size
         f0, f1           = self.Freq_minmax
         self.NChan       = int((f1 - f0)/self.ChanWidth) + 1
-        self.DicoDATA = shared_dict.create("DATA")
-        self.DicoGrids = shared_dict.create("Grids")
-        self.DicoGrids["GridLinPol"] = np.zeros((self.NDir,self.NChan, self.NTimes, 4), np.complex128)
-        self.DicoGrids["GridWeight"] = np.zeros((self.NDir,self.NChan, self.NTimes, 4), np.complex128)
 
         # Fill properties
         self.tStart = DicoMSInfos[0]["startTime"]
@@ -183,12 +204,16 @@ class DynSpecMS():
         self.Finalise()
 
 
-    def Finalise(self):
-
+    def killWorkers(self):
         print>>log, "Killing workers"
         APP.terminate()
         APP.shutdown()
         Multiprocessing.cleanupShm()
+
+
+
+    def Finalise(self):
+        self.killWorkers()
 
         G=self.DicoGrids["GridLinPol"]
         W=self.DicoGrids["GridWeight"]
@@ -208,10 +233,10 @@ class DynSpecMS():
             self.Stack_SingleTimeDir(iTime,iDir)
         
     def Stack_SingleTimeDir(self,iTime,iDir):
-        ra=self.PosArray.ra_deg[iDir]*np.pi/180
-        dec=self.PosArray.dec_deg[iDir]*np.pi/180
+        ra=self.PosArray.ra[iDir]
+        dec=self.PosArray.dec[iDir]
 
-        l, m = self.radec2lm(np.radians(ra), np.radians(dec))
+        l, m = self.radec2lm(ra, dec)
         n  = np.sqrt(1. - l**2. - m**2.)
 
         self.DicoDATA.reload()
