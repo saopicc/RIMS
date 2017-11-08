@@ -8,50 +8,65 @@ import numpy as np
 import glob, os
 import pylab
 import sys
+from DDFacet.Other import MyLogger
+log=MyLogger.getLogger("DynSpecMS")
+from DDFacet.Other import ModColor
+from DDFacet.Array import shared_dict
+from DDFacet.Other.AsyncProcessPool import APP, WorkerProcessError
+from DDFacet.Other import Multiprocessing
+from DDFacet.Other.progressbar import ProgressBar
+
 # deuxieme
 # test git
-def progressbar(it, prefix="", size=20):
-    count = len(it)
-    def _show(_i):
-        x = int(size*_i/count)
-        sys.stdout.write("%s[%s%s] %i/%i\r" % (prefix, "#"*x, "."*(size-x), _i, count))
-        sys.stdout.flush()
-
-    _show(0)
-    for i, item in enumerate(it):
-        yield i, item
-        _show(i+1)
-    sys.stdout.write("\n")
-    sys.stdout.flush()
 
 
 class DynSpecMS():
-    def __init__(self, ListMSName, ColName="DATA", ModelName="PREDICT_KMS", UVRange=[1.,1000.], Sols='killMS.ALL_SOLS_1km_KAFCA.p.sols.npz'):
-        self.ListMSName = ListMSName
+    def __init__(self, ListMSName, ColName="DATA", ModelName="PREDICT_KMS", UVRange=[1.,1000.], 
+                 Sols='killMS.ALL_SOLS_1km_KAFCA.p.sols.npz',
+                 FileCoords=None):
+        self.ListMSName = sorted(ListMSName)#[0:2]
+        self.nMS         = len(self.ListMSName)
         self.ColName    = ColName
         self.ModelName  = ModelName
         self.OutName    = self.ListMSName[0].split("/")[-1].split("_")[0]
         self.UVRange    = UVRange
         self.Sols       = Sols
         self.source     = None
+        self.PosArray=np.genfromtxt(FileCoords,dtype=[('Name','S200'),('Type','S200'),("ra_deg",np.float64),("dec_deg",np.float64)],delimiter=" ")
+        self.PosArray=self.PosArray.view(np.recarray)
+        
+        self.NDir=self.PosArray.shape[0]
+        print>>log,"There are %i targets"%self.NDir
         self.ReadMSInfos()
+        APP.registerJobHandlers(self)
+        APP.startWorkers()
 
     def ReadMSInfos(self):
         DicoMSInfos = {}
-        t0  = table(self.ListMSName[0], ack=False)
+
+        MSName=self.ListMSName[0]
+        t0  = table(MSName, ack=False)
         tf0 = table("%s::SPECTRAL_WINDOW"%self.ListMSName[0], ack=False)
         self.ChanWidth = tf0.getcol("CHAN_WIDTH").ravel()[0]
         tf0.close()
         self.times = np.unique(t0.getcol("TIME"))
         t0.close()
-        
+
+        tField = table("%s::FIELD"%MSName, ack=False)
+        self.ra0, self.dec0 = tField.getcol("PHASE_DIR").ravel() # radians!
+        tField.close()
+
+        self.phaseCent = coord.SkyCoord(self.ra0, self.dec0, unit=uni.rad)
+
+        pBAR = ProgressBar(Title="Reading metadata")
+        pBAR.render(0, self.nMS)
+   
         #for iMS, MSName in enumerate(sorted(self.ListMSName)):
-        for iMS, MSName in progressbar(sorted(self.ListMSName), 'Reading data... '):
+        for iMS, MSName in enumerate(self.ListMSName):
             try:
                 t = table(MSName, ack=False)
             except:
                 DicoMSInfos[iMS] = {"Readable": False}
-                print "Problem reading %s"%MSName
                 continue
 
             # Extract Jones matrices that will be appliedto the visibilities
@@ -59,7 +74,6 @@ class DynSpecMS():
                 JonesSols = np.load("%s/%s"%(MSName, self.Sols))
                 JonesSols = self.NormJones(JonesSols) # Normalize Jones matrices
             except:
-                print "Problem reading solutions %s/%s"%(MSName, self.Sols)
                 JonesSols = None
 
             tf = table("%s::SPECTRAL_WINDOW"%MSName, ack=False)
@@ -77,131 +91,175 @@ class DynSpecMS():
                             "JonesSols":  JonesSols}
             if DicoMSInfos[iMS]["ChanWidth"][0] != self.ChanWidth:
                 raise ValueError("should have the same chan width")
+            pBAR.render(iMS+1, self.nMS)
+            
+        for iMS in range(self.nMS):
+            if not DicoMSInfos[iMS]["Readable"]:
+                print>>log, ModColor.Str("Problem reading %s"%MSName)
+
 
         t.close()
         tf.close()
-        self.nMS         = len(DicoMSInfos)
         self.DicoMSInfos = DicoMSInfos
         self.FreqsAll    = [DicoMSInfos[iMS]["ChanFreq"] for iMS in DicoMSInfos.keys() if DicoMSInfos[iMS]["Readable"]]
         self.Freq_minmax = np.min(self.FreqsAll), np.max(self.FreqsAll)
         self.NTimes      = self.times.size
         f0, f1           = self.Freq_minmax
         self.NChan       = int((f1 - f0)/self.ChanWidth) + 1
-        self.IGrid       = np.zeros((self.NChan, self.NTimes, 4), np.complex128)
+        self.DicoDATA = shared_dict.create("DATA")
+        self.DicoGrids = shared_dict.create("Grids")
+        self.DicoGrids["GridLinPol"] = np.zeros((self.NDir,self.NChan, self.NTimes, 4), np.complex128)
+        self.DicoGrids["GridWeight"] = np.zeros((self.NDir,self.NChan, self.NTimes, 4), np.complex128)
 
-        return
-        
-        
-    def StackAll(self, ra=None, dec=None):           
-        f0, _    = self.Freq_minmax
-        self.ra  = ra
-        self.dec = dec
+        # Fill properties
+        self.tStart = DicoMSInfos[0]["startTime"]
+        self.tStop  = DicoMSInfos[0]["stopTime"] 
+        self.fMin   = self.Freq_minmax[0]
+        self.fMax   = self.Freq_minmax[1]
 
-        self.WeightsGrid = np.zeros_like(self.IGrid)
-        DicoMSInfos      = self.DicoMSInfos
+        self.iCurrentMS=0
+
+
+    def LoadNextMS(self):
+        iMS=self.iCurrentMS
+        print>>log, "Reading [%i/%i]: %s"%(iMS+1, self.nMS, self.ListMSName[iMS])
+        if not self.DicoMSInfos[iMS]["Readable"]: 
+            self.iCurrentMS+=1
+            return "NotRead"
+
+        MSName=self.ListMSName[self.iCurrentMS]
+        t      = table(MSName, ack=False)
+        data   = t.getcol(self.ColName) - t.getcol(self.ModelName)
+        flag   = t.getcol("FLAG")
+        times  = t.getcol("TIME")
+        A0, A1 = t.getcol("ANTENNA1"), t.getcol("ANTENNA2")
+        u, v, w = t.getcol("UVW").T
+        t.close()
+        d = np.sqrt(u**2 + v**2 + w**2)
         uv0, uv1         = np.array(self.UVRange) * 1000
+        indUV = np.where( (d<uv0)|(d>uv1) )[0]
+        flag[indUV, :, :] = 1 # flag according to UV selection
+        data[flag] = 0 # put down to zeros flagged visibilities
 
-        #for iMS, MSName in enumerate(sorted(self.ListMSName)):
-        for iMS, MSName in progressbar(sorted(self.ListMSName), 'Stacking data... '):
-            #print "%i/%i"%(iMS, self.nMS)
-            if not DicoMSInfos[iMS]["Readable"]: continue
+        f0, f1           = self.Freq_minmax
+        nch  = self.DicoMSInfos[iMS]["ChanFreq"].size
 
-            t      = table(MSName, ack=False)
-            tField = table("%s::FIELD"%MSName, ack=False)
-            self.ra0, self.dec0 = tField.getcol("PHASE_DIR").ravel() # radians!
-            tField.close()
-            phaseCent = coord.SkyCoord(self.ra0, self.dec0, unit=uni.rad)
-            if (self.ra is not None) and (self.dec is not None):
-                phaseCent = coord.SkyCoord(self.ra, self.dec, unit=uni.deg) # not phase center but still...
-            
-            data   = t.getcol(self.ColName) - t.getcol(self.ModelName) # Residuals
-            #data   = t.getcol(self.ModelName) # Model
-            #data   = t.getcol(self.ColName) # data
+        # Considering another position than the phase center
+        u0 = u.reshape( (-1, 1, 1) )
+        v0 = v.reshape( (-1, 1, 1) )
+        w0 = w.reshape( (-1, 1, 1) )
+        self.DicoDATA["iMS"]=self.iCurrentMS
+        self.DicoDATA["data"]=data
+        self.DicoDATA["flag"]=flag
+        self.DicoDATA["times"]=times
+        self.DicoDATA["A0"]=A0
+        self.DicoDATA["A1"]=A1
+        self.DicoDATA["u"]=u0
+        self.DicoDATA["v"]=v0
+        self.DicoDATA["w"]=w0
+        
+        self.iCurrentMS+=1
 
-            flag   = t.getcol("FLAG")
-            times  = t.getcol("TIME")
-            A0, A1 = t.getcol("ANTENNA1"), t.getcol("ANTENNA2")
-            u, v, w = t.getcol("UVW").T
-            t.close()
-            d = np.sqrt(u**2 + v**2 + w**2)
-            indUV = np.where( (d<uv0)|(d>uv1) )[0]
-            flag[indUV, :, :] = 1 # flag according to UV selection
-            data[flag] = 0 # put down to zeros flagged visibilities
 
-            ich0 = int( (DicoMSInfos[iMS]["ChanFreq"][0] - f0)/self.ChanWidth )
-            nch  = DicoMSInfos[iMS]["ChanFreq"].size
 
-            # ------------------------------------------------------------------------------------------------
-            #                               Pixel direction to sum visibilities
-            # ------------------------------------------------------------------------------------------------
-            if ra is None and dec is None:
-                # considering central pixel for the dynamic spectrum computation
-                ra  = np.degrees(self.ra0)
-                dec = np.degrees(self.dec0)
-                self.ra  = ra
-                self.dec = dec
-                
-            # Considering another position than the phase center
-            u0 = u.reshape( (-1, 1, 1) )
-            v0 = v.reshape( (-1, 1, 1) )
-            w0 = w.reshape( (-1, 1, 1) )
-            f  = DicoMSInfos[iMS]["ChanFreq"].reshape( (1, nch, 1) )
-            l, m = self.radec2lm(np.radians(ra), np.radians(dec))
-            n  = np.sqrt(1. - l**2. - m**2.)
-            k  = np.exp( -2.*np.pi*1j* f/const.c.value *(u0*l + v0*m + w0*(n-1)) ) # Phasing term
-            # ------------------------------------------------------------------------------------------------
+    # def StackAll(self):
+    #     while self.iCurrentMS<self.nMS:
+    #         self.LoadNextMS()
+    #         for iTime in range(self.NTimes):
+    #             for iDir in range(self.NDir):
+    #                 self.Stack_SingleTimeDir(iTime,iDir)
+    #     self.Finalise()
 
+    def StackAll(self):
+        while self.iCurrentMS<self.nMS:
+            if self.LoadNextMS()=="NotRead": continue
             for iTime in range(self.NTimes):
-                indRow = np.where(times==self.times[iTime])[0]
-                f   = flag[indRow, :, :]
-                d   = data[indRow, :, :]
-                A0s = A0[indRow]
-                A1s = A1[indRow]
-                kk  = k[indRow, :, :]
+                APP.runJob("Stack_SingleTime:%d"%(iTime), 
+                           self.Stack_SingleTime,
+                           args=(iTime,))
+                    
+            APP.awaitJobResults("Stack_SingleTime:*", progress="Append MS %i"%self.DicoDATA["iMS"])
+       
+        self.Finalise()
 
-                # ------------------------------------------------------------------------------------------------
-                #                                          Apply Jones matrices
-                # ------------------------------------------------------------------------------------------------
-                if DicoMSInfos[iMS]["JonesSols"] is not None:
-                    self.J = DicoMSInfos[iMS]["JonesSols"]['G']
-                    t0 = DicoMSInfos[iMS]["JonesSols"]['t0']
-                    t1 = DicoMSInfos[iMS]["JonesSols"]['t1']
-                    # Time slot for the solution
-                    iTJones   = np.where( t0 <= self.times[iTime] )[0][-1]
-                    # Facet used
-                    posFacets = coord.SkyCoord(DicoMSInfos[iMS]["JonesSols"]['ra'], DicoMSInfos[iMS]["JonesSols"]['dec'], unit=uni.rad)
-                    iDJones   = phaseCent.separation(posFacets).deg.argmin()                
-                    # construct corrected visibilities
-                    J0 = self.J[iTJones, 0, A0s, iDJones, 0, 0]
-                    J1 = self.J[iTJones, 0, A1s, iDJones, 0, 0]
-                    J0 = J0.reshape((-1, 1, 1))*np.ones((1, nch, 1))
-                    J1 = J1.reshape((-1, 1, 1))*np.ones((1, nch, 1))
-                    dcorr = J0.conj() * d * J1
-                # ------------------------------------------------------------------------------------------------
 
-                #ds=np.sum(d*kk, axis=0) # without Jones
-                ds = np.sum(dcorr * kk, axis=0) # with Jones
-                ws = np.sum(1-f, axis=0)
-                self.IGrid[ich0:ich0+nch, iTime, :]       = ds
-                self.WeightsGrid[ich0:ich0+nch, iTime, :] = ws
+    def Finalise(self):
 
-            # Fill properties
-            self.tStart = DicoMSInfos[iMS]["startTime"]
-            self.tStop  = DicoMSInfos[iMS]["stopTime"] 
-            self.fMin   = self.Freq_minmax[0]
-            self.fMax   = self.Freq_minmax[1]
+        print>>log, "Killing workers"
+        APP.terminate()
+        APP.shutdown()
+        Multiprocessing.cleanupShm()
 
-        W = self.WeightsGrid
-        G = self.IGrid
+        G=self.DicoGrids["GridLinPol"]
+        W=self.DicoGrids["GridWeight"]
         W[W == 0] = 1
         Gn = G/W 
+        self.Gn=Gn
 
-        GOut=np.zeros_like(self.IGrid)
-        GOut[:, :, 0] =   0.5*(Gn[:, :, 0] + Gn[:, :, 3]) # I = 0.5(XX + YY)
-        GOut[:, :, 1] =   0.5*(Gn[:, :, 0] - Gn[:, :, 3]) # Q = 0.5(XX - YY) 
-        GOut[:, :, 2] =   0.5*(Gn[:, :, 1] + Gn[:, :, 2]) # U = 0.5(XY + YX)
-        GOut[:, :, 3] = -0.5j*(Gn[:, :, 1] - Gn[:, :, 2]) # V = -0.5i(XY - YX)
+        GOut=np.zeros_like(G)
+        GOut[..., 0] =   0.5*(Gn[..., 0] + Gn[..., 3]) # I = 0.5(XX + YY)
+        GOut[..., 1] =   0.5*(Gn[..., 0] - Gn[..., 3]) # Q = 0.5(XX - YY) 
+        GOut[..., 2] =   0.5*(Gn[..., 1] + Gn[..., 2]) # U = 0.5(XY + YX)
+        GOut[..., 3] = -0.5j*(Gn[..., 1] - Gn[..., 2]) # V = -0.5i(XY - YX)
         self.GOut = GOut
+
+    def Stack_SingleTime(self,iTime):
+        for iDir in range(self.NDir):
+            self.Stack_SingleTimeDir(iTime,iDir)
+        
+    def Stack_SingleTimeDir(self,iTime,iDir):
+        ra=self.PosArray.ra_deg[iDir]*np.pi/180
+        dec=self.PosArray.dec_deg[iDir]*np.pi/180
+
+        l, m = self.radec2lm(np.radians(ra), np.radians(dec))
+        n  = np.sqrt(1. - l**2. - m**2.)
+
+        self.DicoDATA.reload()
+        self.DicoGrids.reload()
+        indRow = np.where(self.DicoDATA["times"]==self.times[iTime])[0]
+        f   = self.DicoDATA["flag"][indRow, :, :]
+        d   = self.DicoDATA["data"][indRow, :, :]
+        A0s = self.DicoDATA["A0"][indRow]
+        A1s = self.DicoDATA["A1"][indRow]
+        u0  = self.DicoDATA["u"][indRow]
+        v0  = self.DicoDATA["v"][indRow]
+        w0  = self.DicoDATA["w"][indRow]
+        iMS  = self.DicoDATA["iMS"]
+        
+        kk  = np.exp( -2.*np.pi*1j* f/const.c.value *(u0*l + v0*m + w0*(n-1)) ) # Phasing term
+
+        f0, _ = self.Freq_minmax
+        
+        DicoMSInfos      = self.DicoMSInfos
+
+        _,nch,_=self.DicoDATA["data"].shape
+
+        dcorr=d
+                # if DicoMSInfos[iMS]["JonesSols"] is not None:
+                #     self.J = DicoMSInfos[iMS]["JonesSols"]['G']
+                #     t0 = DicoMSInfos[iMS]["JonesSols"]['t0']
+                #     t1 = DicoMSInfos[iMS]["JonesSols"]['t1']
+                #     # Time slot for the solution
+                #     iTJones   = np.where( t0 <= self.times[iTime] )[0][-1]
+                #     # Facet used
+                #     posFacets = coord.SkyCoord(DicoMSInfos[iMS]["JonesSols"]['ra'], DicoMSInfos[iMS]["JonesSols"]['dec'], unit=uni.rad)
+                #     iDJones   = phaseCent.separation(posFacets).deg.argmin()                
+                #     # construct corrected visibilities
+                #     J0 = self.J[iTJones, 0, A0s, iDJones, 0, 0]
+                #     J1 = self.J[iTJones, 0, A1s, iDJones, 0, 0]
+                #     J0 = J0.reshape((-1, 1, 1))*np.ones((1, nch, 1))
+                #     J1 = J1.reshape((-1, 1, 1))*np.ones((1, nch, 1))
+                #     dcorr = J0.conj() * d * J1
+                # # ------------------------------------------------------------------------------------------------
+
+        #ds=np.sum(d*kk, axis=0) # without Jones
+        ds = np.sum(dcorr * kk, axis=0) # with Jones
+        ws = np.sum(1-f, axis=0)
+
+        ich0 = int( (self.DicoMSInfos[iMS]["ChanFreq"][0] - f0)/self.ChanWidth )
+        self.DicoGrids["GridLinPol"][iDir,ich0:ich0+nch, iTime, :] = ds
+        self.DicoGrids["GridWeight"][iDir,ich0:ich0+nch, iTime, :] = ws
+
 
     def NormJones(self, jMatrices):
         """ Normalisation of Jones Matrices
@@ -252,15 +310,17 @@ class DynSpecMS():
         print("\t=== Dynamic spectrum '{}' written ===".format(fitsname))
         return
 
-    def PlotSpec(self):
+    def PlotSpec(self,iDir=0):
         fig = pylab.figure(1, figsize=(15, 8))
         label = ["I", "Q", "U", "V"]
         pylab.clf()
+        
         for ipol in range(4):
-            Gn = self.GOut[:, :, ipol].T.real
-            v0, v1 = np.percentile(Gn.ravel(), [10., 90.])
+            Gn = self.GOut[iDir,:, :, ipol].T.real
+            sig = np.median(np.abs(Gn))
+            mean = np.median(Gn)
             pylab.subplot(2, 2, ipol+1)
-            pylab.imshow(Gn, interpolation="nearest", aspect="auto", vmin=3*v0, vmax=10*v1)
+            pylab.imshow(Gn, interpolation="nearest", aspect="auto", vmin=mean-3*sig, vmax=mean+10*sig)
             pylab.title(label[ipol])
             pylab.colorbar()
             pylab.ylabel("Time bin")

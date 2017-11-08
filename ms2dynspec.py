@@ -38,9 +38,9 @@ from astropy import constants as const
 import numpy as np
 import glob, os
 import pylab
-from DynSpecMSParallel2 import DynSpecMS
+from DynSpecMS import DynSpecMS
 from DDFacet.Other import MyPickle
-
+import logo
 
 # =========================================================================
 # =========================================================================
@@ -98,6 +98,7 @@ def main(args=None, messages=[]):
     if args is None:
         args = MyPickle.Load(SaveFile)
     
+    logo.PrintLogo()
     D = DynSpecMS(ListMSName=args.ms, ColName=args.data, ModelName=args.model, Sols=args.sols, 
                   UVRange=args.uv,
                   FileCoords=args.srclist)
