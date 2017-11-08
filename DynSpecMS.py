@@ -352,8 +352,8 @@ class DynSpecMS():
             pylab.xlabel("Freq bin")
         pylab.tight_layout()
         pylab.draw()
-        pylab.show(False)
-        fig.savefig("DynSpec_{}_ra{}_dec{}.png".format(self.OutName, self.ra, self.dec))
+        pylab.show()
+        #fig.savefig("DynSpec_{}_ra{}_dec{}.png".format(self.OutName, self.ra, self.dec))
         return Gn
 
 
