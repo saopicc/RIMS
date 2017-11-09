@@ -14,7 +14,8 @@ SaveFile = "last_dynspec.obj"
 =========================================================================
                                 DESCRIPTION
     Blablabla
-  
+    Modif 
+    
     Example:
     python ms2dynspec.py --msfile /usr/data/ --data CORRECTED --model PREDICT --sols killms.npz --srclist SRCPOS.txt --rad 10
 
@@ -101,7 +102,7 @@ def main(args=None, messages=[]):
     
     D = DynSpecMS(ListMSName=args.ms, ColName=args.data, ModelName=args.model, Sols=args.sols, 
                   UVRange=args.uv,
-                  FileCoords=args.srclist,Radius=args.rad)
+                  FileCoords=args.srclist, Radius=args.rad)
     if D.NDir==0:
         return
     D.StackAll()
