@@ -32,13 +32,14 @@ class ClassSaveResults():
         for iDir in range(self.DynSpecMS.NDir):
             self.WriteFitsThisDir(iDir)
 
+        self.WriteFitsThisDir(0,Weight=True)
 
     def GiveSubDir(self,Type):
         SubDir="OFF"
         if Type!="Off": SubDir="TARGET"
         return SubDir
 
-    def WriteFitsThisDir(self,iDir):
+    def WriteFitsThisDir(self,iDir,Weight=False):
         """ Store the dynamic spectrum in a FITS file
         """
         ra,dec=self.DynSpecMS.PosArray.ra[iDir],self.DynSpecMS.PosArray.dec[iDir]
@@ -47,7 +48,10 @@ class ClassSaveResults():
         strDEC=rad2hmsdms(dec,Type="dec").replace(" ",":")
 
         fitsname = "%s/%s/%s_%s_%s.fits"%(self.DIRNAME,self.GiveSubDir(self.DynSpecMS.PosArray.Type[iDir]),self.DynSpecMS.OutName, strRA, strDEC)
-        
+        if Weight:
+            fitsname = "%s/%s.fits"%(self.DIRNAME,"Weights")
+            
+
         # Create the fits file
         prihdr  = fits.Header() 
         prihdr.set('DATE-CRE', Time.now().iso.split()[0], 'Date of file generation')
@@ -62,12 +66,12 @@ class ClassSaveResults():
         hdus    = fits.PrimaryHDU(header=prihdr) # hdu table that will be filled
         hdus.writeto(fitsname, clobber=True)
 
-        label = ["I", "Q", "U", "V","NP"]
-        PolID = [0,1,2,3,0]
+        label = ["I", "Q", "U", "V"]
+        PolID = [0,1,2,3]
         hdus = fits.open(fitsname)
         for iLabel in range(len(label)):
-            if label[iLabel]=="NP":
-                Gn = self.DynSpecMS.DicoGrids["GridWeight"][iDir,:, :, 0].real
+            if Weight:
+                Gn = self.DynSpecMS.DicoGrids["GridWeight"][iDir,:, :, PolID[iLabel]].real
             else:
                 Gn = self.DynSpecMS.GOut[iDir,:, :, PolID[iLabel]].real
             hdr   = fits.Header()
