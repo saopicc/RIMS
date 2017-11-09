@@ -19,7 +19,7 @@ class ClassSaveResults():
         self.DynSpecMS=DynSpecMS
         self.DIRNAME="DynSpecs_%s"%self.DynSpecMS.OutName
 
-        # create directories if they don't exist
+        os.system("rm -rf %s"%self.DIRNAME)
         os.system("mkdir -p %s/TARGET"%self.DIRNAME)
         os.system("mkdir -p %s/OFF"%self.DIRNAME)
         #os.system("mkdir -p %s/PNG"%self.DIRNAME)
