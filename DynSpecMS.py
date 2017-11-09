@@ -2,10 +2,10 @@ from pyrap.tables import table
 import sys
 from DDFacet.Other import MyLogger
 log=MyLogger.getLogger("DynSpecMS")
-from DDFacet.Other import ModColor
 from DDFacet.Array import shared_dict
 from DDFacet.Other.AsyncProcessPool import APP, WorkerProcessError
 from DDFacet.Other import Multiprocessing
+from DDFacet.Other import ModColor
 from DDFacet.Other.progressbar import ProgressBar
 import numpy as np
 from astropy.time import Time
