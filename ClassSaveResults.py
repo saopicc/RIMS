@@ -22,7 +22,7 @@ class ClassSaveResults():
         # create directories if they don't exist
         os.system("mkdir -p %s/TARGET"%self.DIRNAME)
         os.system("mkdir -p %s/OFF"%self.DIRNAME)
-        os.system("mkdir -p %s/PNG"%self.DIRNAME)
+        #os.system("mkdir -p %s/PNG"%self.DIRNAME)
 
     def WriteFits(self):
         for iDir in range(self.DynSpecMS.NDir):
@@ -63,7 +63,7 @@ class ClassSaveResults():
         hdus = fits.open(fitsname)
         for iLabel in range(len(label)):
             if label[iLabel]=="NP":
-                Gn = self.DynSpecMS.DicoGrids["GridWeight"][iDir,:, :, PolID[iLabel]].real
+                Gn = self.DynSpecMS.DicoGrids["GridWeight"][iDir,:, :, 0].real
             else:
                 Gn = self.DynSpecMS.GOut[iDir,:, :, PolID[iLabel]].real
             hdr   = fits.Header()

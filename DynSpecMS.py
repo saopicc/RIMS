@@ -27,6 +27,7 @@ class DynSpecMS():
                  Radius=3.,
                  NOff=-1):
         self.ListMSName = sorted(ListMSName)#[0:2]
+
         self.nMS         = len(self.ListMSName)
         self.ColName    = ColName
         self.ModelName  = ModelName
