@@ -45,6 +45,8 @@ logo.PrintLogo()
 from DynSpecMS import DynSpecMS
 import ClassSaveResults
 from DDFacet.Data.ClassMS import expandMSList
+from DDFacet.Other import ModColor
+from DDFacet.Other import progressbar
 
 # =========================================================================
 # =========================================================================
@@ -96,9 +98,12 @@ if __name__ == "__main__":
     parser.add_argument("--srclist", type=str, default=None, help="List of targets --> 'source_name ra dec'", required=True)
     parser.add_argument("--rad", type=float, default=3., help="Radius of the field", required=False)
     parser.add_argument("--noff", type=float, default=-1, help="Number of off sources. -1 means twice as much as there are sources in the catalog", required=False)
+    parser.add_argument("--LogBoring", type=int, default=0, help="Boring?", required=False)
     parser.add_argument("--uv", type=list, default=[1., 1000.], help="UV range in km [UVmin, UVmax]", required=False)
     args = parser.parse_args()
 
     MyPickle.Save(args, SaveFile)
+
+    ModColor.silent = progressbar.ProgressBar.silent = args.LogBoring
 
     main(args)
