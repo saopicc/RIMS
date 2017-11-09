@@ -24,6 +24,10 @@ class ClassSaveResults():
         os.system("mkdir -p %s/OFF"%self.DIRNAME)
         #os.system("mkdir -p %s/PNG"%self.DIRNAME)
 
+    def tarDirectory(self):
+        os.system("tar -zcvf %s.tgz %s"%(self.DIRNAME,self.DIRNAME))
+
+
     def WriteFits(self):
         for iDir in range(self.DynSpecMS.NDir):
             self.WriteFitsThisDir(iDir)

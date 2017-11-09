@@ -81,7 +81,7 @@ def main(args=None, messages=[]):
     SaveMachine=ClassSaveResults.ClassSaveResults(D)
     SaveMachine.WriteFits()
     SaveMachine.PlotSpec()
-
+    SaveMachine.tarDirectory()
 
 # =========================================================================
 # =========================================================================
