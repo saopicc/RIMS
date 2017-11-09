@@ -42,7 +42,8 @@ from DDFacet.Other import MyPickle
 import logo
 logo.PrintLogo()
 from DynSpecMS import DynSpecMS
-    
+import ClassSaveResults
+   
 # =========================================================================
 # =========================================================================
 def angSep(ra1, dec1, ra2, dec2):
@@ -99,14 +100,20 @@ def main(args=None, messages=[]):
     if args is None:
         args = MyPickle.Load(SaveFile)
     
-    D = DynSpecMS(ListMSName=args.ms, ColName=args.data, ModelName=args.model, Sols=args.sols, 
+    D = DynSpecMS(ListMSName=args.ms, 
+                  ColName=args.data, ModelName=args.model, 
+                  SolsName=args.sols, 
                   UVRange=args.uv,
-                  FileCoords=args.srclist,Radius=args.rad)
+                  FileCoords=args.srclist,
+                  Radius=args.rad,
+                  NOff=args.noff)
     if D.NDir==0:
         return
     D.StackAll()
-    #D.WriteFits()
-    D.PlotSpec ()
+
+    SaveMachine=ClassSaveResults.ClassSaveResults(D)
+    SaveMachine.WriteFits()
+    SaveMachine.PlotSpec()
 
 
 # =========================================================================
@@ -119,6 +126,7 @@ if __name__ == "__main__":
     parser.add_argument("--sols", type=str, help="Jones solutions", required=True)
     parser.add_argument("--srclist", type=str, default=None, help="List of targets --> 'source_name ra dec'", required=True)
     parser.add_argument("--rad", type=float, default=3., help="Radius of the field", required=False)
+    parser.add_argument("--noff", type=float, default=-1, help="Number of off sources. -1 means twice as much as there are sources in the catalog", required=False)
     parser.add_argument("--uv", type=list, default=[1., 1000.], help="UV range in km [UVmin, UVmax]", required=False)
     args = parser.parse_args()
     checkArgs(args) # Verify that everything is correct before launching the dynamic spectrum computation

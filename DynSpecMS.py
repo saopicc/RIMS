@@ -1,12 +1,4 @@
 from pyrap.tables import table
-from astropy.time import Time
-from astropy import units as uni
-from astropy.io import fits
-from astropy import coordinates as coord
-from astropy import constants as const
-import numpy as np
-import glob, os
-import pylab
 import sys
 from DDFacet.Other import MyLogger
 log=MyLogger.getLogger("DynSpecMS")
@@ -15,6 +7,9 @@ from DDFacet.Array import shared_dict
 from DDFacet.Other.AsyncProcessPool import APP, WorkerProcessError
 from DDFacet.Other import Multiprocessing
 from DDFacet.Other.progressbar import ProgressBar
+import numpy as np
+from astropy.time import Time
+from astropy import constants as const
 
 # deuxieme
 # test git
@@ -27,34 +22,51 @@ def AngDist(ra0,ra1,dec0,dec1):
 
 class DynSpecMS():
     def __init__(self, ListMSName, ColName="DATA", ModelName="PREDICT_KMS", UVRange=[1.,1000.], 
-                 Sols='killMS.ALL_SOLS_1km_KAFCA.p.sols.npz',
+                 SolsName=None,
                  FileCoords=None,
-                 Radius=3.):
+                 Radius=3.,
+                 NOff=-1):
         self.ListMSName = sorted(ListMSName)#[0:2]
         self.nMS         = len(self.ListMSName)
         self.ColName    = ColName
         self.ModelName  = ModelName
         self.OutName    = self.ListMSName[0].split("/")[-1].split("_")[0]
         self.UVRange    = UVRange
-        self.Sols       = Sols
-        self.source     = None
         self.ReadMSInfos()
-
+        self.Radius=Radius
 
         self.PosArray=np.genfromtxt(FileCoords,dtype=[('Name','S200'),('Type','S200'),("ra",np.float64),("dec",np.float64)],delimiter=" ")
         self.PosArray=self.PosArray.view(np.recarray)
         self.PosArray.ra*=np.pi/180.
         self.PosArray.dec*=np.pi/180.
+        
+        
+        
         NOrig=self.PosArray.shape[0]
         Dist=AngDist(self.ra0,self.PosArray.ra,self.dec0,self.PosArray.dec)
         ind=np.where(Dist<Radius*np.pi/180)[0]
         self.PosArray=self.PosArray[ind]
+        self.NDirSelected=self.PosArray.shape[0]
+
+        if NOff==-1:
+            NOff=self.PosArray.shape[0]*2
+        if NOff is not None:
+            self.PosArray=np.concatenate([self.PosArray,self.GiveOffPosArray(NOff)])
+            self.PosArray=self.PosArray.view(np.recarray)
         self.NDir=self.PosArray.shape[0]
+
 
         self.DicoDATA = shared_dict.create("DATA")
         self.DicoGrids = shared_dict.create("Grids")
         self.DicoGrids["GridLinPol"] = np.zeros((self.NDir,self.NChan, self.NTimes, 4), np.complex128)
         self.DicoGrids["GridWeight"] = np.zeros((self.NDir,self.NChan, self.NTimes, 4), np.complex128)
+
+        self.SolsName   = SolsName
+        self.DoJonesCorr=False
+        if self.SolsName is not None:
+            self.DoJonesCorr=True
+            self.DicoJones=shared_dict.create("DicoJones")
+
 
         APP.registerJobHandlers(self)
         APP.startWorkers()
@@ -65,6 +77,24 @@ class DynSpecMS():
             self.killWorkers()
             return 
 
+    def GiveOffPosArray(self,NOff):
+        print>>log,"Making random off catalog with %i directions"%NOff
+        CatOff=np.zeros((NOff,),self.PosArray.dtype)
+        CatOff=CatOff.view(np.recarray)
+        CatOff.Type="Off"
+        NDone=0
+        while NDone<NOff:
+            dx=np.random.rand(1)[0]*self.Radius*np.pi/180
+            dy=np.random.rand(1)[0]*self.Radius*np.pi/180
+            ra=self.ra0+dx
+            dec=self.dec0+dy
+            d=AngDist(self.ra0,ra,self.dec0,dec)
+            if d<self.Radius*np.pi/180:
+                CatOff.ra[NDone]=ra
+                CatOff.dec[NDone]=dec
+                CatOff.Name[NDone]="Off%4.4i"%NDone
+                NDone+=1
+        return CatOff
 
     def ReadMSInfos(self):
         DicoMSInfos = {}
@@ -81,8 +111,6 @@ class DynSpecMS():
         self.ra0, self.dec0 = tField.getcol("PHASE_DIR").ravel() # radians!
         tField.close()
 
-        self.phaseCent = coord.SkyCoord(self.ra0, self.dec0, unit=uni.rad)
-
         pBAR = ProgressBar(Title="Reading metadata")
         pBAR.render(0, self.nMS)
    
@@ -93,13 +121,6 @@ class DynSpecMS():
             except:
                 DicoMSInfos[iMS] = {"Readable": False}
                 continue
-
-            # Extract Jones matrices that will be appliedto the visibilities
-            try:
-                JonesSols = np.load("%s/%s"%(MSName, self.Sols))
-                JonesSols = self.NormJones(JonesSols) # Normalize Jones matrices
-            except:
-                JonesSols = None
 
             tf = table("%s::SPECTRAL_WINDOW"%MSName, ack=False)
             ThisTimes = np.unique(t.getcol("TIME"))
@@ -112,8 +133,7 @@ class DynSpecMS():
                             "startTime":  Time(ThisTimes[0]/(24*3600.), format='mjd', scale='utc').isot,
                             "stopTime":   Time(ThisTimes[-1]/(24*3600.), format='mjd', scale='utc').isot,
                             "deltaTime":  (ThisTimes[-1] - ThisTimes[0])/3600., # h
-                            "Readable":   True,
-                            "JonesSols":  JonesSols}
+                            "Readable":   True}
             if DicoMSInfos[iMS]["ChanWidth"][0] != self.ChanWidth:
                 raise ValueError("should have the same chan width")
             pBAR.render(iMS+1, self.nMS)
@@ -150,6 +170,7 @@ class DynSpecMS():
         print>>log, "Reading [%i/%i]: %s"%(iMS+1, self.nMS, self.ListMSName[iMS])
 
         MSName=self.ListMSName[self.iCurrentMS]
+        
         t      = table(MSName, ack=False)
         data   = t.getcol(self.ColName) - t.getcol(self.ModelName)
         flag   = t.getcol("FLAG")
@@ -180,6 +201,17 @@ class DynSpecMS():
         self.DicoDATA["v"]=v0
         self.DicoDATA["w"]=w0
         
+        if self.DoJonesCorr:
+            # Extract Jones matrices that will be appliedto the visibilities
+            FileName="%s/%s"%(MSName, self.SolsName)
+            print>>log,"Reading Jones matrices solution file:"
+            print>>log,"   %s"%FileName
+            JonesSols = np.load(FileName)
+            self.DicoJones["G"]=self.NormJones(JonesSols["Sols"]["G"]) # Normalize Jones matrices
+            self.DicoJones['tm']=(JonesSols["Sols"]["t0"]+JonesSols["Sols"]["t1"])/2.
+            self.DicoJones['ra']=JonesSols['ClusterCat']['ra']
+            self.DicoJones['dec']=JonesSols['ClusterCat']['dec']
+
         self.iCurrentMS+=1
 
 
@@ -217,7 +249,7 @@ class DynSpecMS():
         self.killWorkers()
 
         G=self.DicoGrids["GridLinPol"]
-        W=self.DicoGrids["GridWeight"]
+        W=self.DicoGrids["GridWeight"].copy()
         W[W == 0] = 1
         Gn = G/W 
         self.Gn=Gn
@@ -239,7 +271,6 @@ class DynSpecMS():
 
         l, m = self.radec2lm(ra, dec)
         n  = np.sqrt(1. - l**2. - m**2.)
-
         self.DicoDATA.reload()
         self.DicoGrids.reload()
         indRow = np.where(self.DicoDATA["times"]==self.times[iTime])[0]
@@ -261,22 +292,18 @@ class DynSpecMS():
         _,nch,_=self.DicoDATA["data"].shape
 
         dcorr=d
-                # if DicoMSInfos[iMS]["JonesSols"] is not None:
-                #     self.J = DicoMSInfos[iMS]["JonesSols"]['G']
-                #     t0 = DicoMSInfos[iMS]["JonesSols"]['t0']
-                #     t1 = DicoMSInfos[iMS]["JonesSols"]['t1']
-                #     # Time slot for the solution
-                #     iTJones   = np.where( t0 <= self.times[iTime] )[0][-1]
-                #     # Facet used
-                #     posFacets = coord.SkyCoord(DicoMSInfos[iMS]["JonesSols"]['ra'], DicoMSInfos[iMS]["JonesSols"]['dec'], unit=uni.rad)
-                #     iDJones   = phaseCent.separation(posFacets).deg.argmin()                
-                #     # construct corrected visibilities
-                #     J0 = self.J[iTJones, 0, A0s, iDJones, 0, 0]
-                #     J1 = self.J[iTJones, 0, A1s, iDJones, 0, 0]
-                #     J0 = J0.reshape((-1, 1, 1))*np.ones((1, nch, 1))
-                #     J1 = J1.reshape((-1, 1, 1))*np.ones((1, nch, 1))
-                #     dcorr = J0.conj() * d * J1
-                # # ------------------------------------------------------------------------------------------------
+        if self.DoJonesCorr:
+            self.DicoJones.reload()
+            tm = self.DicoJones['tm']
+            # Time slot for the solution
+            iTJones=np.argmin(np.abs(tm-self.times[iTime]))
+            iDJones=np.argmin(AngDist(ra,self.DicoJones['ra'],dec,self.DicoJones['dec']))
+            # construct corrected visibilities
+            J0 = self.DicoJones['G'][iTJones, 0, A0s, iDJones, 0, 0]
+            J1 = self.DicoJones['G'][iTJones, 0, A1s, iDJones, 0, 0]
+            J0 = J0.reshape((-1, 1, 1))*np.ones((1, nch, 1))
+            J1 = J1.reshape((-1, 1, 1))*np.ones((1, nch, 1))
+            dcorr = J0.conj() * d * J1
 
         #ds=np.sum(d*kk, axis=0) # without Jones
         ds = np.sum(dcorr * kk, axis=0) # with Jones
@@ -287,75 +314,11 @@ class DynSpecMS():
         self.DicoGrids["GridWeight"][iDir,ich0:ich0+nch, iTime, :] = ws
 
 
-    def NormJones(self, jMatrices):
-        """ Normalisation of Jones Matrices
-        """
-        t0   = jMatrices['Sols']['t0']
-        t1   = jMatrices['Sols']['t1']
-        sols = jMatrices['Sols']['G']
-        ra   = jMatrices['ClusterCat']['ra']
-        dec  = jMatrices['ClusterCat']['dec']
-        for iTime in xrange(sols.shape[0]):
-            for iFreq in xrange(sols.shape[1]):
-                for iAnt in xrange(sols.shape[2]):
-                    for iDir in xrange(sols.shape[3]):
-                        # 2D matrix [[xx, xy], [yx, yy]]
-                        sols[iTime, iFreq, iAnt, iDir] /= np.linalg.norm(sols[iTime, iFreq, iAnt, iDir])
-        return {'G':sols, 't0':t0, 't1':t1, 'ra':ra, 'dec':dec}     
-
-    def WriteFits(self):
-        """ Store the dynamic spectrum in a FITS file
-        """
-        fitsname = "DynSpec_{}_ra{}_dec{}.fits".format(self.OutName, self.ra, self.dec)
-
-        # Create the fits file
-        prihdr  = fits.Header() 
-        prihdr.set('DATE-CRE', Time.now().iso.split()[0], 'Date of file generation')
-        prihdr.set('CHAN-WID', self.ChanWidth, 'Frequency channel width')
-        prihdr.set('FRQ-MIN', self.fMin, 'Minimal frequency')
-        prihdr.set('FRQ-MAX', self.fMax, 'Maximal frequency')
-        prihdr.set('OBS-STAR', self.tStart, 'Observation start date')
-        prihdr.set('OBS-STOP', self.tStop, 'Observation end date')
-        prihdr.set('TARGET', self.source, 'Pixel direction')
-        hdus    = fits.PrimaryHDU(header=prihdr) # hdu table that will be filled
-        hdus.writeto(fitsname, overwrite=True)
-
-        label = ["I", "Q", "U", "V"]
-        hdus = fits.open(fitsname)
-        for ipol in range(4):
-            Gn = self.GOut[:, :, ipol].real
-            hdr   = fits.Header()
-            hdr.set('STOKES', label[ipol], '')
-            hdr.set('RMS', np.std(Gn), 'r.m.s. of the data')
-            hdr.set('MEAN', np.mean(Gn), 'Mean of the data')
-            hdr.set('MEDIAN', np.median(Gn), 'Median of the data')
-            hdus.append( fits.ImageHDU(data=Gn, header=hdr, name=label[ipol]) )
-        hdulist = fits.HDUList(hdus)
-        hdulist.writeto(fitsname, overwrite=True)
-        hdulist.close()
-        print("\t=== Dynamic spectrum '{}' written ===".format(fitsname))
-        return
-
-    def PlotSpec(self,iDir=0):
-        fig = pylab.figure(1, figsize=(15, 8))
-        label = ["I", "Q", "U", "V"]
-        pylab.clf()
+    def NormJones(self, G):
+        print>>log, "  Normalising Jones matrices by the amplitude"
+        G[G != 0.] /= np.abs(G[G != 0.])
+        return G
         
-        for ipol in range(4):
-            Gn = self.GOut[iDir,:, :, ipol].T.real
-            sig = np.median(np.abs(Gn))
-            mean = np.median(Gn)
-            pylab.subplot(2, 2, ipol+1)
-            pylab.imshow(Gn, interpolation="nearest", aspect="auto", vmin=mean-3*sig, vmax=mean+10*sig)
-            pylab.title(label[ipol])
-            pylab.colorbar()
-            pylab.ylabel("Time bin")
-            pylab.xlabel("Freq bin")
-        pylab.tight_layout()
-        pylab.draw()
-        pylab.show()
-        #fig.savefig("DynSpec_{}_ra{}_dec{}.png".format(self.OutName, self.ra, self.dec))
-        return Gn
 
 
     def radec2lm(self, ra, dec):
