@@ -125,15 +125,29 @@ class ClassSaveResults():
         if (image is None) | (not os.path.isfile(image)):
             # Just plot a series of dynamic spectra
             for ipol in range(4):
+                # Gn = self.DynSpecMS.GOut[iDir,:, :, ipol].T.real
+                # sig = np.median(np.abs(Gn))
+                # mean = np.median(Gn)
+                # pylab.subplot(2, 2, ipol+1)
+                # pylab.imshow(Gn, interpolation="nearest", aspect="auto", vmin=mean-3*sig, vmax=mean+10*sig)
+                # pylab.title(label[ipol])
+                # pylab.colorbar()
+                # pylab.ylabel("Time bin")
+                # pylab.xlabel("Freq bin")
                 Gn = self.DynSpecMS.GOut[iDir,:, :, ipol].T.real
-                sig = np.median(np.abs(Gn))
+                sig  = np.std(np.abs(Gn))
                 mean = np.median(Gn)
-                pylab.subplot(2, 2, ipol+1)
-                pylab.imshow(Gn, interpolation="nearest", aspect="auto", vmin=mean-3*sig, vmax=mean+10*sig)
-                pylab.title(label[ipol])
-                pylab.colorbar()
-                pylab.ylabel("Time bin")
-                pylab.xlabel("Freq bin")
+                ax1 = pylab.subplot(4, 2, ipol+5)
+                spec = pylab.pcolormesh(times, freqs, Gn, cmap='bone_r', vmin=mean-3*sig, vmax=mean+10*sig, rasterized=True)
+                ax1.axis('tight')
+                cbar = pylab.colorbar()
+                cbar.ax.tick_params(labelsize=6)
+                pylab.text(times[-1]-0.1*(times[-1]-times[0]), freqs[-1]-0.1*(freqs[-1]-freqs[0]), label[ipol], horizontalalignment='center', verticalalignment='center', fontsize=bigfont)
+                if ipol==2 or ipol==3:
+                    pylab.xlabel("Time (min since %s)"%(t0.iso), fontsize=bigfont)
+                pylab.ylabel("Frequency (MHz)", fontsize=bigfont)
+                pylab.setp(ax1.get_xticklabels(), rotation='horizontal', fontsize=smallfont)
+                pylab.setp(ax1.get_yticklabels(), rotation='horizontal', fontsize=smallfont)
         else:
             # Plot the survey image and the dynamic spectra series
             for ipol in range(4):
@@ -147,7 +161,7 @@ class ClassSaveResults():
                 cbar.ax.tick_params(labelsize=6)
                 pylab.text(times[-1]-0.1*(times[-1]-times[0]), freqs[-1]-0.1*(freqs[-1]-freqs[0]), label[ipol], horizontalalignment='center', verticalalignment='center', fontsize=bigfont)
                 if ipol==2 or ipol==3:
-                    pylab.xlabel("Time (min since %s)"%(Time(header['OBS-STAR']).iso), fontsize=bigfont)
+                    pylab.xlabel("Time (min since %s)"%(t0.iso), fontsize=bigfont)
                 pylab.ylabel("Frequency (MHz)", fontsize=bigfont)
                 pylab.setp(ax1.get_xticklabels(), rotation='horizontal', fontsize=smallfont)
                 pylab.setp(ax1.get_yticklabels(), rotation='horizontal', fontsize=smallfont)
