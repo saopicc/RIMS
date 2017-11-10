@@ -25,9 +25,9 @@ class DynSpecMS():
                  SolsName=None,
                  FileCoords=None,
                  Radius=3.,
-                 NOff=-1):
+                 NOff=-1,
+                 Image=None):
         self.ListMSName = sorted(ListMSName)#[0:2]
-
         self.nMS         = len(self.ListMSName)
         self.ColName    = ColName
         self.ModelName  = ModelName
@@ -35,6 +35,7 @@ class DynSpecMS():
         self.UVRange    = UVRange
         self.ReadMSInfos()
         self.Radius=Radius
+        self.Image = Image
 
         self.PosArray=np.genfromtxt(FileCoords,dtype=[('Name','S200'),('Type','S200'),("ra",np.float64),("dec",np.float64)],delimiter=" ")
         self.PosArray=self.PosArray.view(np.recarray)
