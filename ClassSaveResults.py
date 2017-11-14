@@ -99,7 +99,7 @@ class ClassSaveResults():
 
         with PdfPages(pdfname) as pdf:
             for iDir in range(self.DynSpecMS.NDir):
-                self.fig = pylab.figure(1, figsize=(15, 8))
+                self.fig = pylab.figure(1, figsize=(18, 20))
                 pBAR.render(iDir+1, NPages)
                 if self.DynSpecMS.PosArray.Type[iDir]=="Off": continue
                 self.PlotSpecSingleDir(iDir)
@@ -111,17 +111,17 @@ class ClassSaveResults():
         pylab.clf()
 
         # Figure properties
-        bigfont = 8
+        bigfont   = 8
         smallfont = 6
         ra, dec = self.DynSpecMS.PosArray.ra[iDir],self.DynSpecMS.PosArray.dec[iDir]
-        strRA  = rad2hmsdms(ra, Type="ra").replace(" ",":")
-        strDEC = rad2hmsdms(dec, Type="dec").replace(" ",":")
+        strRA  = rad2hmsdms(ra, Type="ra").replace(" ", ":")
+        strDEC = rad2hmsdms(dec, Type="dec").replace(" ", ":")
         freqs = self.DynSpecMS.FreqsAll * 1.e-6 # in MHz
         t0 = Time(self.DynSpecMS.time[0]/(24*3600.), format='mjd', scale='utc')
         t1 = Time(self.DynSpecMS.time[-1]/(24*3600.), format='mjd', scale='utc')
         times = np.linspace(0, (t1-t0).sec/60., num=self.DynSpecMS.GOut[0, :, :, 0].shape[1], endpoint=True)
-
         image  = self.DynSpecMS.Image
+
         if (image is None) | (not os.path.isfile(image)):
             # Just plot a series of dynamic spectra
             for ipol in range(4):
@@ -137,7 +137,7 @@ class ClassSaveResults():
                 Gn = self.DynSpecMS.GOut[iDir,:, :, ipol].T.real
                 sig  = np.std(np.abs(Gn))
                 mean = np.median(Gn)
-                ax1 = pylab.subplot(4, 2, ipol+5)
+                ax1 = pylab.subplot(2, 2, ipol+1)
                 spec = pylab.pcolormesh(times, freqs, Gn, cmap='bone_r', vmin=mean-3*sig, vmax=mean+10*sig, rasterized=True)
                 ax1.axis('tight')
                 cbar = pylab.colorbar()
@@ -150,23 +150,58 @@ class ClassSaveResults():
                 pylab.setp(ax1.get_yticklabels(), rotation='horizontal', fontsize=smallfont)
         else:
             # Plot the survey image and the dynamic spectra series
+            # ---- Dynamic spectra  ----
             for ipol in range(4):
-                Gn = self.DynSpecMS.GOut[iDir,:, :, ipol].T.real
+                axspec = pylab.subplot2grid((6, 2), (2+ipol, 0), colspan=2)
+                Gn   = self.DynSpecMS.GOut[iDir,:, :, ipol].T.real
                 sig  = np.std(np.abs(Gn))
-                mean = np.median(Gn)
-                ax1 = pylab.subplot(4, 2, ipol+5)
+                mean = np.median(Gn) 
                 spec = pylab.pcolormesh(times, freqs, Gn, cmap='bone_r', vmin=mean-3*sig, vmax=mean+10*sig, rasterized=True)
-                ax1.axis('tight')
-                cbar = pylab.colorbar()
-                cbar.ax.tick_params(labelsize=6)
-                pylab.text(times[-1]-0.1*(times[-1]-times[0]), freqs[-1]-0.1*(freqs[-1]-freqs[0]), label[ipol], horizontalalignment='center', verticalalignment='center', fontsize=bigfont)
-                if ipol==2 or ipol==3:
-                    pylab.xlabel("Time (min since %s)"%(t0.iso), fontsize=bigfont)
+                axspec.axis('tight')
+                cbar = pylab.colorbar(fraction=0.046, pad=0.01)
+                cbar.ax.tick_params(labelsize=smallfont)
+                cbar.set_label(r'Flux density (Jy)', fontsize=8, horizontalalignment='center') 
+                pylab.text(times[-1]-0.02*(times[-1]-times[0]), freqs[-1]-0.1*(freqs[-1]-freqs[0]), label[ipol], horizontalalignment='center', verticalalignment='center', fontsize=bigfont+2)
+                pylab.xlabel("Time (min since %s)"%(t0.iso), fontsize=bigfont)
                 pylab.ylabel("Frequency (MHz)", fontsize=bigfont)
-                pylab.setp(ax1.get_xticklabels(), rotation='horizontal', fontsize=smallfont)
-                pylab.setp(ax1.get_yticklabels(), rotation='horizontal', fontsize=smallfont)
+                pylab.setp(axspec.get_xticklabels(), rotation='horizontal', fontsize=smallfont)
+                pylab.setp(axspec.get_yticklabels(), rotation='horizontal', fontsize=smallfont)
 
-            npix = 1000 # resize the image to make it (npix, npix)
+            # ---- Plot mean vs time  ----
+            ax2 = pylab.subplot2grid((6, 2), (0, 1))
+            Gn_i = self.DynSpecMS.GOut[iDir,:, :, 0].T.real
+            meantime = np.mean(Gn_i, axis=0)
+            stdtime  = np.std(Gn_i, axis=0)
+            ax2.fill_between(times, meantime-stdtime, meantime+stdtime, facecolor='#B6CAC8', edgecolor='none', zorder=-10)
+            pylab.plot(times, meantime, color='black')
+            pylab.axhline(y=0, color='black', linestyle=':')
+            pylab.xlabel("Time (min since %s)"%(t0.iso), fontsize=bigfont)
+            pylab.ylabel("Mean (Stokes I)", fontsize=bigfont)
+            pylab.setp(ax2.get_xticklabels(), rotation='horizontal', fontsize=smallfont)
+            pylab.setp(ax2.get_yticklabels(), rotation='horizontal', fontsize=smallfont)
+            ymin, vv = np.percentile((meantime-stdtime).ravel(), [5, 95])
+            vv, ymax = np.percentile((meantime+stdtime).ravel(), [5, 95])
+            ax2.set_ylim([ymin, ymax])
+            ax2.set_xlim([times[0], times[-1]])
+
+            # ---- Plot mean vs frequency  ----
+            ax3 = pylab.subplot2grid((6, 2), (1, 1))
+            meanfreq = np.mean(Gn_i, axis=1)
+            stdfreq = np.std(Gn_i, axis=1)
+            ax3.fill_between(freqs, meanfreq-stdfreq, meanfreq+stdfreq, facecolor='#B6CAC8', edgecolor='none', zorder=-10)
+            ax3.plot(freqs, meanfreq, color='black')
+            ax3.axhline(y=0, color='black', linestyle=':')
+            pylab.xlabel("Frequency (MHz)", fontsize=bigfont)
+            pylab.ylabel("Mean (Stokes I)", fontsize=bigfont)
+            pylab.setp(ax3.get_xticklabels(), rotation='horizontal', fontsize=smallfont)
+            pylab.setp(ax3.get_yticklabels(), rotation='horizontal', fontsize=smallfont)
+            ymin, vv = np.percentile((meanfreq-stdfreq).ravel(), [5, 95])
+            vv, ymax = np.percentile((meanfreq+stdfreq).ravel(), [5, 95])
+            ax3.set_ylim([ymin,ymax])
+            ax3.set_xlim([freqs[0], freqs[-1]])
+
+            # ---- Image ----
+            npix = 1000
             header = fits.getheader(image)
             data   = np.squeeze(fits.getdata(image, ext=0)) # A VERIFIER
             wcs    = WCS(header).celestial
@@ -175,27 +210,27 @@ class ClassSaveResults():
             wcs.wcs.crpix = [npix/2, npix/2] # update the WCS object
             median, stdev = (np.median(data), np.std(data))
             vMin, vMax    = (median - 1*stdev, median + 5*stdev)
-            ax = fig.add_subplot(221, projection=wcs)
+            ax1 = pylab.subplot2grid((6, 2), (0, 0), rowspan=2, projection=wcs)
             im = pylab.imshow(data, interpolation="nearest", cmap='bone_r', aspect="auto", vmin=vMin, vmax=vMax, origin='lower')
-            cbar = pylab.colorbar()
-            ax.set_xlabel(r'RA (J2000)', fontsize=8)
-
-            raax = ax.coords[0]
-            raax.set_major_formatter('hh:mm')
+            cbar = pylab.colorbar()#(fraction=0.046*2., pad=0.01*4.)
+            ax1.set_xlabel(r'RA (J2000)', fontsize=bigfont)
+            raax = ax1.coords[0]
+            raax.set_major_formatter('hh:mm:ss')
             raax.set_ticklabel(size=smallfont)
-            ax.set_ylabel(r'Dec (J2000)', fontsize=8)
-            decax = ax.coords[1]
-            decax.set_major_formatter('dd:mm')
+            ax1.set_ylabel(r'Dec (J2000)', fontsize=bigfont)
+            decax = ax1.coords[1]
+            decax.set_major_formatter('dd:mm:ss')
             decax.set_ticklabel(size=smallfont)
-            ax.autoscale(False)
+            ax1.autoscale(False)
             pylab.plot(npix/2, npix/2, 'o', markerfacecolor='none', markeredgecolor='red', markersize=bigfont) # plot a circle at the target
             cbar.set_label(r'Flux density (mJy)', fontsize=bigfont, horizontalalignment='center')
             cbar.ax.tick_params(labelsize=smallfont)
-            pylab.setp(ax.get_xticklabels(), rotation='horizontal', fontsize=smallfont)
-            pylab.setp(ax.get_yticklabels(), rotation='horizontal', fontsize=smallfont)
+            pylab.setp(ax1.get_xticklabels(), rotation='horizontal', fontsize=smallfont)
+            pylab.setp(ax1.get_yticklabels(), rotation='horizontal', fontsize=smallfont)
 
-        pylab.subplots_adjust(wspace=0.15, hspace=0.25)
-        pylab.suptitle("Name: %s, Type: %s, RA: %s, Dec: %s"%(self.DynSpecMS.PosArray.Name[iDir], self.DynSpecMS.PosArray.Type[iDir], self.DynSpecMS.PosArray.ra[iDir], self.DynSpecMS.PosArray.dec[iDir]))
+        #pylab.subplots_adjust(wspace=0.15, hspace=0.30)
+        pylab.figtext(x=0.5, y=0.92, s="Name: %s, Type: %s, RA: %s, Dec: %s"%(self.DynSpecMS.PosArray.Name[iDir], self.DynSpecMS.PosArray.Type[iDir], self.DynSpecMS.PosArray.ra[iDir], self.DynSpecMS.PosArray.dec[iDir]), fontsize=bigfont+2, horizontalalignment='center', verticalalignment='bottom')
+        #pylab.suptitle("Name: %s, Type: %s, RA: %s, Dec: %s"%(self.DynSpecMS.PosArray.Name[iDir], self.DynSpecMS.PosArray.Type[iDir], self.DynSpecMS.PosArray.ra[iDir], self.DynSpecMS.PosArray.dec[iDir]))
 
 
 
