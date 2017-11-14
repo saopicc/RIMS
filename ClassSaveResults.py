@@ -99,7 +99,7 @@ class ClassSaveResults():
 
         with PdfPages(pdfname) as pdf:
             for iDir in range(self.DynSpecMS.NDir):
-                self.fig = pylab.figure(1, figsize=(18, 20))
+                self.fig = pylab.figure(1, figsize=(15, 15))
                 pBAR.render(iDir+1, NPages)
                 if self.DynSpecMS.PosArray.Type[iDir]=="Off": continue
                 self.PlotSpecSingleDir(iDir)
@@ -150,25 +150,54 @@ class ClassSaveResults():
                 pylab.setp(ax1.get_yticklabels(), rotation='horizontal', fontsize=smallfont)
         else:
             # Plot the survey image and the dynamic spectra series
-            # ---- Dynamic spectra  ----
-            for ipol in range(4):
-                axspec = pylab.subplot2grid((6, 2), (2+ipol, 0), colspan=2)
-                Gn   = self.DynSpecMS.GOut[iDir,:, :, ipol].T.real
-                sig  = np.std(np.abs(Gn))
-                mean = np.median(Gn) 
-                spec = pylab.pcolormesh(times, freqs, Gn, cmap='bone_r', vmin=mean-3*sig, vmax=mean+10*sig, rasterized=True)
-                axspec.axis('tight')
-                cbar = pylab.colorbar(fraction=0.046, pad=0.01)
-                cbar.ax.tick_params(labelsize=smallfont)
-                cbar.set_label(r'Flux density (Jy)', fontsize=8, horizontalalignment='center') 
-                pylab.text(times[-1]-0.02*(times[-1]-times[0]), freqs[-1]-0.1*(freqs[-1]-freqs[0]), label[ipol], horizontalalignment='center', verticalalignment='center', fontsize=bigfont+2)
-                pylab.xlabel("Time (min since %s)"%(t0.iso), fontsize=bigfont)
-                pylab.ylabel("Frequency (MHz)", fontsize=bigfont)
-                pylab.setp(axspec.get_xticklabels(), rotation='horizontal', fontsize=smallfont)
-                pylab.setp(axspec.get_yticklabels(), rotation='horizontal', fontsize=smallfont)
+            # ---- Dynamic spectra I  ----
+            axspec = pylab.subplot2grid((5, 2), (2, 0), colspan=2)
+            Gn   = self.DynSpecMS.GOut[iDir,:, :, 0].T.real
+            sig  = np.std(np.abs(Gn))
+            mean = np.median(Gn) 
+            spec = pylab.pcolormesh(times, freqs, Gn, cmap='bone_r', vmin=mean-3*sig, vmax=mean+10*sig, rasterized=True)
+            axspec.axis('tight')
+            cbar = pylab.colorbar(fraction=0.046, pad=0.01)
+            cbar.ax.tick_params(labelsize=smallfont)
+            cbar.set_label(r'Flux density (Jy)', fontsize=8, horizontalalignment='center') 
+            pylab.text(times[-1]-0.02*(times[-1]-times[0]), freqs[-1]-0.1*(freqs[-1]-freqs[0]), 'I', horizontalalignment='center', verticalalignment='center', fontsize=bigfont+2)
+            pylab.xlabel("Time (min since %s)"%(t0.iso), fontsize=bigfont)
+            pylab.ylabel("Frequency (MHz)", fontsize=bigfont)
+            pylab.setp(axspec.get_xticklabels(), rotation='horizontal', fontsize=smallfont)
+            pylab.setp(axspec.get_yticklabels(), rotation='horizontal', fontsize=smallfont)
+            # ---- Dynamic spectra L  ----
+            axspec = pylab.subplot2grid((5, 2), (3, 0), colspan=2)
+            Gn   = np.sqrt(self.DynSpecMS.GOut[iDir,:, :, 1].T.real**2. + self.DynSpecMS.GOut[iDir,:, :, 2].T.real**2.)
+            sig  = np.std(np.abs(Gn))
+            mean = np.median(Gn) 
+            spec = pylab.pcolormesh(times, freqs, Gn, cmap='bone_r', vmin=0, vmax=mean+10*sig, rasterized=True)
+            axspec.axis('tight')
+            cbar = pylab.colorbar(fraction=0.046, pad=0.01)
+            cbar.ax.tick_params(labelsize=smallfont)
+            cbar.set_label(r'Flux density (Jy)', fontsize=8, horizontalalignment='center') 
+            pylab.text(times[-1]-0.02*(times[-1]-times[0]), freqs[-1]-0.1*(freqs[-1]-freqs[0]), 'L', horizontalalignment='center', verticalalignment='center', fontsize=bigfont+2)
+            pylab.xlabel("Time (min since %s)"%(t0.iso), fontsize=bigfont)
+            pylab.ylabel("Frequency (MHz)", fontsize=bigfont)
+            pylab.setp(axspec.get_xticklabels(), rotation='horizontal', fontsize=smallfont)
+            pylab.setp(axspec.get_yticklabels(), rotation='horizontal', fontsize=smallfont)
+            # ---- Dynamic spectra V  ----
+            axspec = pylab.subplot2grid((5, 2), (4, 0), colspan=2)
+            Gn   = self.DynSpecMS.GOut[iDir,:, :, 3].T.real
+            sig  = np.std(np.abs(Gn))
+            mean = np.median(Gn) 
+            spec = pylab.pcolormesh(times, freqs, Gn, cmap='bone_r', vmin=mean-3*sig, vmax=mean+10*sig, rasterized=True)
+            axspec.axis('tight')
+            cbar = pylab.colorbar(fraction=0.046, pad=0.01)
+            cbar.ax.tick_params(labelsize=smallfont)
+            cbar.set_label(r'Flux density (Jy)', fontsize=8, horizontalalignment='center') 
+            pylab.text(times[-1]-0.02*(times[-1]-times[0]), freqs[-1]-0.1*(freqs[-1]-freqs[0]), 'V', horizontalalignment='center', verticalalignment='center', fontsize=bigfont+2)
+            pylab.xlabel("Time (min since %s)"%(t0.iso), fontsize=bigfont)
+            pylab.ylabel("Frequency (MHz)", fontsize=bigfont)
+            pylab.setp(axspec.get_xticklabels(), rotation='horizontal', fontsize=smallfont)
+            pylab.setp(axspec.get_yticklabels(), rotation='horizontal', fontsize=smallfont)
 
             # ---- Plot mean vs time  ----
-            ax2 = pylab.subplot2grid((6, 2), (0, 1))
+            ax2 = pylab.subplot2grid((5, 2), (0, 1))
             Gn_i = self.DynSpecMS.GOut[iDir,:, :, 0].T.real
             meantime = np.mean(Gn_i, axis=0)
             stdtime  = np.std(Gn_i, axis=0)
@@ -185,7 +214,7 @@ class ClassSaveResults():
             ax2.set_xlim([times[0], times[-1]])
 
             # ---- Plot mean vs frequency  ----
-            ax3 = pylab.subplot2grid((6, 2), (1, 1))
+            ax3 = pylab.subplot2grid((5, 2), (1, 1))
             meanfreq = np.mean(Gn_i, axis=1)
             stdfreq = np.std(Gn_i, axis=1)
             ax3.fill_between(freqs, meanfreq-stdfreq, meanfreq+stdfreq, facecolor='#B6CAC8', edgecolor='none', zorder=-10)
@@ -210,7 +239,7 @@ class ClassSaveResults():
             wcs.wcs.crpix = [npix/2, npix/2] # update the WCS object
             median, stdev = (np.median(data), np.std(data))
             vMin, vMax    = (median - 1*stdev, median + 5*stdev)
-            ax1 = pylab.subplot2grid((6, 2), (0, 0), rowspan=2, projection=wcs)
+            ax1 = pylab.subplot2grid((5, 2), (0, 0), rowspan=2, projection=wcs)
             im = pylab.imshow(data, interpolation="nearest", cmap='bone_r', aspect="auto", vmin=vMin, vmax=vMax, origin='lower')
             cbar = pylab.colorbar()#(fraction=0.046*2., pad=0.01*4.)
             ax1.set_xlabel(r'RA (J2000)', fontsize=bigfont)
