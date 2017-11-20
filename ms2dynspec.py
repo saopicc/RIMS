@@ -76,7 +76,8 @@ def main(args=None, messages=[]):
                   UVRange=args.uv,
                   FileCoords=args.srclist,
                   Radius=args.rad,
-                  NOff=args.noff)
+                  NOff=args.noff,
+                  Image=args.image)
 
     if D.NDir==0:
         return
@@ -99,6 +100,7 @@ if __name__ == "__main__":
     parser.add_argument("--rad", type=float, default=3., help="Radius of the field", required=False)
     parser.add_argument("--noff", type=float, default=-1, help="Number of off sources. -1 means twice as much as there are sources in the catalog", required=False)
     parser.add_argument("--LogBoring", type=int, default=0, help="Boring?", required=False)
+    parser.add_argument("--image", type=str, default=None, help="Survey image to plot", required=False)
     parser.add_argument("--uv", type=list, default=[1., 1000.], help="UV range in km [UVmin, UVmax]", required=False)
     args = parser.parse_args()
 
