@@ -116,9 +116,9 @@ class ClassSaveResults():
         ra, dec = self.DynSpecMS.PosArray.ra[iDir],self.DynSpecMS.PosArray.dec[iDir]
         strRA  = rad2hmsdms(ra, Type="ra").replace(" ", ":")
         strDEC = rad2hmsdms(dec, Type="dec").replace(" ", ":")
-        freqs = self.DynSpecMS.FreqsAll * 1.e-6 # in MHz
-        t0 = Time(self.DynSpecMS.time[0]/(24*3600.), format='mjd', scale='utc')
-        t1 = Time(self.DynSpecMS.time[-1]/(24*3600.), format='mjd', scale='utc')
+        freqs = np.array(self.DynSpecMS.FreqsAll) * 1.e-6 # in MHz
+        t0 = Time(self.DynSpecMS.times[0]/(24*3600.), format='mjd', scale='utc')
+        t1 = Time(self.DynSpecMS.times[-1]/(24*3600.), format='mjd', scale='utc')
         times = np.linspace(0, (t1-t0).sec/60., num=self.DynSpecMS.GOut[0, :, :, 0].shape[1], endpoint=True)
         image  = self.DynSpecMS.Image
 
@@ -152,7 +152,7 @@ class ClassSaveResults():
             # Plot the survey image and the dynamic spectra series
             # ---- Dynamic spectra I  ----
             axspec = pylab.subplot2grid((5, 2), (2, 0), colspan=2)
-            Gn   = self.DynSpecMS.GOut[iDir,:, :, 0].T.real
+            Gn   = self.DynSpecMS.GOut[iDir,:, :, 0].real
             sig  = np.std(np.abs(Gn))
             mean = np.median(Gn) 
             spec = pylab.pcolormesh(times, freqs, Gn, cmap='bone_r', vmin=mean-3*sig, vmax=mean+10*sig, rasterized=True)
@@ -167,7 +167,7 @@ class ClassSaveResults():
             pylab.setp(axspec.get_yticklabels(), rotation='horizontal', fontsize=smallfont)
             # ---- Dynamic spectra L  ----
             axspec = pylab.subplot2grid((5, 2), (3, 0), colspan=2)
-            Gn   = np.sqrt(self.DynSpecMS.GOut[iDir,:, :, 1].T.real**2. + self.DynSpecMS.GOut[iDir,:, :, 2].T.real**2.)
+            Gn   = np.sqrt(self.DynSpecMS.GOut[iDir,:, :, 1].real**2. + self.DynSpecMS.GOut[iDir,:, :, 2].real**2.)
             sig  = np.std(np.abs(Gn))
             mean = np.median(Gn) 
             spec = pylab.pcolormesh(times, freqs, Gn, cmap='bone_r', vmin=0, vmax=mean+10*sig, rasterized=True)
@@ -182,7 +182,7 @@ class ClassSaveResults():
             pylab.setp(axspec.get_yticklabels(), rotation='horizontal', fontsize=smallfont)
             # ---- Dynamic spectra V  ----
             axspec = pylab.subplot2grid((5, 2), (4, 0), colspan=2)
-            Gn   = self.DynSpecMS.GOut[iDir,:, :, 3].T.real
+            Gn   = self.DynSpecMS.GOut[iDir,:, :, 3].real
             sig  = np.std(np.abs(Gn))
             mean = np.median(Gn) 
             spec = pylab.pcolormesh(times, freqs, Gn, cmap='bone_r', vmin=mean-3*sig, vmax=mean+10*sig, rasterized=True)
@@ -198,7 +198,7 @@ class ClassSaveResults():
 
             # ---- Plot mean vs time  ----
             ax2 = pylab.subplot2grid((5, 2), (0, 1))
-            Gn_i = self.DynSpecMS.GOut[iDir,:, :, 0].T.real
+            Gn_i = self.DynSpecMS.GOut[iDir,:, :, 0].real
             meantime = np.mean(Gn_i, axis=0)
             stdtime  = np.std(Gn_i, axis=0)
             ax2.fill_between(times, meantime-stdtime, meantime+stdtime, facecolor='#B6CAC8', edgecolor='none', zorder=-10)
