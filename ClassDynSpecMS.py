@@ -10,9 +10,7 @@ from DDFacet.Other.progressbar import ProgressBar
 import numpy as np
 from astropy.time import Time
 from astropy import constants as const
-
-# deuxieme
-# test git
+import os
 
 def AngDist(ra0,ra1,dec0,dec1):
     AC=np.arccos
@@ -38,6 +36,13 @@ class ClassDynSpecMS():
         self.Image = Image
 
         #self.PosArray=np.genfromtxt(FileCoords,dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')],delimiter="\t")
+
+        if FileCoords is None:
+            FileCoords="Transient_LOTTS.csv"
+            ssExec="wget -q --user=anonymous ftp://ftp.strw.leidenuniv.nl/pub/tasse/%s -O %s"%(FileCoords,FileCoords)
+            print>>log,"Downloading %s"%FileCoords
+            print>>log, "   Executing: %s"%ssExec
+            os.system(ssExec)
         self.PosArray=np.genfromtxt(FileCoords,dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')],delimiter=",")
         self.PosArray=self.PosArray.view(np.recarray)
         self.PosArray.ra*=np.pi/180.

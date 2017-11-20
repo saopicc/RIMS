@@ -96,7 +96,7 @@ if __name__ == "__main__":
     parser.add_argument("--data", type=str, default="CORRECTED", help="Name of DATA column", required=True)
     parser.add_argument("--model", type=str, help="Name of MODEL column", required=True)
     parser.add_argument("--sols", type=str, help="Jones solutions", required=True)
-    parser.add_argument("--srclist", type=str, default=None, help="List of targets --> 'source_name ra dec'", required=True)
+    parser.add_argument("--srclist", type=str, default=None, help="List of targets --> 'source_name ra dec'")
     parser.add_argument("--rad", type=float, default=3., help="Radius of the field", required=False)
     parser.add_argument("--noff", type=float, default=-1, help="Number of off sources. -1 means twice as much as there are sources in the catalog", required=False)
     parser.add_argument("--LogBoring", type=int, default=0, help="Boring?", required=False)
