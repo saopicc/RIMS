@@ -36,7 +36,7 @@ class DynSpecMS():
         self.ReadMSInfos()
         self.Radius=Radius
 
-        self.PosArray=np.genfromtxt(FileCoords,dtype=[('Name','S200'),('Type','S200'),("ra",np.float64),("dec",np.float64)],delimiter=" ")
+        self.PosArray=np.genfromtxt(FileCoords,dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')],delimiter="\t")
         self.PosArray=self.PosArray.view(np.recarray)
         self.PosArray.ra*=np.pi/180.
         self.PosArray.dec*=np.pi/180.
@@ -122,6 +122,11 @@ class DynSpecMS():
             except:
                 DicoMSInfos[iMS] = {"Readable": False}
                 continue
+
+            if self.ColName not in t.colnames() or self.ModelName not in t.colnames():
+                DicoMSInfos[iMS] = {"Readable": False}
+                continue
+                
 
             tf = table("%s::SPECTRAL_WINDOW"%MSName, ack=False)
             ThisTimes = np.unique(t.getcol("TIME"))
