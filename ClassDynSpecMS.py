@@ -162,7 +162,7 @@ class ClassDynSpecMS():
         t.close()
         tf.close()
         self.DicoMSInfos = DicoMSInfos
-        self.FreqsAll    = [DicoMSInfos[iMS]["ChanFreq"] for iMS in DicoMSInfos.keys() if DicoMSInfos[iMS]["Readable"]]
+        self.FreqsAll    = np.array([DicoMSInfos[iMS]["ChanFreq"] for iMS in DicoMSInfos.keys() if DicoMSInfos[iMS]["Readable"]])
         self.Freq_minmax = np.min(self.FreqsAll), np.max(self.FreqsAll)
         self.NTimes      = self.times.size
         f0, f1           = self.Freq_minmax
