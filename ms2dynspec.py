@@ -42,7 +42,7 @@ import pylab
 from DDFacet.Other import MyPickle
 import logo
 logo.PrintLogo()
-from DynSpecMS import DynSpecMS
+from ClassDynSpecMS import ClassDynSpecMS
 import ClassSaveResults
 from DDFacet.Data.ClassMS import expandMSList
 from DDFacet.Other import ModColor
@@ -70,14 +70,14 @@ def main(args=None, messages=[]):
     MSList=expandMSList(args.ms)
     MSList=[mstuple[0] for mstuple in MSList]
 
-    D = DynSpecMS(ListMSName=MSList, 
-                  ColName=args.data, ModelName=args.model, 
-                  SolsName=args.sols, 
-                  UVRange=args.uv,
-                  FileCoords=args.srclist,
-                  Radius=args.rad,
-                  NOff=args.noff,
-                  Image=args.image)
+    D = ClassDynSpecMS(ListMSName=MSList, 
+                       ColName=args.data, ModelName=args.model, 
+                       SolsName=args.sols, 
+                       UVRange=args.uv,
+                       FileCoords=args.srclist,
+                       Radius=args.rad,
+                       NOff=args.noff,
+                       Image=args.image)
 
     if D.NDir==0:
         return

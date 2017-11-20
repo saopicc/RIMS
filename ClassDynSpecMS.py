@@ -20,7 +20,7 @@ def AngDist(ra0,ra1,dec0,dec1):
     S=np.sin
     return AC(S(dec0)*S(dec1)+C(dec0)*C(dec1)*C(ra0-ra1))
 
-class DynSpecMS():
+class ClassDynSpecMS():
     def __init__(self, ListMSName, ColName="DATA", ModelName="PREDICT_KMS", UVRange=[1.,1000.], 
                  SolsName=None,
                  FileCoords=None,
@@ -37,12 +37,11 @@ class DynSpecMS():
         self.Radius=Radius
         self.Image = Image
 
-        self.PosArray=np.genfromtxt(FileCoords,dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')],delimiter="\t")
+        #self.PosArray=np.genfromtxt(FileCoords,dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')],delimiter="\t")
+        self.PosArray=np.genfromtxt(FileCoords,dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')],delimiter=",")
         self.PosArray=self.PosArray.view(np.recarray)
         self.PosArray.ra*=np.pi/180.
         self.PosArray.dec*=np.pi/180.
-        
-        
         
         NOrig=self.PosArray.shape[0]
         Dist=AngDist(self.ra0,self.PosArray.ra,self.dec0,self.PosArray.dec)
@@ -50,12 +49,20 @@ class DynSpecMS():
         self.PosArray=self.PosArray[ind]
         self.NDirSelected=self.PosArray.shape[0]
 
+        print>>log,"Selected %i target [out of the %i in the original list]"%(self.NDirSelected,NOrig)
+        if self.NDirSelected==0:
+            print>>log,ModColor.Str("   Have found no sources - returning")
+            self.killWorkers()
+            return 
+        
         if NOff==-1:
             NOff=self.PosArray.shape[0]*2
         if NOff is not None:
+            print>>log,"Including %i off targets"%(NOff)
             self.PosArray=np.concatenate([self.PosArray,self.GiveOffPosArray(NOff)])
             self.PosArray=self.PosArray.view(np.recarray)
         self.NDir=self.PosArray.shape[0]
+        print>>log,"For a total of %i targets"%(self.NDir)
 
 
         self.DicoDATA = shared_dict.create("DATA")
@@ -73,11 +80,6 @@ class DynSpecMS():
         APP.registerJobHandlers(self)
         APP.startWorkers()
 
-        print>>log,"Selected %i target [out of the %i in the original list]"%(self.NDir,NOrig)
-        if self.NDir==0:
-            print>>log,ModColor.Str("   Have found no sources - returning")
-            self.killWorkers()
-            return 
 
     def GiveOffPosArray(self,NOff):
         print>>log,"Making random off catalog with %i directions"%NOff
@@ -122,10 +124,12 @@ class DynSpecMS():
                 t = table(MSName, ack=False)
             except:
                 DicoMSInfos[iMS] = {"Readable": False}
+                pBAR.render(iMS+1, self.nMS)
                 continue
 
             if self.ColName not in t.colnames() or self.ModelName not in t.colnames():
                 DicoMSInfos[iMS] = {"Readable": False}
+                pBAR.render(iMS+1, self.nMS)
                 continue
                 
 
