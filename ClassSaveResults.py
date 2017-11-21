@@ -102,14 +102,14 @@ class ClassSaveResults():
             for iDir in range(self.DynSpecMS.NDir):
                 self.fig = pylab.figure(1, figsize=(15, 15))
                 pBAR.render(iDir+1, NPages)
-                if self.DynSpecMS.PosArray.Type[iDir]=="Off": continue
+                #if self.DynSpecMS.PosArray.Type[iDir]=="Off": continue
                 self.PlotSpecSingleDir(iDir)
                 pdf.savefig(bbox_inches='tight')
                 pylab.close()
 
     def PlotSpecSingleDir(self, iDir=0):
         label = ["I", "Q", "U", "V"]
-        #pylab.clf()
+        pylab.clf()
 
         # Figure properties
         bigfont   = 8
@@ -189,7 +189,7 @@ class ClassSaveResults():
             sig  = np.std(np.abs(Gn))
             mean = np.median(Gn) 
             #spec = pylab.pcolormesh(times, freqs, Gn, cmap='bone_r', vmin=mean-3*sig, vmax=mean+10*sig, rasterized=True)
-            spec = pylab.imshow(Gn, cmap='bone_r', vmin=mean-3*sig, vmax=mean+10*sig, extent=(times[0],times[-1],self.DynSpecMS.fMin*1.e-6,self.DynSpecMS.fMax*1.e-6), rasterized=True) 
+            spec = pylab.imshow(Gn, cmap='bone_r', vmin=mean-5*sig, vmax=mean+5*sig, extent=(times[0],times[-1],self.DynSpecMS.fMin*1.e-6,self.DynSpecMS.fMax*1.e-6), rasterized=True) 
             axspec.axis('tight')
             cbar = pylab.colorbar(fraction=0.046, pad=0.01)
             cbar.ax.tick_params(labelsize=smallfont)
@@ -239,13 +239,15 @@ class ClassSaveResults():
             data   = np.squeeze(fits.getdata(image, ext=0)) # A VERIFIER
             wcs    = WCS(header).celestial
             cenpixx, cenpixy = wcs.wcs_world2pix(np.degrees(self.DynSpecMS.PosArray.ra[iDir]), np.degrees(self.DynSpecMS.PosArray.dec[iDir]), 1) # get central pixels
+            #print("central pixels {}, {}".format(cenpixx, cenpixy))
+            #print>>log, "central pixels {}, {}".format(cenpixx, cenpixy)
             data = 1.e3 * data[int(cenpixx-npix/2):int(cenpixx+npix/2), int(cenpixy-npix/2):int(cenpixy+npix/2)] # resize the image 
-            #print>>log, "new data image: {}".format(data.shape)
             wcs.wcs.crpix = [npix/2, npix/2] # update the WCS object
+            wcs.wcs.crval = [np.degrees(self.DynSpecMS.PosArray.ra[iDir]), np.degrees(self.DynSpecMS.PosArray.dec[iDir])]
             median, stdev = (np.median(data), np.std(data))
             vMin, vMax    = (median - 1*stdev, median + 5*stdev)
             ax1 = pylab.subplot2grid((5, 2), (0, 0), rowspan=2, projection=wcs)
-            im = pylab.imshow(data, interpolation="nearest", cmap='bone_r', aspect="auto", vmin=vMin, vmax=vMax, origin='lower')
+            im = pylab.imshow(data, interpolation="nearest", cmap='bone_r', aspect="auto", vmin=vMin, vmax=vMax, origin='lower', rasterized=True)
             cbar = pylab.colorbar()#(fraction=0.046*2., pad=0.01*4.)
             ax1.set_xlabel(r'RA (J2000)', fontsize=bigfont)
             raax = ax1.coords[0]
