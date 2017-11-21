@@ -91,32 +91,51 @@ class ClassSaveResults():
 
 
     def PlotSpec(self):
-        
-        pdfname = "%s/%s.pdf"%(self.DIRNAME,self.DynSpecMS.OutName)
+        # Pdf file of target positions
+        pdfname = "%s/%s_TARGET.pdf"%(self.DIRNAME,self.DynSpecMS.OutName)
         print>>log,"Making pdf overview: %s"%pdfname
-        pBAR = ProgressBar(Title="Making pages")
-        NPages=self.DynSpecMS.NDir#Selected
+        pBAR = ProgressBar(Title="Making pages")        
+        NPages=self.DynSpecMS.NDirSelected #Selected
         pBAR.render(0, NPages)
-
         with PdfPages(pdfname) as pdf:
-            for iDir in range(self.DynSpecMS.NDir):
+            for iDir in range(self.DynSpecMS.NDirSelected):
                 self.fig = pylab.figure(1, figsize=(15, 15))
                 pBAR.render(iDir+1, NPages)
-                #if self.DynSpecMS.PosArray.Type[iDir]=="Off": continue
+                if self.DynSpecMS.PosArray.Type[iDir]=="Off": continue
+                self.PlotSpecSingleDir(iDir)
+                pdf.savefig(bbox_inches='tight')
+                pylab.close()
+
+        # Pdf file of off positions
+        pdfname = "%s/%s_OFF.pdf"%(self.DIRNAME,self.DynSpecMS.OutName)
+        print>>log,"Making pdf overview: %s"%pdfname
+        pBAR = ProgressBar(Title="Making pages")
+        NPages=self.DynSpecMS.NDir-self.DynSpecMS.NDirSelected #Off pix
+        pBAR.render(0, NPages)
+        with PdfPages(pdfname) as pdf:
+            for iDir in range(NPages):
+                self.fig = pylab.figure(1, figsize=(15, 15))
+                pBAR.render(iDir+1, NPages)
+                if self.DynSpecMS.PosArray.Type[iDir]!="Off": continue
                 self.PlotSpecSingleDir(iDir)
                 pdf.savefig(bbox_inches='tight')
                 pylab.close()
 
     def PlotSpecSingleDir(self, iDir=0):
         label = ["I", "Q", "U", "V"]
+
         pylab.clf()
+        pylab.rc('text', usetex=True)
+        font = {'family':'serif', 'serif': ['Computer Modern']}
+        pylab.rc('font', **font)
+        
 
         # Figure properties
         bigfont   = 8
         smallfont = 6
         ra, dec = np.degrees(self.DynSpecMS.PosArray.ra[iDir]), np.degrees(self.DynSpecMS.PosArray.dec[iDir])
-        #strRA  = rad2hmsdms(ra, Type="ra").replace(" ", ":")
-        #strDEC = rad2hmsdms(dec, Type="dec").replace(" ", ":")
+        strRA  = rad2hmsdms(self.DynSpecMS.PosArray.ra[iDir], Type="ra").replace(" ", ":")
+        strDEC = rad2hmsdms(self.DynSpecMS.PosArray.dec[iDir], Type="dec").replace(" ", ":")
         freqs = self.DynSpecMS.FreqsAll.ravel() * 1.e-6 # in MHz
         t0 = Time(self.DynSpecMS.times[0]/(24*3600.), format='mjd', scale='utc')
         t1 = Time(self.DynSpecMS.times[-1]/(24*3600.), format='mjd', scale='utc')
@@ -163,6 +182,7 @@ class ClassSaveResults():
             cbar.ax.tick_params(labelsize=smallfont)
             cbar.set_label(r'Flux density (Jy)', fontsize=8, horizontalalignment='center') 
             pylab.text(times[-1]-0.02*(times[-1]-times[0]), freqs[-1]-0.1*(freqs[-1]-freqs[0]), 'I', horizontalalignment='center', verticalalignment='center', fontsize=bigfont+2)
+            pylab.text(times[0]+0.02*(times[-1]-times[0]), freqs[0]+0.1*(freqs[-1]-freqs[0]), r"$\sigma =$ %.3f Jy"%sig, horizontalalignment='left', verticalalignment='center', fontsize=bigfont+2)
             pylab.xlabel("Time (min since %s)"%(t0.iso), fontsize=bigfont)
             pylab.ylabel("Frequency (MHz)", fontsize=bigfont)
             pylab.setp(axspec.get_xticklabels(), rotation='horizontal', fontsize=smallfont)
@@ -179,6 +199,7 @@ class ClassSaveResults():
             cbar.ax.tick_params(labelsize=smallfont)
             cbar.set_label(r'Flux density (Jy)', fontsize=8, horizontalalignment='center') 
             pylab.text(times[-1]-0.02*(times[-1]-times[0]), freqs[-1]-0.1*(freqs[-1]-freqs[0]), 'L', horizontalalignment='center', verticalalignment='center', fontsize=bigfont+2)
+            pylab.text(times[0]+0.02*(times[-1]-times[0]), freqs[0]+0.1*(freqs[-1]-freqs[0]), r"$\sigma =$ %.3f Jy"%sig, horizontalalignment='left', verticalalignment='center', fontsize=bigfont+2)
             pylab.xlabel("Time (min since %s)"%(t0.iso), fontsize=bigfont)
             pylab.ylabel("Frequency (MHz)", fontsize=bigfont)
             pylab.setp(axspec.get_xticklabels(), rotation='horizontal', fontsize=smallfont)
@@ -195,6 +216,7 @@ class ClassSaveResults():
             cbar.ax.tick_params(labelsize=smallfont)
             cbar.set_label(r'Flux density (Jy)', fontsize=8, horizontalalignment='center') 
             pylab.text(times[-1]-0.02*(times[-1]-times[0]), freqs[-1]-0.1*(freqs[-1]-freqs[0]), 'V', horizontalalignment='center', verticalalignment='center', fontsize=bigfont+2)
+            pylab.text(times[0]+0.02*(times[-1]-times[0]), freqs[0]+0.1*(freqs[-1]-freqs[0]), r"$\sigma =$ %.3f Jy"%sig, horizontalalignment='left', verticalalignment='center', fontsize=bigfont+2)
             pylab.xlabel("Time (min since %s)"%(t0.iso), fontsize=bigfont)
             pylab.ylabel("Frequency (MHz)", fontsize=bigfont)
             pylab.setp(axspec.get_xticklabels(), rotation='horizontal', fontsize=smallfont)
@@ -237,6 +259,7 @@ class ClassSaveResults():
             npix = 1000
             header = fits.getheader(image)
             data   = np.squeeze(fits.getdata(image, ext=0)) # A VERIFIER
+            rms    = np.std(1.e3*data) 
             wcs    = WCS(header).celestial
             cenpixx, cenpixy = wcs.wcs_world2pix(np.degrees(self.DynSpecMS.PosArray.ra[iDir]), np.degrees(self.DynSpecMS.PosArray.dec[iDir]), 1) # get central pixels
             #print("central pixels {}, {}".format(cenpixx, cenpixy))
@@ -248,6 +271,7 @@ class ClassSaveResults():
             vMin, vMax    = (median - 1*stdev, median + 5*stdev)
             ax1 = pylab.subplot2grid((5, 2), (0, 0), rowspan=2, projection=wcs)
             im = pylab.imshow(data, interpolation="nearest", cmap='bone_r', aspect="auto", vmin=vMin, vmax=vMax, origin='lower', rasterized=True)
+            pylab.text(npix/16, npix/16, r"$\sigma =$ %.3f mJy"%rms, horizontalalignment='left', verticalalignment='center', fontsize=bigfont+2)
             cbar = pylab.colorbar()#(fraction=0.046*2., pad=0.01*4.)
             ax1.set_xlabel(r'RA (J2000)', fontsize=bigfont)
             raax = ax1.coords[0]
@@ -265,7 +289,7 @@ class ClassSaveResults():
             pylab.setp(ax1.get_yticklabels(), rotation='horizontal', fontsize=smallfont)
 
         #pylab.subplots_adjust(wspace=0.15, hspace=0.30)
-        pylab.figtext(x=0.5, y=0.92, s="Name: %s, Type: %s, RA: %s, Dec: %s"%(self.DynSpecMS.PosArray.Name[iDir], self.DynSpecMS.PosArray.Type[iDir], np.degrees(self.DynSpecMS.PosArray.ra[iDir]), np.degrees(self.DynSpecMS.PosArray.dec[iDir])), fontsize=bigfont+2, horizontalalignment='center', verticalalignment='bottom')
+        pylab.figtext(x=0.5, y=0.92, s="Name: %s, Type: %s, RA: %s, Dec: %s"%(self.DynSpecMS.PosArray.Name[iDir].replace('_', ' '), self.DynSpecMS.PosArray.Type[iDir], strRA, strDEC), fontsize=bigfont+2, horizontalalignment='center', verticalalignment='bottom')
         #pylab.suptitle("Name: %s, Type: %s, RA: %s, Dec: %s"%(self.DynSpecMS.PosArray.Name[iDir], self.DynSpecMS.PosArray.Type[iDir], self.DynSpecMS.PosArray.ra[iDir], self.DynSpecMS.PosArray.dec[iDir]))
 
 
