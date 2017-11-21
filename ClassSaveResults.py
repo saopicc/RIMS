@@ -55,6 +55,22 @@ class ClassSaveResults():
 
         # Create the fits file
         prihdr  = fits.Header() 
+        prihdr.set('CTYPE1', 'Time', 'Time')
+        prihdr.set('CRPIX1', 1., 'Reference')
+        prihdr.set('CRVAL1', 0., 'Time at the reference pixel (sec since OBS-STAR)')
+        deltaT = (Time(self.DynSpecMS.times[1]/(24*3600.), format='mjd', scale='utc') - Time(self.DynSpecMS.times[0]/(24*3600.), format='mjd', scale='utc')).sec
+        prihdr.set('CDELT1', deltaT, 'Delta time (sec)')
+        prihdr.set('CUNIT1', 'Time', 'unit')
+        prihdr.set('CTYPE2', 'Frequency', 'Frequency')
+        prihdr.set('CRPIX2', 1., 'Reference')
+        prihdr.set('CRVAL2', self.DynSpecMS.fMin*1e-6, 'Frequency at the reference pixel (MHz)')
+        prihdr.set('CDELT2', self.DynSpecMS.ChanWidth*1e-6, 'Delta freq (MHz)')
+        prihdr.set('CUNIT2', 'MHz', 'unit')
+        prihdr.set('CTYPE3', 'Stokes parameter', '1=I, 2=Q, 3=U, 4=V')
+        prihdr.set('CRPIX3', 1., 'Reference')
+        prihdr.set('CRVAL3', 1., 'frequence at the reference pixel')
+        prihdr.set('CDELT3', 1., 'Delta stokes')
+        prihdr.set('CUNIT3', '', 'unit')
         prihdr.set('DATE-CRE', Time.now().iso.split()[0], 'Date of file generation')
         prihdr.set('OBSID', self.DynSpecMS.OutName, 'LOFAR Observation ID')
         prihdr.set('CHAN-WID', self.DynSpecMS.ChanWidth, 'Frequency channel width')
@@ -62,37 +78,22 @@ class ClassSaveResults():
         prihdr.set('FRQ-MAX', self.DynSpecMS.fMax, 'Maximal frequency')
         prihdr.set('OBS-STAR', self.DynSpecMS.tStart, 'Observation start date')
         prihdr.set('OBS-STOP', self.DynSpecMS.tStop, 'Observation end date')
-        deltaT = (Time(self.DynSpecMS.times[1]/(24*3600.), format='mjd', scale='utc') - Time(self.DynSpecMS.times[0]/(24*3600.), format='mjd', scale='utc')).sec
-        prihdr.set('TIME-WID', deltaT, 'Time bin width (sec)')
         prihdr.set('RA_RAD', ra, 'Pixel right assention')
         prihdr.set('DEC_RAD', dec, 'Pixel right declination')
-        hdus    = fits.PrimaryHDU(header=prihdr) # hdu table that will be filled
-        hdus.writeto(fitsname, clobber=True)
 
-        label = ["I", "Q", "U", "V"]
-        PolID = [0,1,2,3]
-        hdus = fits.open(fitsname)
-        for iLabel in range(len(label)):
-            if Weight:
-                Gn = self.DynSpecMS.DicoGrids["GridWeight"][iDir,:, :, PolID[iLabel]].real
-            else:
-                Gn = self.DynSpecMS.GOut[iDir,:, :, PolID[iLabel]].real
-            hdr   = fits.Header()
-            hdr.set('STOKES', label[iLabel], '')
-            hdr.set('RMS', np.std(Gn), 'r.m.s. of the data')
-            hdr.set('MEAN', np.mean(Gn), 'Mean of the data')
-            hdr.set('MEDIAN', np.median(Gn), 'Median of the data')
-            hdus.append( fits.ImageHDU(data=Gn, header=hdr, name=label[iLabel]) )
-        hdulist = fits.HDUList(hdus)
-        print>>log,"  --> Writting %s"%fitsname
-        hdulist.writeto(fitsname, clobber=True)#)#, overwrite=True)
-        hdulist.close()
+        if Weight:
+            Gn = self.DynSpecMS.DicoGrids["GridWeight"][iDir,:, :, :].real # dir, time, freq, pol
+        else:
+            Gn = self.DynSpecMS.GOut[iDir,:, :, :].real
+
+        hdu = fits.PrimaryHDU(np.rollaxis(Gn, 2), header=prihdr)
+        hdu.writeto(fitsname, clobber=True)
 
 
     def PlotSpec(self):
         
         pdfname = "%s/%s.pdf"%(self.DIRNAME,self.DynSpecMS.OutName)
-        print>>log,"Making pdf ovserview: %s"%pdfname
+        print>>log,"Making pdf overview: %s"%pdfname
         pBAR = ProgressBar(Title="Making pages")
         NPages=self.DynSpecMS.NDir#Selected
         pBAR.render(0, NPages)
@@ -108,14 +109,14 @@ class ClassSaveResults():
 
     def PlotSpecSingleDir(self, iDir=0):
         label = ["I", "Q", "U", "V"]
-        pylab.clf()
+        #pylab.clf()
 
         # Figure properties
         bigfont   = 8
         smallfont = 6
-        ra, dec = self.DynSpecMS.PosArray.ra[iDir],self.DynSpecMS.PosArray.dec[iDir]
-        strRA  = rad2hmsdms(ra, Type="ra").replace(" ", ":")
-        strDEC = rad2hmsdms(dec, Type="dec").replace(" ", ":")
+        ra, dec = np.degrees(self.DynSpecMS.PosArray.ra[iDir]), np.degrees(self.DynSpecMS.PosArray.dec[iDir])
+        #strRA  = rad2hmsdms(ra, Type="ra").replace(" ", ":")
+        #strDEC = rad2hmsdms(dec, Type="dec").replace(" ", ":")
         freqs = self.DynSpecMS.FreqsAll.ravel() * 1.e-6 # in MHz
         t0 = Time(self.DynSpecMS.times[0]/(24*3600.), format='mjd', scale='utc')
         t1 = Time(self.DynSpecMS.times[-1]/(24*3600.), format='mjd', scale='utc')
@@ -156,7 +157,7 @@ class ClassSaveResults():
             sig  = np.std(np.abs(Gn))
             mean = np.median(Gn)
             #spec = pylab.pcolormesh(times, freqs, Gn, cmap='bone_r', vmin=mean-3*sig, vmax=mean+10*sig, rasterized=True)
-            spec = pylab.imshow(Gn, cmap='bone_r', vmin=mean-3*sig, vmax=mean+10*sig, extent=(times[0],times[-1],self.DynSpecMS.fMin,self.DynSpecMS.fMax)) 
+            spec = pylab.imshow(Gn, cmap='bone_r', vmin=mean-3*sig, vmax=mean+10*sig, extent=(times[0],times[-1],self.DynSpecMS.fMin*1.e-6,self.DynSpecMS.fMax*1.e-6),rasterized=True) 
             axspec.axis('tight')
             cbar = pylab.colorbar(fraction=0.046, pad=0.01)
             cbar.ax.tick_params(labelsize=smallfont)
@@ -172,7 +173,7 @@ class ClassSaveResults():
             sig  = np.std(np.abs(Gn))
             mean = np.median(Gn) 
             #spec = pylab.pcolormesh(times, freqs, Gn, cmap='bone_r', vmin=0, vmax=mean+10*sig, rasterized=True)
-            spec = pylab.imshow(Gn, cmap='bone_r', vmin=mean-3*sig, vmax=mean+10*sig, extent=(times[0],times[-1],self.DynSpecMS.fMin,self.DynSpecMS.fMax)) 
+            spec = pylab.imshow(Gn, cmap='bone_r', vmin=mean-3*sig, vmax=mean+10*sig, extent=(times[0],times[-1],self.DynSpecMS.fMin*1.e-6,self.DynSpecMS.fMax*1.e-6), rasterized=True) 
             axspec.axis('tight')
             cbar = pylab.colorbar(fraction=0.046, pad=0.01)
             cbar.ax.tick_params(labelsize=smallfont)
@@ -188,7 +189,7 @@ class ClassSaveResults():
             sig  = np.std(np.abs(Gn))
             mean = np.median(Gn) 
             #spec = pylab.pcolormesh(times, freqs, Gn, cmap='bone_r', vmin=mean-3*sig, vmax=mean+10*sig, rasterized=True)
-            spec = pylab.imshow(Gn, cmap='bone_r', vmin=mean-3*sig, vmax=mean+10*sig, extent=(times[0],times[-1],self.DynSpecMS.fMin,self.DynSpecMS.fMax)) 
+            spec = pylab.imshow(Gn, cmap='bone_r', vmin=mean-3*sig, vmax=mean+10*sig, extent=(times[0],times[-1],self.DynSpecMS.fMin*1.e-6,self.DynSpecMS.fMax*1.e-6), rasterized=True) 
             axspec.axis('tight')
             cbar = pylab.colorbar(fraction=0.046, pad=0.01)
             cbar.ax.tick_params(labelsize=smallfont)
@@ -237,8 +238,9 @@ class ClassSaveResults():
             header = fits.getheader(image)
             data   = np.squeeze(fits.getdata(image, ext=0)) # A VERIFIER
             wcs    = WCS(header).celestial
-            cenpixx, cenpixy = wcs.wcs_world2pix(self.DynSpecMS.PosArray.ra[iDir], self.DynSpecMS.PosArray.dec[iDir], 1) # get central pixels
+            cenpixx, cenpixy = wcs.wcs_world2pix(np.degrees(self.DynSpecMS.PosArray.ra[iDir]), np.degrees(self.DynSpecMS.PosArray.dec[iDir]), 1) # get central pixels
             data = 1.e3 * data[int(cenpixx-npix/2):int(cenpixx+npix/2), int(cenpixy-npix/2):int(cenpixy+npix/2)] # resize the image 
+            #print>>log, "new data image: {}".format(data.shape)
             wcs.wcs.crpix = [npix/2, npix/2] # update the WCS object
             median, stdev = (np.median(data), np.std(data))
             vMin, vMax    = (median - 1*stdev, median + 5*stdev)
@@ -261,7 +263,7 @@ class ClassSaveResults():
             pylab.setp(ax1.get_yticklabels(), rotation='horizontal', fontsize=smallfont)
 
         #pylab.subplots_adjust(wspace=0.15, hspace=0.30)
-        pylab.figtext(x=0.5, y=0.92, s="Name: %s, Type: %s, RA: %s, Dec: %s"%(self.DynSpecMS.PosArray.Name[iDir], self.DynSpecMS.PosArray.Type[iDir], self.DynSpecMS.PosArray.ra[iDir], self.DynSpecMS.PosArray.dec[iDir]), fontsize=bigfont+2, horizontalalignment='center', verticalalignment='bottom')
+        pylab.figtext(x=0.5, y=0.92, s="Name: %s, Type: %s, RA: %s, Dec: %s"%(self.DynSpecMS.PosArray.Name[iDir], self.DynSpecMS.PosArray.Type[iDir], np.degrees(self.DynSpecMS.PosArray.ra[iDir]), np.degrees(self.DynSpecMS.PosArray.dec[iDir])), fontsize=bigfont+2, horizontalalignment='center', verticalalignment='bottom')
         #pylab.suptitle("Name: %s, Type: %s, RA: %s, Dec: %s"%(self.DynSpecMS.PosArray.Name[iDir], self.DynSpecMS.PosArray.Type[iDir], self.DynSpecMS.PosArray.ra[iDir], self.DynSpecMS.PosArray.dec[iDir]))
 
 
