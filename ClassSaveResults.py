@@ -99,15 +99,17 @@ class ClassSaveResults():
         print>>log,"Making pdf overview: %s"%pdfname
         pBAR = ProgressBar(Title="Making pages")        
         NPages=self.DynSpecMS.NDirSelected #Selected
+        iDone=0
         pBAR.render(0, NPages)
         with PdfPages(pdfname) as pdf:
-            for iDir in range(self.DynSpecMS.NDirSelected):
+            for iDir in range(self.DynSpecMS.NDir):
                 self.fig = pylab.figure(1, figsize=(15, 15))
-                pBAR.render(iDir+1, NPages)
                 if self.DynSpecMS.PosArray.Type[iDir]=="Off": continue
                 self.PlotSpecSingleDir(iDir)
                 pdf.savefig(bbox_inches='tight')
                 pylab.close()
+                iDone+=1
+                pBAR.render(iDone, NPages)
 
         # Pdf file of off positions
         pdfname = "%s/%s_OFF.pdf"%(self.DIRNAME,self.DynSpecMS.OutName)
@@ -115,15 +117,17 @@ class ClassSaveResults():
         pBAR = ProgressBar(Title="Making pages")
         NPages=self.DynSpecMS.NDir-self.DynSpecMS.NDirSelected #Off pix
         pBAR.render(0, NPages)
+        iDone=0
         with PdfPages(pdfname) as pdf:
-            for iDir in range(NPages):
+            for iDir in range(self.DynSpecMS.NDir):
                 self.fig = pylab.figure(1, figsize=(15, 15))
-                pBAR.render(iDir+1, NPages)
                 if self.DynSpecMS.PosArray.Type[iDir]!="Off": continue
                 self.PlotSpecSingleDir(iDir)
                 pdf.savefig(bbox_inches='tight')
                 pylab.close()
-
+                iDone+=1
+                pBAR.render(iDone, NPages)
+                
     def PlotSpecSingleDir(self, iDir=0):
         label = ["I", "Q", "U", "V"]
 
