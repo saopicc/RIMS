@@ -27,7 +27,7 @@ class ClassSaveResults():
 
     def tarDirectory(self):
         print>>log,"Taring the result directory"
-        ss="tar -zcvf %s.tgz %s 2>&1"%(self.DIRNAME,self.DIRNAME)
+        ss="tar -zcvf %s.tgz %s > /dev/null 2>&1"%(self.DIRNAME,self.DIRNAME)
         print>>log,"  ... executing %s"%ss
         os.system(ss)
 
