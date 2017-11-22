@@ -26,7 +26,10 @@ class ClassSaveResults():
         #os.system("mkdir -p %s/PNG"%self.DIRNAME)
 
     def tarDirectory(self):
-        os.system("tar -zcvf %s.tgz %s"%(self.DIRNAME,self.DIRNAME))
+        print>>log,"Taring the result directory"
+        ss="tar -zcvf %s.tgz %s 2>&1"%(self.DIRNAME,self.DIRNAME)
+        print>>log,"  ... executing %s"%ss
+        os.system(ss)
 
 
     def WriteFits(self):
