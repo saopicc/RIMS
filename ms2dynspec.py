@@ -79,7 +79,7 @@ def main(args=None, messages=[]):
                        NOff=args.noff,
                        Image=args.image)
 
-    if D.NDir==0:
+    if D.NDirSelected==0:
         return
     D.StackAll()
 
