@@ -30,6 +30,13 @@ SaveFile = "last_dynspec.obj"
 import sys
 import os
 import argparse
+import matplotlib
+matplotlib.use('Agg')
+from matplotlib import rc
+fontsize=12
+rc('font',**{'family':'serif','serif':['Times'],'size':fontsize})
+rc('text', usetex=True)
+
 from pyrap.tables import table
 from astropy.time import Time
 from astropy import units as uni

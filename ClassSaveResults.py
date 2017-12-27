@@ -133,7 +133,7 @@ class ClassSaveResults():
 
         pylab.clf()
         pylab.rc('text', usetex=True)
-        font = {'family':'serif', 'serif': ['Computer Modern']}
+        font = {'family':'serif', 'serif': ['Times']}
         pylab.rc('font', **font)
         
 
@@ -280,11 +280,11 @@ class ClassSaveResults():
             im = pylab.imshow(data, interpolation="nearest", cmap='bone_r', aspect="auto", vmin=vMin, vmax=vMax, origin='lower', rasterized=True)
             pylab.text(npix/16, npix/16, r"$\sigma =$ %.3f mJy"%rms, horizontalalignment='left', verticalalignment='center', fontsize=bigfont+2)
             cbar = pylab.colorbar()#(fraction=0.046*2., pad=0.01*4.)
-            ax1.set_xlabel(r'RA (J2000)', fontsize=bigfont)
+            ax1.set_xlabel(r'RA (J2000)')
             raax = ax1.coords[0]
             raax.set_major_formatter('hh:mm:ss')
             raax.set_ticklabel(size=smallfont)
-            ax1.set_ylabel(r'Dec (J2000)', fontsize=bigfont)
+            ax1.set_ylabel(r'Dec (J2000)')
             decax = ax1.coords[1]
             decax.set_major_formatter('dd:mm:ss')
             decax.set_ticklabel(size=smallfont)
