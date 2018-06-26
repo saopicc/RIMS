@@ -11,6 +11,7 @@ import numpy as np
 from astropy.time import Time
 from astropy import constants as const
 import os
+from killMS.Other import reformat
 
 def AngDist(ra0,ra1,dec0,dec1):
     AC=np.arccos
@@ -24,7 +25,8 @@ class ClassDynSpecMS():
                  FileCoords=None,
                  Radius=3.,
                  NOff=-1,
-                 Image=None):
+                 Image=None,
+                 SolsDir=None):
         self.ListMSName = sorted(ListMSName)#[0:2]
         self.nMS         = len(self.ListMSName)
         self.ColName    = ColName
@@ -34,7 +36,7 @@ class ClassDynSpecMS():
         self.ReadMSInfos()
         self.Radius=Radius
         self.Image = Image
-
+        self.SolsDir=SolsDir
         #self.PosArray=np.genfromtxt(FileCoords,dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')],delimiter="\t")
 
         if FileCoords is None:
@@ -189,7 +191,12 @@ class ClassDynSpecMS():
         MSName=self.ListMSName[self.iCurrentMS]
         
         t      = table(MSName, ack=False)
-        data   = t.getcol(self.ColName) - t.getcol(self.ModelName)
+        data   = t.getcol(self.ColName)
+
+        if self.ModelName:
+            print>>log,"  Substracting %s from %s"%(self.ModelName,self.ColName)
+            data-=t.getcol(self.ModelName)
+
         flag   = t.getcol("FLAG")
         times  = t.getcol("TIME")
         A0, A1 = t.getcol("ANTENNA1"), t.getcol("ANTENNA2")
@@ -221,6 +228,17 @@ class ClassDynSpecMS():
         if self.DoJonesCorr:
             # Extract Jones matrices that will be appliedto the visibilities
             FileName="%s/%s"%(MSName, self.SolsName)
+
+            if self.SolsDir is None:
+                FileName="%s/%s"%(MSName, self.SolsName)
+            else:
+                _MSName=reformat.reformat(MSName).split("/")[-2]
+                DirName=os.path.abspath("%s%s"%(reformat.reformat(self.SolsDir),_MSName))
+                if not os.path.isdir(DirName):
+                    os.makedirs(DirName)
+                FileName="%s/killMS.%s.sols.npz"%(DirName,self.SolsName)
+
+
             print>>log,"Reading Jones matrices solution file:"
             print>>log,"   %s"%FileName
             JonesSols = np.load(FileName)
@@ -228,6 +246,8 @@ class ClassDynSpecMS():
             self.DicoJones['tm']=(JonesSols["Sols"]["t0"]+JonesSols["Sols"]["t1"])/2.
             self.DicoJones['ra']=JonesSols['ClusterCat']['ra']
             self.DicoJones['dec']=JonesSols['ClusterCat']['dec']
+            self.DicoJones['FreqDomains']=JonesSols['FreqDomains']
+            self.DicoJones['FreqDomains_mean']=np.mean(JonesSols['FreqDomains'],axis=1)
 
         self.iCurrentMS+=1
 
@@ -247,7 +267,7 @@ class ClassDynSpecMS():
             for iTime in range(self.NTimes):
                 APP.runJob("Stack_SingleTime:%d"%(iTime), 
                            self.Stack_SingleTime,
-                           args=(iTime,))
+                           args=(iTime,))#,serial=True)
                     
             APP.awaitJobResults("Stack_SingleTime:*", progress="Append MS %i"%self.DicoDATA["iMS"])
        
@@ -295,13 +315,18 @@ class ClassDynSpecMS():
         d   = self.DicoDATA["data"][indRow, :, :]
         A0s = self.DicoDATA["A0"][indRow]
         A1s = self.DicoDATA["A1"][indRow]
-        u0  = self.DicoDATA["u"][indRow]
-        v0  = self.DicoDATA["v"][indRow]
-        w0  = self.DicoDATA["w"][indRow]
+        u0  = self.DicoDATA["u"][indRow].reshape((-1,1,1))
+        v0  = self.DicoDATA["v"][indRow].reshape((-1,1,1))
+        w0  = self.DicoDATA["w"][indRow].reshape((-1,1,1))
         iMS  = self.DicoDATA["iMS"]
-        
-        kk  = np.exp( -2.*np.pi*1j* f/const.c.value *(u0*l + v0*m + w0*(n-1)) ) # Phasing term
 
+
+        chfreq=self.DicoMSInfos[iMS]["ChanFreq"].reshape((1,-1,1))
+        chfreq_mean=np.mean(chfreq)
+        # kk  = np.exp( -2.*np.pi*1j* f/const.c.value *(u0*l + v0*m + w0*(n-1)) ) # Phasing term
+        
+        kk  = np.exp( -2.*np.pi*1j* chfreq/const.c.value *(u0*l + v0*m + w0*(n-1)) ) # Phasing term
+        
         f0, _ = self.Freq_minmax
         
         DicoMSInfos      = self.DicoMSInfos
@@ -315,9 +340,10 @@ class ClassDynSpecMS():
             # Time slot for the solution
             iTJones=np.argmin(np.abs(tm-self.times[iTime]))
             iDJones=np.argmin(AngDist(ra,self.DicoJones['ra'],dec,self.DicoJones['dec']))
+            iFJones=np.argmin(np.abs(chfreq_mean-self.DicoJones['FreqDomains_mean']))
             # construct corrected visibilities
-            J0 = self.DicoJones['G'][iTJones, 0, A0s, iDJones, 0, 0]
-            J1 = self.DicoJones['G'][iTJones, 0, A1s, iDJones, 0, 0]
+            J0 = self.DicoJones['G'][iTJones, iFJones, A0s, iDJones, 0, 0]
+            J1 = self.DicoJones['G'][iTJones, iFJones, A1s, iDJones, 0, 0]
             J0 = J0.reshape((-1, 1, 1))*np.ones((1, nch, 1))
             J1 = J1.reshape((-1, 1, 1))*np.ones((1, nch, 1))
             dcorr = J0.conj() * d * J1

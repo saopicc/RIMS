@@ -84,7 +84,8 @@ def main(args=None, messages=[]):
                        FileCoords=args.srclist,
                        Radius=args.rad,
                        NOff=args.noff,
-                       Image=args.image)
+                       Image=args.image,
+                       SolsDir=args.SolsDir)
 
     if D.NDirSelected==0:
         return
@@ -109,6 +110,7 @@ if __name__ == "__main__":
     parser.add_argument("--LogBoring", type=int, default=0, help="Boring?", required=False)
     parser.add_argument("--image", type=str, default=None, help="Survey image to plot", required=False)
     parser.add_argument("--uv", type=list, default=[1., 1000.], help="UV range in km [UVmin, UVmax]", required=False)
+    parser.add_argument("--SolsDir", type=str, default="", help="Base directory for the DDE solutions", required=False)
     args = parser.parse_args()
 
     MyPickle.Save(args, SaveFile)
