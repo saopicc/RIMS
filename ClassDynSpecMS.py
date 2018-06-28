@@ -46,10 +46,11 @@ class ClassDynSpecMS():
                 print>>log,"Downloading %s"%FileCoords
                 print>>log, "   Executing: %s"%ssExec
                 os.system(ssExec)
-        self.PosArray=np.genfromtxt(FileCoords,dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')],delimiter=",")
+        self.PosArray=np.genfromtxt(FileCoords,dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')],delimiter=",")[()]
         self.PosArray=self.PosArray.view(np.recarray)
         self.PosArray.ra*=np.pi/180.
         self.PosArray.dec*=np.pi/180.
+
         
         NOrig=self.PosArray.shape[0]
         Dist=AngDist(self.ra0,self.PosArray.ra,self.dec0,self.PosArray.dec)
@@ -80,7 +81,7 @@ class ClassDynSpecMS():
 
         self.SolsName   = SolsName
         self.DoJonesCorr=False
-        if self.SolsName is not None:
+        if self.SolsName:
             self.DoJonesCorr=True
             self.DicoJones=shared_dict.create("DicoJones")
 
@@ -130,16 +131,26 @@ class ClassDynSpecMS():
         for iMS, MSName in enumerate(self.ListMSName):
             try:
                 t = table(MSName, ack=False)
-            except:
-                DicoMSInfos[iMS] = {"Readable": False}
+            except Exception as e:
+                s = str(e)
+                DicoMSInfos[iMS] = {"Readable": False,
+                                    "Exception": s}
                 pBAR.render(iMS+1, self.nMS)
                 continue
 
-            if self.ColName not in t.colnames() or self.ModelName not in t.colnames():
-                DicoMSInfos[iMS] = {"Readable": False}
+            if self.ColName not in t.colnames():
+                DicoMSInfos[iMS] = {"Readable": False,
+                                    "Exception": "Missing colname %s"%self.ColName}
                 pBAR.render(iMS+1, self.nMS)
                 continue
-                
+
+            
+            if  self.ModelName and (self.ModelName not in t.colnames()):
+                DicoMSInfos[iMS] = {"Readable": False,
+                                    "Exception": "Missing colname %s"%self.ModelName}
+                pBAR.render(iMS+1, self.nMS)
+                continue
+            
 
             tf = table("%s::SPECTRAL_WINDOW"%MSName, ack=False)
             ThisTimes = np.unique(t.getcol("TIME"))
@@ -160,7 +171,8 @@ class ClassDynSpecMS():
         for iMS in range(self.nMS):
             if not DicoMSInfos[iMS]["Readable"]:
                 print>>log, ModColor.Str("Problem reading %s"%MSName)
-
+                print>>log, ModColor.Str("   %s"%DicoMSInfos[iMS]["Exception"])
+                
 
         t.close()
         tf.close()
@@ -229,7 +241,7 @@ class ClassDynSpecMS():
             # Extract Jones matrices that will be appliedto the visibilities
             FileName="%s/%s"%(MSName, self.SolsName)
 
-            if self.SolsDir is None:
+            if not(self.SolsDir):
                 FileName="%s/%s"%(MSName, self.SolsName)
             else:
                 _MSName=reformat.reformat(MSName).split("/")[-2]
@@ -267,9 +279,11 @@ class ClassDynSpecMS():
             for iTime in range(self.NTimes):
                 APP.runJob("Stack_SingleTime:%d"%(iTime), 
                            self.Stack_SingleTime,
-                           args=(iTime,))#,serial=True)
-                    
+                           args=(iTime,),serial=True)
             APP.awaitJobResults("Stack_SingleTime:*", progress="Append MS %i"%self.DicoDATA["iMS"])
+
+            # for iTime in range(self.NTimes):
+            #     self.Stack_SingleTime(iTime)
        
         self.Finalise()
 
@@ -310,7 +324,8 @@ class ClassDynSpecMS():
         n  = np.sqrt(1. - l**2. - m**2.)
         self.DicoDATA.reload()
         self.DicoGrids.reload()
-        indRow = np.where(self.DicoDATA["times"]==self.times[iTime])[0]
+        #indRow = np.where(self.DicoDATA["times"]==self.times[iTime])[0]
+        indRow = np.where(self.DicoDATA["times"]>0)[0]
         f   = self.DicoDATA["flag"][indRow, :, :]
         d   = self.DicoDATA["data"][indRow, :, :]
         A0s = self.DicoDATA["A0"][indRow]
@@ -324,8 +339,20 @@ class ClassDynSpecMS():
         chfreq=self.DicoMSInfos[iMS]["ChanFreq"].reshape((1,-1,1))
         chfreq_mean=np.mean(chfreq)
         # kk  = np.exp( -2.*np.pi*1j* f/const.c.value *(u0*l + v0*m + w0*(n-1)) ) # Phasing term
-        
+        #print iTime,iDir
         kk  = np.exp( -2.*np.pi*1j* chfreq/const.c.value *(u0*l + v0*m + w0*(n-1)) ) # Phasing term
+
+        # #ind=np.where((A0s==0)&(A1s==10))[0]
+        # ind=np.where((A0s!=1000))[0]
+        # import pylab
+        # pylab.ion()
+        # pylab.clf()
+        # pylab.plot(np.angle(d[ind,2,0]))
+        # pylab.plot(np.angle(kk[ind,2,0].conj()))
+        # pylab.draw()
+        # pylab.show(False)
+        # pylab.pause(0.1)
+
         
         f0, _ = self.Freq_minmax
         
