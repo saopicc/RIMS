@@ -84,7 +84,8 @@ def main(args=None, messages=[]):
                        FileCoords=args.srclist,
                        Radius=args.rad,
                        NOff=args.noff,
-                       Image=args.image)
+                       Image=args.image,
+                       SolsDir=args.SolsDir)
 
     if D.NDirSelected==0:
         return
@@ -101,14 +102,15 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--ms", type=str, help="Name of MS file / directory", required=True)
     parser.add_argument("--data", type=str, default="CORRECTED", help="Name of DATA column", required=True)
-    parser.add_argument("--model", type=str, help="Name of MODEL column", required=True)
-    parser.add_argument("--sols", type=str, help="Jones solutions", required=True)
+    parser.add_argument("--model", type=str, help="Name of MODEL column",default="")#, required=True)
+    parser.add_argument("--sols", type=str, help="Jones solutions",default="")
     parser.add_argument("--srclist", type=str, default=None, help="List of targets --> 'source_name ra dec'")
     parser.add_argument("--rad", type=float, default=3., help="Radius of the field", required=False)
     parser.add_argument("--noff", type=float, default=-1, help="Number of off sources. -1 means twice as much as there are sources in the catalog", required=False)
     parser.add_argument("--LogBoring", type=int, default=0, help="Boring?", required=False)
     parser.add_argument("--image", type=str, default=None, help="Survey image to plot", required=False)
     parser.add_argument("--uv", type=list, default=[1., 1000.], help="UV range in km [UVmin, UVmax]", required=False)
+    parser.add_argument("--SolsDir", type=str, default="", help="Base directory for the DDE solutions", required=False)
     args = parser.parse_args()
 
     MyPickle.Save(args, SaveFile)

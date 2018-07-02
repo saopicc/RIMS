@@ -11,6 +11,7 @@ import numpy as np
 from astropy.time import Time
 from astropy import constants as const
 import os
+from killMS.Other import reformat
 
 def AngDist(ra0,ra1,dec0,dec1):
     AC=np.arccos
@@ -24,7 +25,8 @@ class ClassDynSpecMS():
                  FileCoords=None,
                  Radius=3.,
                  NOff=-1,
-                 Image=None):
+                 Image=None,
+                 SolsDir=None):
         self.ListMSName = sorted(ListMSName)#[0:2]
         self.nMS         = len(self.ListMSName)
         self.ColName    = ColName
@@ -34,7 +36,7 @@ class ClassDynSpecMS():
         self.ReadMSInfos()
         self.Radius=Radius
         self.Image = Image
-
+        self.SolsDir=SolsDir
         #self.PosArray=np.genfromtxt(FileCoords,dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')],delimiter="\t")
 
         if FileCoords is None:
@@ -44,10 +46,11 @@ class ClassDynSpecMS():
                 print>>log,"Downloading %s"%FileCoords
                 print>>log, "   Executing: %s"%ssExec
                 os.system(ssExec)
-        self.PosArray=np.genfromtxt(FileCoords,dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')],delimiter=",")
+        self.PosArray=np.genfromtxt(FileCoords,dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')],delimiter=",")[()]
         self.PosArray=self.PosArray.view(np.recarray)
         self.PosArray.ra*=np.pi/180.
         self.PosArray.dec*=np.pi/180.
+
         
         NOrig=self.PosArray.shape[0]
         Dist=AngDist(self.ra0,self.PosArray.ra,self.dec0,self.PosArray.dec)
@@ -78,7 +81,7 @@ class ClassDynSpecMS():
 
         self.SolsName   = SolsName
         self.DoJonesCorr=False
-        if self.SolsName is not None:
+        if self.SolsName:
             self.DoJonesCorr=True
             self.DicoJones=shared_dict.create("DicoJones")
 
@@ -128,16 +131,26 @@ class ClassDynSpecMS():
         for iMS, MSName in enumerate(self.ListMSName):
             try:
                 t = table(MSName, ack=False)
-            except:
-                DicoMSInfos[iMS] = {"Readable": False}
+            except Exception as e:
+                s = str(e)
+                DicoMSInfos[iMS] = {"Readable": False,
+                                    "Exception": s}
                 pBAR.render(iMS+1, self.nMS)
                 continue
 
-            if self.ColName not in t.colnames() or self.ModelName not in t.colnames():
-                DicoMSInfos[iMS] = {"Readable": False}
+            if self.ColName not in t.colnames():
+                DicoMSInfos[iMS] = {"Readable": False,
+                                    "Exception": "Missing colname %s"%self.ColName}
                 pBAR.render(iMS+1, self.nMS)
                 continue
-                
+
+            
+            if  self.ModelName and (self.ModelName not in t.colnames()):
+                DicoMSInfos[iMS] = {"Readable": False,
+                                    "Exception": "Missing colname %s"%self.ModelName}
+                pBAR.render(iMS+1, self.nMS)
+                continue
+            
 
             tf = table("%s::SPECTRAL_WINDOW"%MSName, ack=False)
             ThisTimes = np.unique(t.getcol("TIME"))
@@ -158,7 +171,8 @@ class ClassDynSpecMS():
         for iMS in range(self.nMS):
             if not DicoMSInfos[iMS]["Readable"]:
                 print>>log, ModColor.Str("Problem reading %s"%MSName)
-
+                print>>log, ModColor.Str("   %s"%DicoMSInfos[iMS]["Exception"])
+                
 
         t.close()
         tf.close()
@@ -189,7 +203,12 @@ class ClassDynSpecMS():
         MSName=self.ListMSName[self.iCurrentMS]
         
         t      = table(MSName, ack=False)
-        data   = t.getcol(self.ColName) - t.getcol(self.ModelName)
+        data   = t.getcol(self.ColName)
+
+        if self.ModelName:
+            print>>log,"  Substracting %s from %s"%(self.ModelName,self.ColName)
+            data-=t.getcol(self.ModelName)
+
         flag   = t.getcol("FLAG")
         times  = t.getcol("TIME")
         A0, A1 = t.getcol("ANTENNA1"), t.getcol("ANTENNA2")
@@ -221,6 +240,17 @@ class ClassDynSpecMS():
         if self.DoJonesCorr:
             # Extract Jones matrices that will be appliedto the visibilities
             FileName="%s/%s"%(MSName, self.SolsName)
+
+            if not(self.SolsDir):
+                FileName="%s/%s"%(MSName, self.SolsName)
+            else:
+                _MSName=reformat.reformat(MSName).split("/")[-2]
+                DirName=os.path.abspath("%s%s"%(reformat.reformat(self.SolsDir),_MSName))
+                if not os.path.isdir(DirName):
+                    os.makedirs(DirName)
+                FileName="%s/killMS.%s.sols.npz"%(DirName,self.SolsName)
+
+
             print>>log,"Reading Jones matrices solution file:"
             print>>log,"   %s"%FileName
             JonesSols = np.load(FileName)
@@ -228,6 +258,8 @@ class ClassDynSpecMS():
             self.DicoJones['tm']=(JonesSols["Sols"]["t0"]+JonesSols["Sols"]["t1"])/2.
             self.DicoJones['ra']=JonesSols['ClusterCat']['ra']
             self.DicoJones['dec']=JonesSols['ClusterCat']['dec']
+            self.DicoJones['FreqDomains']=JonesSols['FreqDomains']
+            self.DicoJones['FreqDomains_mean']=np.mean(JonesSols['FreqDomains'],axis=1)
 
         self.iCurrentMS+=1
 
@@ -247,9 +279,11 @@ class ClassDynSpecMS():
             for iTime in range(self.NTimes):
                 APP.runJob("Stack_SingleTime:%d"%(iTime), 
                            self.Stack_SingleTime,
-                           args=(iTime,))
-                    
+                           args=(iTime,),serial=True)
             APP.awaitJobResults("Stack_SingleTime:*", progress="Append MS %i"%self.DicoDATA["iMS"])
+
+            # for iTime in range(self.NTimes):
+            #     self.Stack_SingleTime(iTime)
        
         self.Finalise()
 
@@ -290,18 +324,36 @@ class ClassDynSpecMS():
         n  = np.sqrt(1. - l**2. - m**2.)
         self.DicoDATA.reload()
         self.DicoGrids.reload()
-        indRow = np.where(self.DicoDATA["times"]==self.times[iTime])[0]
+        #indRow = np.where(self.DicoDATA["times"]==self.times[iTime])[0]
+        indRow = np.where(self.DicoDATA["times"]>0)[0]
         f   = self.DicoDATA["flag"][indRow, :, :]
         d   = self.DicoDATA["data"][indRow, :, :]
         A0s = self.DicoDATA["A0"][indRow]
         A1s = self.DicoDATA["A1"][indRow]
-        u0  = self.DicoDATA["u"][indRow]
-        v0  = self.DicoDATA["v"][indRow]
-        w0  = self.DicoDATA["w"][indRow]
+        u0  = self.DicoDATA["u"][indRow].reshape((-1,1,1))
+        v0  = self.DicoDATA["v"][indRow].reshape((-1,1,1))
+        w0  = self.DicoDATA["w"][indRow].reshape((-1,1,1))
         iMS  = self.DicoDATA["iMS"]
-        
-        kk  = np.exp( -2.*np.pi*1j* f/const.c.value *(u0*l + v0*m + w0*(n-1)) ) # Phasing term
 
+
+        chfreq=self.DicoMSInfos[iMS]["ChanFreq"].reshape((1,-1,1))
+        chfreq_mean=np.mean(chfreq)
+        # kk  = np.exp( -2.*np.pi*1j* f/const.c.value *(u0*l + v0*m + w0*(n-1)) ) # Phasing term
+        #print iTime,iDir
+        kk  = np.exp( -2.*np.pi*1j* chfreq/const.c.value *(u0*l + v0*m + w0*(n-1)) ) # Phasing term
+
+        # #ind=np.where((A0s==0)&(A1s==10))[0]
+        # ind=np.where((A0s!=1000))[0]
+        # import pylab
+        # pylab.ion()
+        # pylab.clf()
+        # pylab.plot(np.angle(d[ind,2,0]))
+        # pylab.plot(np.angle(kk[ind,2,0].conj()))
+        # pylab.draw()
+        # pylab.show(False)
+        # pylab.pause(0.1)
+
+        
         f0, _ = self.Freq_minmax
         
         DicoMSInfos      = self.DicoMSInfos
@@ -315,9 +367,10 @@ class ClassDynSpecMS():
             # Time slot for the solution
             iTJones=np.argmin(np.abs(tm-self.times[iTime]))
             iDJones=np.argmin(AngDist(ra,self.DicoJones['ra'],dec,self.DicoJones['dec']))
+            iFJones=np.argmin(np.abs(chfreq_mean-self.DicoJones['FreqDomains_mean']))
             # construct corrected visibilities
-            J0 = self.DicoJones['G'][iTJones, 0, A0s, iDJones, 0, 0]
-            J1 = self.DicoJones['G'][iTJones, 0, A1s, iDJones, 0, 0]
+            J0 = self.DicoJones['G'][iTJones, iFJones, A0s, iDJones, 0, 0]
+            J1 = self.DicoJones['G'][iTJones, iFJones, A1s, iDJones, 0, 0]
             J0 = J0.reshape((-1, 1, 1))*np.ones((1, nch, 1))
             J1 = J1.reshape((-1, 1, 1))*np.ones((1, nch, 1))
             dcorr = J0.conj() * d * J1
