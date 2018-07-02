@@ -268,17 +268,28 @@ class ClassSaveResults():
             data   = np.squeeze(fits.getdata(image, ext=0)) # A VERIFIER
             rms    = np.std(1.e3*data) 
             wcs    = WCS(header).celestial
-            cenpixx, cenpixy = wcs.wcs_world2pix(np.degrees(self.DynSpecMS.PosArray.ra[iDir]), np.degrees(self.DynSpecMS.PosArray.dec[iDir]), 1) # get central pixels
+            cenpixra, cenpixdec = wcs.wcs_world2pix(np.degrees(self.DynSpecMS.PosArray.ra[iDir]), np.degrees(self.DynSpecMS.PosArray.dec[iDir]), 1)
             #print("central pixels {}, {}".format(cenpixx, cenpixy))
             #print>>log, "central pixels {}, {}".format(cenpixx, cenpixy)
-            data = 1.e3 * data[int(cenpixx-npix/2):int(cenpixx+npix/2), int(cenpixy-npix/2):int(cenpixy+npix/2)] # resize the image 
-            wcs.wcs.crpix = [npix/2, npix/2] # update the WCS object
-            wcs.wcs.crval = [np.degrees(self.DynSpecMS.PosArray.ra[iDir]), np.degrees(self.DynSpecMS.PosArray.dec[iDir])]
+            ra_crop  = [int(cenpixra - npix/2.), int(cenpixra + npix/2.)]
+            dec_crop = [int(cenpixdec - npix/2.), int(cenpixdec + npix/2.)]
+            if ra_crop[0] < 0: # make sure we stay in the lot limit
+                ra_crop[0] = 0
+            if ra_crop[1] > data.shape[1]:
+                ra_crop[1] = data.shape[1]-1
+            if dec_crop[0] < 0:
+                dec_crop[0] = 0
+            if dec_crop[1] > data.shape[0]:
+                dec_crop[1] = data.shape[0]-1
+            data = 1.e3 * data[dec_crop[0]:dec_crop[1], ra_crop[0]:ra_crop[1]] # resize the image 
+            newra, newdec = wcs.wcs_pix2world( (ra_crop[1]+ra_crop[0])/2.,(dec_crop[1]+dec_crop[0])/2., 1)
+            wcs.wcs.crpix = [(ra_crop[1]-ra_crop[0])/2.,(dec_crop[1]-dec_crop[0])/2. ] # update the WCS object
+            wcs.wcs.crval = [ newra, newdec ]
             median, stdev = (np.median(data), np.std(data))
             vMin, vMax    = (median - 1*stdev, median + 5*stdev)
             ax1 = pylab.subplot2grid((5, 2), (0, 0), rowspan=2, projection=wcs)
             im = pylab.imshow(data, interpolation="nearest", cmap='bone_r', aspect="auto", vmin=vMin, vmax=vMax, origin='lower', rasterized=True)
-            pylab.text(npix/16, npix/16, r"$\sigma =$ %.3f mJy"%rms, horizontalalignment='left', verticalalignment='center', fontsize=bigfont+2)
+            pylab.text((ra_crop[1]-ra_crop[0])/16, (dec_crop[1]-dec_crop[0])/16, r"$\sigma =$ %.3f mJy"%rms, horizontalalignment='left', verticalalignment='center', fontsize=bigfont+2)
             cbar = pylab.colorbar()#(fraction=0.046*2., pad=0.01*4.)
             
             ax1.set_xlabel(r'RA (J2000)')
@@ -290,11 +301,13 @@ class ClassSaveResults():
             decax.set_major_formatter('dd:mm:ss')
             decax.set_ticklabel(size=smallfont)
             ax1.autoscale(False)
-            pylab.plot(npix/2, npix/2, 'o', markerfacecolor='none', markeredgecolor='red', markersize=bigfont) # plot a circle at the target
+            newcenpixra, newcenpixdec = wcs.wcs_world2pix(np.degrees(self.DynSpecMS.PosArray.ra[iDir]), np.degrees(self.DynSpecMS.PosArray.dec[iDir]), 1)
+            pylab.plot(newcenpixra, newcenpixdec, 'o', markerfacecolor='none', markeredgecolor='red', markersize=bigfont) # plot a circle at the target
             cbar.set_label(r'Flux density (mJy)', fontsize=bigfont, horizontalalignment='center')
             cbar.ax.tick_params(labelsize=smallfont)
             pylab.setp(ax1.get_xticklabels(), rotation='horizontal', fontsize=smallfont)
-            pylab.setp(ax1.get_yticklabels(), rotation='horizontal', fontsize=smallfont)
+            pylab.setp(ax1.get_yticklabels(), rotation='horizontal', fontsize=smallfont)        
+
 
         #pylab.subplots_adjust(wspace=0.15, hspace=0.30)
         pylab.figtext(x=0.5, y=0.92, s="Name: %s, Type: %s, RA: %s, Dec: %s"%(self.DynSpecMS.PosArray.Name[iDir].replace('_', ' '), self.DynSpecMS.PosArray.Type[iDir], strRA, strDEC), fontsize=bigfont+2, horizontalalignment='center', verticalalignment='bottom')
