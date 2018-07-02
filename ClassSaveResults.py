@@ -292,29 +292,29 @@ class ClassSaveResults():
             y1=giveBounded(yc+box)
             
             DataBoxed=self.ImageData[y0:y1,x0:x1]
-            if DataBoxed.size<100: break
-            std=1.6*np.median(np.abs(DataBoxed))
-            vMin, vMax    = (-5.*std, 30*std)
-            ax1 = pylab.subplot2grid((5, 2), (0, 0), rowspan=2, projection=wcs)
-            im = pylab.imshow(DataBoxed, interpolation="nearest", cmap='bone_r', aspect="auto", vmin=vMin, vmax=vMax, origin='lower', rasterized=True)
-            #pylab.text((ra_crop[1]-ra_crop[0])/16, (dec_crop[1]-dec_crop[0])/16, r"$\sigma =$ %.3f mJy"%rms, horizontalalignment='left', verticalalignment='center', fontsize=bigfont+2)
-            cbar = pylab.colorbar()#(fraction=0.046*2., pad=0.01*4.)
-            
-            ax1.set_xlabel(r'RA (J2000)')
-            raax = ax1.coords[0]
-            raax.set_major_formatter('hh:mm:ss')
-            raax.set_ticklabel(size=smallfont)
-            ax1.set_ylabel(r'Dec (J2000)')
-            decax = ax1.coords[1]
-            decax.set_major_formatter('dd:mm:ss')
-            decax.set_ticklabel(size=smallfont)
-            ax1.autoscale(False)
-            # newcenpixra, newcenpixdec = wcs.wcs_world2pix(np.degrees(self.DynSpecMS.PosArray.ra[iDir]), np.degrees(self.DynSpecMS.PosArray.dec[iDir]), 1)
-            # pylab.plot(newcenpixra, newcenpixdec, 'o', markerfacecolor='none', markeredgecolor='red', markersize=bigfont) # plot a circle at the target
-            cbar.set_label(r'Flux density (mJy)', fontsize=bigfont, horizontalalignment='center')
-            cbar.ax.tick_params(labelsize=smallfont)
-            pylab.setp(ax1.get_xticklabels(), rotation='horizontal', fontsize=smallfont)
-            pylab.setp(ax1.get_yticklabels(), rotation='horizontal', fontsize=smallfont)        
+            if DataBoxed.size>100:
+                std=1.6*np.median(np.abs(DataBoxed))
+                vMin, vMax    = (-5.*std, 30*std)
+                ax1 = pylab.subplot2grid((5, 2), (0, 0), rowspan=2, projection=wcs)
+                im = pylab.imshow(DataBoxed, interpolation="nearest", cmap='bone_r', aspect="auto", vmin=vMin, vmax=vMax, origin='lower', rasterized=True)
+                #pylab.text((ra_crop[1]-ra_crop[0])/16, (dec_crop[1]-dec_crop[0])/16, r"$\sigma =$ %.3f mJy"%rms, horizontalalignment='left', verticalalignment='center', fontsize=bigfont+2)
+                cbar = pylab.colorbar()#(fraction=0.046*2., pad=0.01*4.)
+                
+                ax1.set_xlabel(r'RA (J2000)')
+                raax = ax1.coords[0]
+                raax.set_major_formatter('hh:mm:ss')
+                raax.set_ticklabel(size=smallfont)
+                ax1.set_ylabel(r'Dec (J2000)')
+                decax = ax1.coords[1]
+                decax.set_major_formatter('dd:mm:ss')
+                decax.set_ticklabel(size=smallfont)
+                ax1.autoscale(False)
+                # newcenpixra, newcenpixdec = wcs.wcs_world2pix(np.degrees(self.DynSpecMS.PosArray.ra[iDir]), np.degrees(self.DynSpecMS.PosArray.dec[iDir]), 1)
+                # pylab.plot(newcenpixra, newcenpixdec, 'o', markerfacecolor='none', markeredgecolor='red', markersize=bigfont) # plot a circle at the target
+                cbar.set_label(r'Flux density (mJy)', fontsize=bigfont, horizontalalignment='center')
+                cbar.ax.tick_params(labelsize=smallfont)
+                pylab.setp(ax1.get_xticklabels(), rotation='horizontal', fontsize=smallfont)
+                pylab.setp(ax1.get_yticklabels(), rotation='horizontal', fontsize=smallfont)        
 
 
         #pylab.subplots_adjust(wspace=0.15, hspace=0.30)
