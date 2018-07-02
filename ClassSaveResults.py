@@ -13,12 +13,17 @@ from DDFacet.ToolsDir.rad2hmsdms import rad2hmsdms
 from matplotlib.backends.backend_pdf import PdfPages
 import matplotlib.pyplot as pylab
 from DDFacet.Other.progressbar import ProgressBar
-
+from pyrap.images import image
 
 class ClassSaveResults():
     def __init__(self, DynSpecMS):
         self.DynSpecMS=DynSpecMS
         self.DIRNAME="DynSpecs_%s"%self.DynSpecMS.OutName
+        
+        #image  = self.DynSpecMS.Image
+        #self.ImageData=np.squeeze(fits.getdata(image, ext=0))
+        self.im=image(self.DynSpecMS.Image)
+        self.ImageData=self.im.getdata()[0,0]
 
         os.system("rm -rf %s"%self.DIRNAME)
         os.system("mkdir -p %s/TARGET"%self.DIRNAME)
@@ -265,31 +270,34 @@ class ClassSaveResults():
             # ---- Image ----
             npix = 1000
             header = fits.getheader(image)
-            data   = np.squeeze(fits.getdata(image, ext=0)) # A VERIFIER
-            rms    = np.std(1.e3*data) 
+            data   = self.ImageData # A VERIFIER
+            f,p,_,_=self.im.toworld([0,0,0,0])
+            _,_,xc,yc=self.im.topixel([f,p,self.DynSpecMS.PosArray.dec[iDir], self.DynSpecMS.PosArray.ra[iDir]])
+            yc,xc=int(xc),int(yc)
+            
             wcs    = WCS(header).celestial
-            cenpixra, cenpixdec = wcs.wcs_world2pix(np.degrees(self.DynSpecMS.PosArray.ra[iDir]), np.degrees(self.DynSpecMS.PosArray.dec[iDir]), 1)
+            #cenpixra, cenpixdec = wcs.wcs_world2pix(np.degrees(self.DynSpecMS.PosArray.ra[iDir]), np.degrees(self.DynSpecMS.PosArray.dec[iDir]), 1)
             #print("central pixels {}, {}".format(cenpixx, cenpixy))
             #print>>log, "central pixels {}, {}".format(cenpixx, cenpixy)
-            ra_crop  = [int(cenpixra - npix/2.), int(cenpixra + npix/2.)]
-            dec_crop = [int(cenpixdec - npix/2.), int(cenpixdec + npix/2.)]
-            if ra_crop[0] < 0: # make sure we stay in the lot limit
-                ra_crop[0] = 0
-            if ra_crop[1] > data.shape[1]:
-                ra_crop[1] = data.shape[1]-1
-            if dec_crop[0] < 0:
-                dec_crop[0] = 0
-            if dec_crop[1] > data.shape[0]:
-                dec_crop[1] = data.shape[0]-1
-            data = 1.e3 * data[dec_crop[0]:dec_crop[1], ra_crop[0]:ra_crop[1]] # resize the image 
-            newra, newdec = wcs.wcs_pix2world( (ra_crop[1]+ra_crop[0])/2.,(dec_crop[1]+dec_crop[0])/2., 1)
-            wcs.wcs.crpix = [(ra_crop[1]-ra_crop[0])/2.,(dec_crop[1]-dec_crop[0])/2. ] # update the WCS object
-            wcs.wcs.crval = [ newra, newdec ]
-            median, stdev = (np.median(data), np.std(data))
-            vMin, vMax    = (median - 1*stdev, median + 5*stdev)
+            nn=self.ImageData.shape[-1]
+
+            box=100
+            def giveBounded(x):
+                x=np.max([0,x])
+                return np.min([x,nn-1])
+
+            x0=giveBounded(xc-box)
+            x1=giveBounded(xc+box)
+            y0=giveBounded(yc-box)
+            y1=giveBounded(yc+box)
+            
+            DataBoxed=self.ImageData[y0:y1,x0:x1]
+            if DataBoxed.size<100: break
+            std=1.6*np.median(np.abs(DataBoxed))
+            vMin, vMax    = (-5.*std, 30*std)
             ax1 = pylab.subplot2grid((5, 2), (0, 0), rowspan=2, projection=wcs)
-            im = pylab.imshow(data, interpolation="nearest", cmap='bone_r', aspect="auto", vmin=vMin, vmax=vMax, origin='lower', rasterized=True)
-            pylab.text((ra_crop[1]-ra_crop[0])/16, (dec_crop[1]-dec_crop[0])/16, r"$\sigma =$ %.3f mJy"%rms, horizontalalignment='left', verticalalignment='center', fontsize=bigfont+2)
+            im = pylab.imshow(DataBoxed, interpolation="nearest", cmap='bone_r', aspect="auto", vmin=vMin, vmax=vMax, origin='lower', rasterized=True)
+            #pylab.text((ra_crop[1]-ra_crop[0])/16, (dec_crop[1]-dec_crop[0])/16, r"$\sigma =$ %.3f mJy"%rms, horizontalalignment='left', verticalalignment='center', fontsize=bigfont+2)
             cbar = pylab.colorbar()#(fraction=0.046*2., pad=0.01*4.)
             
             ax1.set_xlabel(r'RA (J2000)')
@@ -301,8 +309,8 @@ class ClassSaveResults():
             decax.set_major_formatter('dd:mm:ss')
             decax.set_ticklabel(size=smallfont)
             ax1.autoscale(False)
-            newcenpixra, newcenpixdec = wcs.wcs_world2pix(np.degrees(self.DynSpecMS.PosArray.ra[iDir]), np.degrees(self.DynSpecMS.PosArray.dec[iDir]), 1)
-            pylab.plot(newcenpixra, newcenpixdec, 'o', markerfacecolor='none', markeredgecolor='red', markersize=bigfont) # plot a circle at the target
+            # newcenpixra, newcenpixdec = wcs.wcs_world2pix(np.degrees(self.DynSpecMS.PosArray.ra[iDir]), np.degrees(self.DynSpecMS.PosArray.dec[iDir]), 1)
+            # pylab.plot(newcenpixra, newcenpixdec, 'o', markerfacecolor='none', markeredgecolor='red', markersize=bigfont) # plot a circle at the target
             cbar.set_label(r'Flux density (mJy)', fontsize=bigfont, horizontalalignment='center')
             cbar.ax.tick_params(labelsize=smallfont)
             pylab.setp(ax1.get_xticklabels(), rotation='horizontal', fontsize=smallfont)
