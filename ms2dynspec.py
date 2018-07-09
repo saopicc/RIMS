@@ -85,10 +85,11 @@ def main(args=None, messages=[]):
                        Radius=args.rad,
                        NOff=args.noff,
                        Image=args.image,
-                       SolsDir=args.SolsDir)
+                       SolsDir=args.SolsDir,NCPU=args.NCPU)
 
     if D.NDirSelected==0:
         return
+
     D.StackAll()
 
     SaveMachine=ClassSaveResults.ClassSaveResults(D)
@@ -111,6 +112,7 @@ if __name__ == "__main__":
     parser.add_argument("--image", type=str, default=None, help="Survey image to plot", required=False)
     parser.add_argument("--uv", type=list, default=[1., 1000.], help="UV range in km [UVmin, UVmax]", required=False)
     parser.add_argument("--SolsDir", type=str, default="", help="Base directory for the DDE solutions", required=False)
+    parser.add_argument("--NCPU", type=int, default=0, help="NCPU", required=False)
     args = parser.parse_args()
 
     MyPickle.Save(args, SaveFile)

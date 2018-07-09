@@ -12,6 +12,7 @@ from astropy.time import Time
 from astropy import constants as const
 import os
 from killMS.Other import reformat
+from DDFacet.Other import AsyncProcessPool
 
 def AngDist(ra0,ra1,dec0,dec1):
     AC=np.arccos
@@ -26,7 +27,8 @@ class ClassDynSpecMS():
                  Radius=3.,
                  NOff=-1,
                  Image=None,
-                 SolsDir=None):
+                 SolsDir=None,
+                 NCPU=1):
         self.ListMSName = sorted(ListMSName)#[0:2]
         self.nMS         = len(self.ListMSName)
         self.ColName    = ColName
@@ -87,6 +89,7 @@ class ClassDynSpecMS():
 
 
         APP.registerJobHandlers(self)
+        AsyncProcessPool.init(ncpu=NCPU,affinity=0)
         APP.startWorkers()
 
 
@@ -276,6 +279,7 @@ class ClassDynSpecMS():
     def StackAll(self):
         while self.iCurrentMS<self.nMS:
             if self.LoadNextMS()=="NotRead": continue
+            print>>log,"Making dynamic spectra..."
             for iTime in range(self.NTimes):
                 APP.runJob("Stack_SingleTime:%d"%(iTime), 
                            self.Stack_SingleTime,
@@ -324,8 +328,8 @@ class ClassDynSpecMS():
         n  = np.sqrt(1. - l**2. - m**2.)
         self.DicoDATA.reload()
         self.DicoGrids.reload()
-        #indRow = np.where(self.DicoDATA["times"]==self.times[iTime])[0]
-        indRow = np.where(self.DicoDATA["times"]>0)[0]
+        indRow = np.where(self.DicoDATA["times"]==self.times[iTime])[0]
+        #indRow = np.where(self.DicoDATA["times"]>0)[0]
         f   = self.DicoDATA["flag"][indRow, :, :]
         d   = self.DicoDATA["data"][indRow, :, :]
         A0s = self.DicoDATA["A0"][indRow]
