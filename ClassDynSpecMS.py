@@ -279,7 +279,7 @@ class ClassDynSpecMS():
             for iTime in range(self.NTimes):
                 APP.runJob("Stack_SingleTime:%d"%(iTime), 
                            self.Stack_SingleTime,
-                           args=(iTime,),serial=True)
+                           args=(iTime,))#,serial=True)
             APP.awaitJobResults("Stack_SingleTime:*", progress="Append MS %i"%self.DicoDATA["iMS"])
 
             # for iTime in range(self.NTimes):
