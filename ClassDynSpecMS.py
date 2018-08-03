@@ -41,14 +41,28 @@ class ClassDynSpecMS():
         self.SolsDir=SolsDir
         #self.PosArray=np.genfromtxt(FileCoords,dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')],delimiter="\t")
 
-        if FileCoords is None:
-            FileCoords="Transient_LOTTS.csv"
-            if not os.path.isfile(FileCoords):
-                ssExec="wget -q --user=anonymous ftp://ftp.strw.leidenuniv.nl/pub/tasse/%s -O %s"%(FileCoords,FileCoords)
-                print>>log,"Downloading %s"%FileCoords
-                print>>log, "   Executing: %s"%ssExec
-                os.system(ssExec)
-        self.PosArray=np.genfromtxt(FileCoords,dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')],delimiter=",")[()]
+        # should we use the surveys DB?
+        if 'DDF_PIPELINE_DATABASE' in os.environ:
+            print>>log,"Using the surveys database"
+            from surveys_db import SurveysDB
+            with SurveysDB() as sdb:
+                sdb.cur.execute('select * from transients')
+                result=sdb.cur.fetchall()
+            # convert to a list, then to ndarray, then to recarray
+            l=[]
+            for r in result:
+                l.append((r['id'],r['ra'],r['decl'],r['type']))
+            self.PosArray=np.asarray(l,dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')])
+            print>>log,"Created an array with %i records" % len(result)
+        else:
+            if FileCoords is None:
+                FileCoords="Transient_LOTTS.csv"
+                if not os.path.isfile(FileCoords):
+                    ssExec="wget -q --user=anonymous ftp://ftp.strw.leidenuniv.nl/pub/tasse/%s -O %s"%(FileCoords,FileCoords)
+                    print>>log,"Downloading %s"%FileCoords
+                    print>>log, "   Executing: %s"%ssExec
+                    os.system(ssExec)
+            self.PosArray=np.genfromtxt(FileCoords,dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')],delimiter=",")[()]
         self.PosArray=self.PosArray.view(np.recarray)
         self.PosArray.ra*=np.pi/180.
         self.PosArray.dec*=np.pi/180.
