@@ -13,6 +13,7 @@ from astropy import constants as const
 import os
 from killMS.Other import reformat
 from DDFacet.Other import AsyncProcessPool
+from dynspecms_version import version
 
 def AngDist(ra0,ra1,dec0,dec1):
     AC=np.arccos
@@ -41,6 +42,9 @@ class ClassDynSpecMS():
         self.SolsDir=SolsDir
         #self.PosArray=np.genfromtxt(FileCoords,dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')],delimiter="\t")
 
+        # identify version in logs
+        print>>log,"DynSpecMS version %s starting up" % version()
+        
         # should we use the surveys DB?
         if 'DDF_PIPELINE_DATABASE' in os.environ:
             print>>log,"Using the surveys database"
