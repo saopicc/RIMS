@@ -4,7 +4,8 @@ __author__ = "Cyril Tasse, and Alan Loh"
 #__copyright__ = "Copyright 2007, The Cogent Project"
 __credits__ = ["Cyril Tasse", "Alan Loh"]
 #__license__ = "GPL"
-__version__ = "1.0.1"
+from dynspecms_version import version
+__version__ = version()
 #__maintainer__ = "Rob Knight"
 #__email__ = "rob@spot.colorado.edu"
 #__status__ = "Production"
@@ -48,7 +49,7 @@ import glob, os
 import pylab
 from DDFacet.Other import MyPickle
 import logo
-logo.PrintLogo()
+logo.PrintLogo(__version__)
 from ClassDynSpecMS import ClassDynSpecMS
 import ClassSaveResults
 from DDFacet.Data.ClassMS import expandMSList
