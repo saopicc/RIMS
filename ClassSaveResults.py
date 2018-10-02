@@ -148,10 +148,11 @@ class ClassSaveResults():
         ra, dec = np.degrees(self.DynSpecMS.PosArray.ra[iDir]), np.degrees(self.DynSpecMS.PosArray.dec[iDir])
         strRA  = rad2hmsdms(self.DynSpecMS.PosArray.ra[iDir], Type="ra").replace(" ", ":")
         strDEC = rad2hmsdms(self.DynSpecMS.PosArray.dec[iDir], Type="dec").replace(" ", ":")
-        freqs = self.DynSpecMS.FreqsAll.ravel() * 1.e-6 # in MHz
+        #freqs = self.DynSpecMS.FreqsAll.ravel() * 1.e-6 # in MHz
         t0 = Time(self.DynSpecMS.times[0]/(24*3600.), format='mjd', scale='utc')
         t1 = Time(self.DynSpecMS.times[-1]/(24*3600.), format='mjd', scale='utc')
         times = np.linspace(0, (t1-t0).sec/60., num=self.DynSpecMS.GOut[0, :, :, 0].shape[1], endpoint=True)
+        freqs = np.linspace(self.DynSpecMS.fMin,self.DynSpecMS.fMax,num=self.DynSpecMS.GOut[0, :, :, 0].shape[0], endpoint=True)*1e-6
         image  = self.DynSpecMS.Image
 
         if (image is None) | (not os.path.isfile(image)):
