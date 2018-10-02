@@ -14,6 +14,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 import matplotlib.pyplot as pylab
 from DDFacet.Other.progressbar import ProgressBar
 from pyrap.images import image
+from dynspecms_version import version
 
 class ClassSaveResults():
     def __init__(self, DynSpecMS):
@@ -86,9 +87,10 @@ class ClassSaveResults():
         prihdr.set('FRQ-MAX', self.DynSpecMS.fMax, 'Maximal frequency')
         prihdr.set('OBS-STAR', self.DynSpecMS.tStart, 'Observation start date')
         prihdr.set('OBS-STOP', self.DynSpecMS.tStop, 'Observation end date')
-        prihdr.set('RA_RAD', ra, 'Pixel right assention')
-        prihdr.set('DEC_RAD', dec, 'Pixel right declination')
-
+        prihdr.set('RA_RAD', ra, 'Pixel right ascension')
+        prihdr.set('DEC_RAD', dec, 'Pixel declination')
+        prihdr.set('ORIGIN', 'DynSpecMS '+version(),'Created by')
+        
         if Weight:
             Gn = self.DynSpecMS.DicoGrids["GridWeight"][iDir,:, :, :].real # dir, time, freq, pol
         else:
