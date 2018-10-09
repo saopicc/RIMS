@@ -238,37 +238,37 @@ class ClassSaveResults():
             pylab.setp(axspec.get_yticklabels(), rotation='horizontal', fontsize=smallfont)
 
             # ---- Plot mean vs time  ----
-            ax2 = pylab.subplot2grid((5, 2), (0, 1))
-            Gn_i = self.DynSpecMS.GOut[iDir,:, :, 0].real
-            meantime = np.mean(Gn_i, axis=0)
-            stdtime  = np.std(Gn_i, axis=0)
-            ax2.fill_between(times, meantime-stdtime, meantime+stdtime, facecolor='#B6CAC8', edgecolor='none', zorder=-10)
-            pylab.plot(times, meantime, color='black')
-            pylab.axhline(y=0, color='black', linestyle=':')
-            pylab.xlabel("Time (min since %s)"%(t0.iso), fontsize=bigfont)
-            pylab.ylabel("Mean (Stokes I)", fontsize=bigfont)
-            pylab.setp(ax2.get_xticklabels(), rotation='horizontal', fontsize=smallfont)
-            pylab.setp(ax2.get_yticklabels(), rotation='horizontal', fontsize=smallfont)
-            ymin, vv = np.percentile((meantime-stdtime).ravel(), [5, 95])
-            vv, ymax = np.percentile((meantime+stdtime).ravel(), [5, 95])
-            ax2.set_ylim([ymin, ymax])
-            ax2.set_xlim([times[0], times[-1]])
+            # ax2 = pylab.subplot2grid((5, 2), (0, 1))
+            # Gn_i = self.DynSpecMS.GOut[iDir,:, :, 0].real
+            # meantime = np.mean(Gn_i, axis=0)
+            # stdtime  = np.std(Gn_i, axis=0)
+            # ax2.fill_between(times, meantime-stdtime, meantime+stdtime, facecolor='#B6CAC8', edgecolor='none', zorder=-10)
+            # pylab.plot(times, meantime, color='black')
+            # pylab.axhline(y=0, color='black', linestyle=':')
+            # pylab.xlabel("Time (min since %s)"%(t0.iso), fontsize=bigfont)
+            # pylab.ylabel("Mean (Stokes I)", fontsize=bigfont)
+            # pylab.setp(ax2.get_xticklabels(), rotation='horizontal', fontsize=smallfont)
+            # pylab.setp(ax2.get_yticklabels(), rotation='horizontal', fontsize=smallfont)
+            # ymin, vv = np.percentile((meantime-stdtime).ravel(), [5, 95])
+            # vv, ymax = np.percentile((meantime+stdtime).ravel(), [5, 95])
+            # ax2.set_ylim([ymin, ymax])
+            # ax2.set_xlim([times[0], times[-1]])
 
             # ---- Plot mean vs frequency  ----
-            ax3 = pylab.subplot2grid((5, 2), (1, 1))
-            meanfreq = np.mean(Gn_i, axis=1)
-            stdfreq = np.std(Gn_i, axis=1)
-            ax3.fill_between(freqs.ravel(), meanfreq-stdfreq, meanfreq+stdfreq, facecolor='#B6CAC8', edgecolor='none', zorder=-10)
-            ax3.plot(freqs.ravel(), meanfreq, color='black')
-            ax3.axhline(y=0, color='black', linestyle=':')
-            pylab.xlabel("Frequency (MHz)", fontsize=bigfont)
-            pylab.ylabel("Mean (Stokes I)", fontsize=bigfont)
-            pylab.setp(ax3.get_xticklabels(), rotation='horizontal', fontsize=smallfont)
-            pylab.setp(ax3.get_yticklabels(), rotation='horizontal', fontsize=smallfont)
-            ymin, vv = np.percentile((meanfreq-stdfreq).ravel(), [5, 95])
-            vv, ymax = np.percentile((meanfreq+stdfreq).ravel(), [5, 95])
-            ax3.set_ylim([ymin,ymax])
-            ax3.set_xlim([freqs.ravel()[0], freqs.ravel()[-1]])
+            # ax3 = pylab.subplot2grid((5, 2), (1, 1))
+            # meanfreq = np.mean(Gn_i, axis=1)
+            # stdfreq = np.std(Gn_i, axis=1)
+            # ax3.fill_between(freqs.ravel(), meanfreq-stdfreq, meanfreq+stdfreq, facecolor='#B6CAC8', edgecolor='none', zorder=-10)
+            # ax3.plot(freqs.ravel(), meanfreq, color='black')
+            # ax3.axhline(y=0, color='black', linestyle=':')
+            # pylab.xlabel("Frequency (MHz)", fontsize=bigfont)
+            # pylab.ylabel("Mean (Stokes I)", fontsize=bigfont)
+            # pylab.setp(ax3.get_xticklabels(), rotation='horizontal', fontsize=smallfont)
+            # pylab.setp(ax3.get_yticklabels(), rotation='horizontal', fontsize=smallfont)
+            # ymin, vv = np.percentile((meanfreq-stdfreq).ravel(), [5, 95])
+            # vv, ymax = np.percentile((meanfreq+stdfreq).ravel(), [5, 95])
+            # ax3.set_ylim([ymin,ymax])
+            # ax3.set_xlim([freqs.ravel()[0], freqs.ravel()[-1]])
 
             # ---- Image ----
             npix = 1000
@@ -277,8 +277,10 @@ class ClassSaveResults():
             f,p,_,_=self.im.toworld([0,0,0,0])
             _,_,xc,yc=self.im.topixel([f,p,self.DynSpecMS.PosArray.dec[iDir], self.DynSpecMS.PosArray.ra[iDir]])
             yc,xc=int(xc),int(yc)
-            
+
             wcs    = WCS(header).celestial
+            CDEL   = wcs.wcs.cdelt
+            pos_ra_pix, pos_dec_pix = wcs.wcs_world2pix(np.degrees(self.DynSpecMS.PosArray.ra[iDir]), np.degrees(self.DynSpecMS.PosArray.dec[iDir]), 1)
             #cenpixra, cenpixdec = wcs.wcs_world2pix(np.degrees(self.DynSpecMS.PosArray.ra[iDir]), np.degrees(self.DynSpecMS.PosArray.dec[iDir]), 1)
             #print("central pixels {}, {}".format(cenpixx, cenpixy))
             #print>>log, "central pixels {}, {}".format(cenpixx, cenpixy)
@@ -295,7 +297,12 @@ class ClassSaveResults():
             y1=giveBounded(yc+box)
             
             DataBoxed=self.ImageData[y0:y1,x0:x1]
-            if DataBoxed.size>100:
+
+            newra_cen, newdec_cen = wcs.wcs_pix2world( (x1+x0)/2., (y1+y0)/2., 1)
+            wcs.wcs.crpix  = [ DataBoxed.shape[1]/2., DataBoxed.shape[0]/2. ] # update the WCS object
+            wcs.wcs.crval = [ newra_cen, newdec_cen ]
+            
+            if DataBoxed.size>box:
                 std=1.6*np.median(np.abs(DataBoxed))
                 vMin, vMax    = (-5.*std, 30*std)
                 ax1 = pylab.subplot2grid((5, 2), (0, 0), rowspan=2, projection=wcs)
@@ -317,8 +324,55 @@ class ClassSaveResults():
                 cbar.set_label(r'Flux density (mJy)', fontsize=bigfont, horizontalalignment='center')
                 cbar.ax.tick_params(labelsize=smallfont)
                 pylab.setp(ax1.get_xticklabels(), rotation='horizontal', fontsize=smallfont)
-                pylab.setp(ax1.get_yticklabels(), rotation='horizontal', fontsize=smallfont)        
+                pylab.setp(ax1.get_yticklabels(), rotation='horizontal', fontsize=smallfont)
+                
+                ra_cen, dec_cen = wcs.wcs_world2pix(np.degrees(self.DynSpecMS.PosArray.ra[iDir]), np.degrees(self.DynSpecMS.PosArray.dec[iDir]), 1)
+                pylab.plot(ra_cen, dec_cen, 'o', markerfacecolor='none', markeredgecolor='red', markersize=bigfont) # plot a circle at the target
+                pylab.text(DataBoxed.shape[0]*0.9, DataBoxed.shape[1]*0.9, 'I', horizontalalignment='center', verticalalignment='center', fontsize=bigfont+2)        
 
+
+            # ---- Image V ----
+            ## -- CHANGE TO IMAGE STOKES V -- ##
+            headerv = fits.getheader(imageV) # TO BE MODIFIED
+            datav   = self.ImageDataV[0, 0, :, :] # TO BE MODIFIED
+            f,p,_,_=self.im.toworld([0,0,0,0]) # self.im TO BE MODIFIED
+            _,_,xc,yc=self.im.topixel([f,p,self.DynSpecMS.PosArray.dec[iDir], self.DynSpecMS.PosArray.ra[iDir]])
+            yc,xc=int(xc),int(yc)
+            wcs    = WCS(headerv).celestial
+            CDEL   = wcs.wcs.cdelt
+            pos_ra_pix, pos_dec_pix = wcs.wcs_world2pix(np.degrees(self.DynSpecMS.PosArray.ra[iDir]), np.degrees(self.DynSpecMS.PosArray.dec[iDir]), 1)
+            nn=self.ImageData.shape[-1]
+            boxv = int(box / np.abs(wcs.wcs.cdelt[0]) * np.abs(CDEL[0]))
+            def giveBounded(x):
+                x=np.max([0,x])
+                return np.min([x,nn-1])
+            x0=giveBounded(xc-boxv)
+            x1=giveBounded(xc+boxv)
+            y0=giveBounded(yc-boxv)
+            y1=giveBounded(yc+boxv)
+            DataBoxed=datav[y0:y1,x0:x1]
+            if DataBoxed.size>box:
+                std=1.6*np.median(np.abs(DataBoxed))
+                vMin, vMax    = (-5.*std, 30*std)
+                ax1 = pylab.subplot2grid((5, 2), (0, 1), rowspan=2, projection=wcs)
+                im = pylab.imshow(DataBoxed, interpolation="nearest", cmap='bone_r', aspect="auto", vmin=vMin, vmax=vMax, origin='lower', rasterized=True)
+                cbar = pylab.colorbar()
+                ax1.set_xlabel(r'RA (J2000)')
+                raax = ax1.coords[0]
+                raax.set_major_formatter('hh:mm:ss')
+                raax.set_ticklabel(size=smallfont)
+                ax1.set_ylabel(r'Dec (J2000)')
+                decax = ax1.coords[1]
+                decax.set_major_formatter('dd:mm:ss')
+                decax.set_ticklabel(size=smallfont)
+                ax1.autoscale(False)
+                cbar.set_label(r'Flux density (mJy)', fontsize=bigfont, horizontalalignment='center')
+                cbar.ax.tick_params(labelsize=smallfont)
+                pylab.setp(ax1.get_xticklabels(), rotation='horizontal', fontsize=smallfont)
+                pylab.setp(ax1.get_yticklabels(), rotation='horizontal', fontsize=smallfont)
+                ra_cen, dec_cen = wcs.wcs_world2pix(np.degrees(self.DynSpecMS.PosArray.ra[iDir]), np.degrees(self.DynSpecMS.PosArray.dec[iDir]), 1)
+                pylab.plot(ra_cen, dec_cen, 'o', markerfacecolor='none', markeredgecolor='red', markersize=bigfont) # plot a circle at the target
+                pylab.text(DataBoxed.shape[0]*0.9, DataBoxed.shape[1]*0.9, 'V', horizontalalignment='center', verticalalignment='center', fontsize=bigfont+2) 
 
         #pylab.subplots_adjust(wspace=0.15, hspace=0.30)
         pylab.figtext(x=0.5, y=0.92, s="Name: %s, Type: %s, RA: %s, Dec: %s"%(self.DynSpecMS.PosArray.Name[iDir].replace('_', ' '), self.DynSpecMS.PosArray.Type[iDir], strRA, strDEC), fontsize=bigfont+2, horizontalalignment='center', verticalalignment='bottom')
