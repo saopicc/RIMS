@@ -14,6 +14,10 @@ import os
 from killMS.Other import reformat
 from DDFacet.Other import AsyncProcessPool
 from dynspecms_version import version
+import glob
+from astropy.io import fits
+from astropy.wcs import WCS
+from DDFacet.ToolsDir.rad2hmsdms import rad2hmsdms
 
 def AngDist(ra0,ra1,dec0,dec1):
     AC=np.arccos
@@ -22,29 +26,116 @@ def AngDist(ra0,ra1,dec0,dec1):
     return AC(S(dec0)*S(dec1)+C(dec0)*C(dec1)*C(ra0-ra1))
 
 class ClassDynSpecMS():
-    def __init__(self, ListMSName, ColName="DATA", ModelName="PREDICT_KMS", UVRange=[1.,1000.], 
+    def __init__(self,
+                 ListMSName=None,
+                 ColName="DATA", ModelName="PREDICT_KMS", UVRange=[1.,1000.], 
                  SolsName=None,
-                 FileCoords=None,
+                 FileCoords="Transient_LOTTS.csv",
                  Radius=3.,
                  NOff=-1,
-                 Image=None,
+                 ImageI=None,
+                 ImageV=None,
                  SolsDir=None,
-                 NCPU=1):
-        self.ListMSName = sorted(ListMSName)#[0:2]
-        self.nMS         = len(self.ListMSName)
+                 NCPU=1,
+                 BaseDirSpecs=None):
+
         self.ColName    = ColName
         self.ModelName  = ModelName
-        self.OutName    = self.ListMSName[0].split("/")[-1].split("_")[0]
         self.UVRange    = UVRange
-        self.ReadMSInfos()
+        self.Mode="Spec"
+        self.BaseDirSpecs=BaseDirSpecs
+        self.NOff=NOff
+        self.SolsName=SolsName
+        self.NCPU=NCPU
+        
+        if ListMSName is None:
+            print>>log,ModColor.Str("WORKING IN REPLOT MODE")
+            self.Mode="Plot"
+            
+            
         self.Radius=Radius
-        self.Image = Image
+        self.ImageI = ImageI
+        self.ImageV = ImageV
         self.SolsDir=SolsDir
         #self.PosArray=np.genfromtxt(FileCoords,dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')],delimiter="\t")
 
         # identify version in logs
         print>>log,"DynSpecMS version %s starting up" % version()
+        self.FileCoords=FileCoords
         
+        if self.Mode=="Spec":
+            self.ListMSName = sorted(ListMSName)#[0:2]
+            self.nMS         = len(self.ListMSName)
+            self.OutName    = self.ListMSName[0].split("/")[-1].split("_")[0]
+            self.ReadMSInfos()
+            self.InitFromCatalog()
+
+        elif self.Mode=="Plot":
+            self.OutName    = self.BaseDirSpecs.split("_")[-1]
+            self.InitFromSpecs()
+
+    def InitFromSpecs(self):
+        print>>log,"Initialising from precomputed spectra"
+        ListTargetFits=glob.glob("%s/TARGET/*.fits"%self.BaseDirSpecs)#[0:1]
+        F=fits.open(ListTargetFits[0])
+        _,self.NChan, self.NTimes = F[0].data.shape
+        t0=F[0].header['OBS-STAR']
+        dt=F[0].header['CDELT1']
+        t0 = Time(t0, format='isot').mjd * 3600. * 24. + (dt/2.)
+        self.times=np.arange(self.NTimes)*dt+t0
+
+        self.fMin=float(F[0].header['FRQ-MIN'])
+        self.fMax=float(F[0].header['FRQ-MAX'])
+
+        self.NDirSelected=len(ListTargetFits)
+        NOrig=len(ListTargetFits)
+        
+        ListOffFits=glob.glob("%s/OFF/*.fits"%self.BaseDirSpecs)
+        NOff=len(ListOffFits)
+        
+        self.PosArray=np.zeros((self.NDirSelected+NOff,),dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')])
+        self.PosArray=self.PosArray.view(np.recarray)
+        self.PosArray.Type[len(ListTargetFits)::]="Off"
+        self.NDir=self.PosArray.shape[0]
+        print>>log,"For a total of %i targets"%(self.NDir)
+        self.GOut=np.zeros((self.NDir,self.NChan, self.NTimes, 4), np.complex128)
+        W=fits.open("%s/Weights.fits"%self.BaseDirSpecs)[0].data
+
+        for iDir,File in enumerate(ListTargetFits+ListOffFits):
+            print>>log,"  Reading %s"%File
+            F=fits.open(File)
+            d=F[0].data
+            ra=float(F[0].header['RA_RAD'])
+            if ra<0.: ra+=2.*np.pi
+            self.PosArray.ra[iDir]=ra
+            dec=self.PosArray.dec[iDir]=float(F[0].header['DEC_RAD'])
+            
+            # print File,rad2hmsdms(ra,Type="ra").replace(" ",":"),rad2hmsdms(dec,Type="dec").replace(" ",":")
+            # if self.PosArray.Type[iDir]=="Off": stop
+            for iPol in range(4):
+                self.GOut[iDir,:,:,iPol]=d[iPol][:,:]
+
+        r=1./3600*np.pi/180
+        if self.FileCoords:
+            print>>log,"Matching ra/dec with original catalogue"
+            PosArrayTarget=np.genfromtxt(self.FileCoords,dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')],delimiter=",")[()]
+            PosArrayTarget=PosArrayTarget.view(np.recarray)
+            PosArrayTarget.ra*=np.pi/180
+            PosArrayTarget.dec*=np.pi/180
+            for iDir in range(self.PosArray.dec.shape[0]):
+                dra=self.PosArray.ra[iDir]-PosArrayTarget.ra
+                ddec=self.PosArray.dec[iDir]-PosArrayTarget.dec
+                d=np.sqrt(dra**2+ddec**2)
+                iS=np.argmin(d)
+                if d[iS]>r:
+                    print>>log,ModColor.Str("DID NOT FIND A MATCH FOR A SOURCE")
+                    continue
+                self.PosArray.Type[iDir]=PosArrayTarget.Type[iS]
+                self.PosArray.Name[iDir]=PosArrayTarget.Name[iS]
+            
+    def InitFromCatalog(self):
+
+        FileCoords=self.FileCoords
         # should we use the surveys DB?
         if 'DDF_PIPELINE_DATABASE' in os.environ:
             print>>log,"Using the surveys database"
@@ -59,19 +150,22 @@ class ClassDynSpecMS():
             self.PosArray=np.asarray(l,dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')])
             print>>log,"Created an array with %i records" % len(result)
         else:
+            
+            #FileCoords="Transient_LOTTS.csv"
             if FileCoords is None:
-                FileCoords="Transient_LOTTS.csv"
                 if not os.path.isfile(FileCoords):
                     ssExec="wget -q --user=anonymous ftp://ftp.strw.leidenuniv.nl/pub/tasse/%s -O %s"%(FileCoords,FileCoords)
                     print>>log,"Downloading %s"%FileCoords
                     print>>log, "   Executing: %s"%ssExec
                     os.system(ssExec)
             self.PosArray=np.genfromtxt(FileCoords,dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')],delimiter=",")[()]
+            
+            
         self.PosArray=self.PosArray.view(np.recarray)
         self.PosArray.ra*=np.pi/180.
         self.PosArray.dec*=np.pi/180.
 
-        
+        Radius=self.Radius
         NOrig=self.PosArray.shape[0]
         Dist=AngDist(self.ra0,self.PosArray.ra,self.dec0,self.PosArray.dec)
         ind=np.where(Dist<Radius*np.pi/180)[0]
@@ -82,7 +176,9 @@ class ClassDynSpecMS():
         if self.NDirSelected==0:
             print>>log,ModColor.Str("   Have found no sources - returning")
             self.killWorkers()
-            return 
+            return
+        
+        NOff=self.NOff
         
         if NOff==-1:
             NOff=self.PosArray.shape[0]*2
@@ -99,7 +195,7 @@ class ClassDynSpecMS():
         self.DicoGrids["GridLinPol"] = np.zeros((self.NDir,self.NChan, self.NTimes, 4), np.complex128)
         self.DicoGrids["GridWeight"] = np.zeros((self.NDir,self.NChan, self.NTimes, 4), np.complex128)
 
-        self.SolsName   = SolsName
+
         self.DoJonesCorr=False
         if self.SolsName:
             self.DoJonesCorr=True
@@ -107,7 +203,7 @@ class ClassDynSpecMS():
 
 
         APP.registerJobHandlers(self)
-        AsyncProcessPool.init(ncpu=NCPU,affinity=0)
+        AsyncProcessPool.init(ncpu=self.NCPU,affinity=0)
         APP.startWorkers()
 
 
@@ -143,6 +239,7 @@ class ClassDynSpecMS():
 
         tField = table("%s::FIELD"%MSName, ack=False)
         self.ra0, self.dec0 = tField.getcol("PHASE_DIR").ravel() # radians!
+        if self.ra0<0.: self.ra0+=2.*np.pi
         tField.close()
 
         pBAR = ProgressBar(Title="Reading metadata")
