@@ -28,13 +28,13 @@ class ClassSaveResults():
         #self.ImageData=np.squeeze(fits.getdata(image, ext=0))
 
         self.ImageI=self.DynSpecMS.ImageI
-        if os.path.isfile(self.DynSpecMS.ImageI):
+        if self.ImageI and os.path.isfile(self.DynSpecMS.ImageI):
             self.im=self.imI=image(self.DynSpecMS.ImageI)
             self.ImageIData=self.imI.getdata()[0,0]
 
             
         self.ImageV=self.DynSpecMS.ImageV
-        if os.path.isfile(self.ImageV):
+        if self.ImageV and os.path.isfile(self.ImageV):
             self.imV=image(self.DynSpecMS.ImageV)
             self.ImageVData=self.imV.getdata()[0,1]
         else:
@@ -43,7 +43,7 @@ class ClassSaveResults():
             self.ImageVData=np.random.randn(*self.ImageVData.shape)
             self.ImageV=self.ImageI
 
-        self.CatFlux=np.zeros((self.DynSpecMS.NDir,),dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200'),
+        self.CatFlux=np.zeros((self.DynSpecMS.NDir,),dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200'),("IDFacet",np.int32),
                                                             ("FluxI",np.float32),("FluxV",np.float32),("sigFluxI",np.float32),("sigFluxV",np.float32)])
         self.CatFlux=self.CatFlux.view(np.recarray)
         
@@ -60,6 +60,9 @@ class ClassSaveResults():
 
 
     def WriteFits(self):
+        if self.DynSpecMS.DoJonesCorr:
+            self.CatFlux.IDFacet[:]=self.DynSpecMS.DicoJones['IDJones'][:]
+
         for iDir in range(self.DynSpecMS.NDir):
             self.WriteFitsThisDir(iDir)
 
@@ -240,7 +243,7 @@ class ClassSaveResults():
             sig  = GiveMAD(Gn)
             mean = np.median(Gn)
             #spec = pylab.pcolormesh(times, freqs, Gn, cmap='bone_r', vmin=mean-3*sig, vmax=mean+10*sig, rasterized=True)
-            spec = pylab.imshow(Gn, cmap='bone_r', vmin=mean-3*sig, vmax=mean+10*sig, extent=(times[0],times[-1],self.DynSpecMS.fMin*1.e-6,self.DynSpecMS.fMax*1.e-6),rasterized=True) 
+            spec = pylab.imshow(Gn, interpolation="nearest", cmap='bone_r', vmin=mean-3*sig, vmax=mean+10*sig, extent=(times[0],times[-1],self.DynSpecMS.fMin*1.e-6,self.DynSpecMS.fMax*1.e-6),rasterized=True) 
             axspec.axis('tight')
             cbar = pylab.colorbar(fraction=0.046, pad=0.01)
             cbar.ax.tick_params(labelsize=smallfont)
@@ -259,7 +262,7 @@ class ClassSaveResults():
 
             mean = np.median(Gn) 
             #spec = pylab.pcolormesh(times, freqs, Gn, cmap='bone_r', vmin=0, vmax=mean+10*sig, rasterized=True)
-            spec = pylab.imshow(Gn, cmap='bone_r', vmin=mean-3*sig, vmax=mean+10*sig, extent=(times[0],times[-1],self.DynSpecMS.fMin*1.e-6,self.DynSpecMS.fMax*1.e-6), rasterized=True) 
+            spec = pylab.imshow(Gn, interpolation="nearest", cmap='bone_r', vmin=mean-3*sig, vmax=mean+10*sig, extent=(times[0],times[-1],self.DynSpecMS.fMin*1.e-6,self.DynSpecMS.fMax*1.e-6), rasterized=True) 
             axspec.axis('tight')
             cbar = pylab.colorbar(fraction=0.046, pad=0.01)
             cbar.ax.tick_params(labelsize=smallfont)
@@ -278,7 +281,7 @@ class ClassSaveResults():
 
             mean = np.median(Gn) 
             #spec = pylab.pcolormesh(times, freqs, Gn, cmap='bone_r', vmin=mean-3*sig, vmax=mean+10*sig, rasterized=True)
-            spec = pylab.imshow(Gn, cmap='bone_r', vmin=mean-5*sig, vmax=mean+5*sig, extent=(times[0],times[-1],self.DynSpecMS.fMin*1.e-6,self.DynSpecMS.fMax*1.e-6), rasterized=True) 
+            spec = pylab.imshow(Gn, interpolation="nearest", cmap='bone_r', vmin=mean-5*sig, vmax=mean+5*sig, extent=(times[0],times[-1],self.DynSpecMS.fMin*1.e-6,self.DynSpecMS.fMax*1.e-6), rasterized=True) 
             axspec.axis('tight')
             cbar = pylab.colorbar(fraction=0.046, pad=0.01)
             cbar.ax.tick_params(labelsize=smallfont)
@@ -356,7 +359,7 @@ class ClassSaveResults():
             newra_cen, newdec_cen = wcs.wcs_pix2world( (x1+x0)/2., (y1+y0)/2., 1)
             wcs.wcs.crpix  = [ DataBoxed.shape[1]/2., DataBoxed.shape[0]/2. ] # update the WCS object
             wcs.wcs.crval = [ newra_cen, newdec_cen ]
-            
+            #stop
             if DataBoxed.size>box:
                 std=GiveMAD(DataBoxed)
                 vMin, vMax    = (-5.*std, 30*std)
@@ -382,7 +385,10 @@ class ClassSaveResults():
                 pylab.setp(ax1.get_yticklabels(), rotation='horizontal', fontsize=smallfont)
                 
                 ra_cen, dec_cen = wcs.wcs_world2pix(np.degrees(self.DynSpecMS.PosArray.ra[iDir]), np.degrees(self.DynSpecMS.PosArray.dec[iDir]), 1)
-                pylab.plot(ra_cen, dec_cen, 'o', markerfacecolor='none', markeredgecolor='red', markersize=bigfont) # plot a circle at the target
+                #pylab.plot(ra_cen, dec_cen, 'o', markerfacecolor='none', markeredgecolor='red', markersize=bigfont) # plot a circle at the target
+                #pylab.plot(newra_cen, newdec_cen, 'o', markerfacecolor='none', markeredgecolor='red', markersize=bigfont) # plot a circle at the target
+                pylab.plot(DataBoxed.shape[1]/2., DataBoxed.shape[0]/2., 'o', markerfacecolor='none', markeredgecolor='red', markersize=bigfont) # plot a circle at the target
+                
                 pylab.text(DataBoxed.shape[0]*0.9, DataBoxed.shape[1]*0.9, 'I', horizontalalignment='center', verticalalignment='center', fontsize=bigfont+2)        
 
 
@@ -442,7 +448,7 @@ class ClassSaveResults():
                 pylab.setp(ax1.get_xticklabels(), rotation='horizontal', fontsize=smallfont)
                 pylab.setp(ax1.get_yticklabels(), rotation='horizontal', fontsize=smallfont)
                 ra_cen, dec_cen = wcs.wcs_world2pix(np.degrees(self.DynSpecMS.PosArray.ra[iDir]), np.degrees(self.DynSpecMS.PosArray.dec[iDir]), 1)
-                pylab.plot(ra_cen, dec_cen, 'o', markerfacecolor='none', markeredgecolor='red', markersize=bigfont) # plot a circle at the target
+                pylab.plot(DataBoxed.shape[1]/2., DataBoxed.shape[0]/2., 'o', markerfacecolor='none', markeredgecolor='red', markersize=bigfont) # plot a circle at the target
                 pylab.text(DataBoxed.shape[0]*0.9, DataBoxed.shape[1]*0.9, 'V', horizontalalignment='center', verticalalignment='center', fontsize=bigfont+2) 
 
 

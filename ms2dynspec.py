@@ -90,7 +90,8 @@ def main(args=None, messages=[]):
                        ImageI=args.imageI,
                        ImageV=args.imageV,
                        SolsDir=args.SolsDir,NCPU=args.NCPU,
-                       BaseDirSpecs=args.BaseDirSpecs)
+                       BaseDirSpecs=args.BaseDirSpecs,
+                       BeamModel=args.BeamModel)
 
     if D.NDirSelected==0:
         return
@@ -127,6 +128,7 @@ if __name__ == "__main__":
     parser.add_argument("--uv", type=list, default=[1., 1000.], help="UV range in km [UVmin, UVmax]", required=False)
     parser.add_argument("--SolsDir", type=str, default="", help="Base directory for the DDE solutions", required=False)
     parser.add_argument("--NCPU", type=int, default=0, help="NCPU", required=False)
+    parser.add_argument("--BeamModel", type=str, default=None, help="Beam Model to be used", required=False)
     args = parser.parse_args()
 
     MyPickle.Save(args, SaveFile)

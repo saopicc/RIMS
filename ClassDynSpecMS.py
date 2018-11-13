@@ -37,7 +37,7 @@ class ClassDynSpecMS():
                  ImageV=None,
                  SolsDir=None,
                  NCPU=1,
-                 BaseDirSpecs=None):
+                 BaseDirSpecs=None,BeamModel=None):
 
         self.ColName    = ColName
         self.ModelName  = ModelName
@@ -47,6 +47,7 @@ class ClassDynSpecMS():
         self.NOff=NOff
         self.SolsName=SolsName
         self.NCPU=NCPU
+        self.BeamModel=BeamModel
         
         if ListMSName is None:
             print>>log,ModColor.Str("WORKING IN REPLOT MODE")
@@ -73,6 +74,7 @@ class ClassDynSpecMS():
         elif self.Mode=="Plot":
             self.OutName    = self.BaseDirSpecs.split("_")[-1]
             self.InitFromSpecs()
+
 
     def InitFromSpecs(self):
         print>>log,"Initialising from precomputed spectra"
@@ -196,8 +198,11 @@ class ClassDynSpecMS():
         self.DicoGrids["GridWeight"] = np.zeros((self.NDir,self.NChan, self.NTimes, 4), np.complex128)
 
 
-        self.DoJonesCorr=False
-        if self.SolsName:
+        
+
+        self.DoJonesCorr =False
+        self.DicoJones=None
+        if self.SolsName or self.BeamModel:
             self.DoJonesCorr=True
             self.DicoJones=shared_dict.create("DicoJones")
 
@@ -310,6 +315,7 @@ class ClassDynSpecMS():
         self.iCurrentMS=0
 
 
+    
     def LoadNextMS(self):
         iMS=self.iCurrentMS
         if not self.DicoMSInfos[iMS]["Readable"]: 
@@ -354,34 +360,134 @@ class ClassDynSpecMS():
         self.DicoDATA["u"]=u0
         self.DicoDATA["v"]=v0
         self.DicoDATA["w"]=w0
-        
+        self.DicoDATA["uniq_times"]=np.unique(self.DicoDATA["times"])
+
+            
         if self.DoJonesCorr:
-            # Extract Jones matrices that will be appliedto the visibilities
-            FileName="%s/%s"%(MSName, self.SolsName)
-
-            if not(self.SolsDir):
-                FileName="%s/%s"%(MSName, self.SolsName)
-            else:
-                _MSName=reformat.reformat(MSName).split("/")[-2]
-                DirName=os.path.abspath("%s%s"%(reformat.reformat(self.SolsDir),_MSName))
-                if not os.path.isdir(DirName):
-                    os.makedirs(DirName)
-                FileName="%s/killMS.%s.sols.npz"%(DirName,self.SolsName)
-
-
-            print>>log,"Reading Jones matrices solution file:"
-            print>>log,"   %s"%FileName
-            JonesSols = np.load(FileName)
-            self.DicoJones["G"]=self.NormJones(JonesSols["Sols"]["G"]) # Normalize Jones matrices
-            self.DicoJones['tm']=(JonesSols["Sols"]["t0"]+JonesSols["Sols"]["t1"])/2.
-            self.DicoJones['ra']=JonesSols['ClusterCat']['ra']
-            self.DicoJones['dec']=JonesSols['ClusterCat']['dec']
-            self.DicoJones['FreqDomains']=JonesSols['FreqDomains']
-            self.DicoJones['FreqDomains_mean']=np.mean(JonesSols['FreqDomains'],axis=1)
-
+            self.setJones()
         self.iCurrentMS+=1
 
+    def setJones(self):
+        from DDFacet.Data import ClassJones
+        from DDFacet.Data import ClassMS
+        GD={"Beam":{"Model":self.BeamModel,
+                    "LOFARBeamMode":"A",
+                    "DtBeamMin":5,
+                    "NBand":1,
+                    "CenterNorm":1},
+            "Image":{"PhaseCenterRADEC":None},
+            "DDESolutions":{"DDSols":self.SolsName,
+                            "GlobalNorm":None,
+                            "JonesNormList":"AP"},
+            "Cache":{"Dir":""}
+            }
+        print>>log,"Reading Jones matrices solution file:"
 
+        ms=ClassMS.ClassMS(self.DicoMSInfos[0]["MSName"],GD=GD,DoReadData=False,)
+        JonesMachine = ClassJones.ClassJones(GD, ms, CacheMode=False)
+        JonesMachine.InitDDESols(self.DicoDATA)
+        #JJ=JonesMachine.MergeJones(self.DicoDATA["killMS"]["Jones"],self.DicoDATA["Beam"]["Jones"])
+        #DicoSols = JonesMachine.GiveBeam(np.unique(self.DicoDATA["times"]), quiet=True,RaDec=(self.PosArray.ra,self.PosArray.dec))
+        import killMS.Data.ClassJonesDomains
+        DomainMachine=killMS.Data.ClassJonesDomains.ClassJonesDomains()
+        if "killMS" in self.DicoDATA.keys():
+            self.DicoDATA["killMS"]["Jones"]["FreqDomain"]=self.DicoDATA["killMS"]["Jones"]["FreqDomains"]
+        if "Beam" in self.DicoDATA.keys():
+            self.DicoDATA["Beam"]["Jones"]["FreqDomain"]=self.DicoDATA["Beam"]["Jones"]["FreqDomains"]
+
+        if "killMS" in self.DicoDATA.keys() and "Beam" in self.DicoDATA.keys():
+            JonesSols=DomainMachine.MergeJones(self.DicoDATA["killMS"]["Jones"],self.DicoDATA["Beam"]["Jones"])
+        elif "killMS" in self.DicoDATA.keys() and not ("Beam" in self.DicoDATA.keys()):
+            JonesSols=self.DicoDATA["killMS"]["Jones"]
+        elif not("killMS" in self.DicoDATA.keys()) and "Beam" in self.DicoDATA.keys():
+            JonesSols=self.DicoDATA["Beam"]["Jones"]
+
+        #self.DicoJones["G"]=np.swapaxes(self.NormJones(JonesSols["Jones"]),1,3) # Normalize Jones matrices
+        self.DicoJones["G"]=np.swapaxes(JonesSols["Jones"],1,3) # Normalize Jones matrices
+        self.DicoJones['tm']=(JonesSols["t0"]+JonesSols["t1"])/2.
+        self.DicoJones['ra']=JonesMachine.ClusterCat['ra']
+        self.DicoJones['dec']=JonesMachine.ClusterCat['dec']
+        self.DicoJones['FreqDomains']=JonesSols['FreqDomain']
+        self.DicoJones['FreqDomains_mean']=np.mean(JonesSols['FreqDomain'],axis=1)
+        self.DicoJones['IDJones']=np.zeros((self.NDir,),np.int32)
+        for iDir in range(self.NDir):
+            ra=self.PosArray.ra[iDir]
+            dec=self.PosArray.dec[iDir]
+            self.DicoJones['IDJones'][iDir]=np.argmin(AngDist(ra,self.DicoJones['ra'],dec,self.DicoJones['dec']))
+
+            
+        
+        # from DDFacet.Data import ClassLOFARBeam
+        # GD,D={},{}
+        # D["LOFARBeamMode"]="A"
+        # D["DtBeamMin"]=5
+        # D["NBand"]=1
+        # GD["Beam"]=D
+        # BeamMachine=BeamClassLOFARBeam(self.DicoMSInfos["MSName"],GD)
+        # BeamMachine.InitBeamMachine()
+        # BeamTimes=BM.getBeamSampleTimes()
+        # return BM.EstimateBeam(BeamTimes,
+        #                        ra,dec)
+        
+
+    def MergeJones(self, DicoJ0, DicoJ1):
+        T0 = DicoJ0["t0"][0]
+        DicoOut = {}
+        DicoOut["t0"] = []
+        DicoOut["t1"] = []
+        DicoOut["tm"] = []
+        it = 0
+        CurrentT0 = T0
+
+        while True:
+            DicoOut["t0"].append(CurrentT0)
+            T0 = DicoOut["t0"][it]
+
+            dT0 = DicoJ0["t1"]-T0
+            dT0 = dT0[dT0 > 0]
+            dT1 = DicoJ1["t1"]-T0
+            dT1 = dT1[dT1 > 0]
+            if(dT0.size == 0) & (dT1.size == 0):
+                break
+            elif dT0.size == 0:
+                dT = dT1[0]
+            elif dT1.size == 0:
+                dT = dT0[0]
+            else:
+                dT = np.min([dT0[0], dT1[0]])
+
+            T1 = T0+dT
+            DicoOut["t1"].append(T1)
+            Tm = (T0+T1)/2.
+            DicoOut["tm"].append(Tm)
+            CurrentT0 = T1
+            it += 1
+
+        DicoOut["t0"] = np.array(DicoOut["t0"])
+        DicoOut["t1"] = np.array(DicoOut["t1"])
+        DicoOut["tm"] = np.array(DicoOut["tm"])
+
+        _, nd, na, nch, _, _ = DicoJ0["Jones"].shape
+        _, nd1, na1, nch1, _, _ = DicoJ1["Jones"].shape
+        nt = DicoOut["tm"].size
+        nchout=np.max([nch,nch1])
+        
+        DicoOut["Jones"] = np.zeros((nt, nd, na, nchout, 2, 2), np.complex64)
+
+        nt0 = DicoJ0["t0"].size
+        nt1 = DicoJ1["t0"].size
+
+        iG0 = np.argmin(np.abs(DicoOut["tm"].reshape(
+            (nt, 1))-DicoJ0["tm"].reshape((1, nt0))), axis=1)
+        iG1 = np.argmin(np.abs(DicoOut["tm"].reshape(
+            (nt, 1))-DicoJ1["tm"].reshape((1, nt1))), axis=1)
+
+        for itime in xrange(nt):
+            G0 = DicoJ0["Jones"][iG0[itime]]
+            G1 = DicoJ1["Jones"][iG1[itime]]
+            DicoOut["Jones"][itime] = ModLinAlg.BatchDot(G0, G1)
+
+        return DicoOut
 
     # def StackAll(self):
     #     while self.iCurrentMS<self.nMS:
