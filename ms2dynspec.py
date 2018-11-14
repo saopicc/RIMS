@@ -91,7 +91,8 @@ def main(args=None, messages=[]):
                        ImageV=args.imageV,
                        SolsDir=args.SolsDir,NCPU=args.NCPU,
                        BaseDirSpecs=args.BaseDirSpecs,
-                       BeamModel=args.BeamModel)
+                       BeamModel=args.BeamModel,
+                       BeamNBand=args.BeamNBand)
 
     if D.NDirSelected==0:
         return
@@ -129,6 +130,8 @@ if __name__ == "__main__":
     parser.add_argument("--SolsDir", type=str, default="", help="Base directory for the DDE solutions", required=False)
     parser.add_argument("--NCPU", type=int, default=0, help="NCPU", required=False)
     parser.add_argument("--BeamModel", type=str, default=None, help="Beam Model to be used", required=False)
+    parser.add_argument("--BeamNBand", type=int, default=1, help="Number of channels in the Beam Jones matrix", required=False)
+
     args = parser.parse_args()
 
     MyPickle.Save(args, SaveFile)

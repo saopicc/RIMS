@@ -60,8 +60,8 @@ class ClassSaveResults():
 
 
     def WriteFits(self):
-        if self.DynSpecMS.DoJonesCorr:
-            self.CatFlux.IDFacet[:]=self.DynSpecMS.DicoJones['IDJones'][:]
+        if self.DynSpecMS.DoJonesCorr_kMS:
+            self.CatFlux.IDFacet[:]=self.DynSpecMS.DicoJones_kMS['IDJones'][:]
 
         for iDir in range(self.DynSpecMS.NDir):
             self.WriteFitsThisDir(iDir)

@@ -37,10 +37,11 @@ class ClassDynSpecMS():
                  ImageV=None,
                  SolsDir=None,
                  NCPU=1,
-                 BaseDirSpecs=None,BeamModel=None):
+                 BaseDirSpecs=None,BeamModel=None,BeamNBand=1):
 
         self.ColName    = ColName
         self.ModelName  = ModelName
+        self.BeamNBand  = BeamNBand
         self.UVRange    = UVRange
         self.Mode="Spec"
         self.BaseDirSpecs=BaseDirSpecs
@@ -200,11 +201,16 @@ class ClassDynSpecMS():
 
         
 
-        self.DoJonesCorr =False
+        self.DoJonesCorr_kMS =False
         self.DicoJones=None
-        if self.SolsName or self.BeamModel:
-            self.DoJonesCorr=True
-            self.DicoJones=shared_dict.create("DicoJones")
+        if self.SolsName:
+            self.DoJonesCorr_kMS=True
+            self.DicoJones_kMS=shared_dict.create("DicoJones_kMS")
+
+        self.DoJonesCorr_Beam=False
+        if self.BeamModel:
+            self.DoJonesCorr_Beam=True
+            self.DicoJones_Beam=shared_dict.create("DicoJones_Beam")
 
 
         APP.registerJobHandlers(self)
@@ -363,7 +369,7 @@ class ClassDynSpecMS():
         self.DicoDATA["uniq_times"]=np.unique(self.DicoDATA["times"])
 
             
-        if self.DoJonesCorr:
+        if self.DoJonesCorr_kMS or self.DoJonesCorr_Beam:
             self.setJones()
         self.iCurrentMS+=1
 
@@ -372,8 +378,8 @@ class ClassDynSpecMS():
         from DDFacet.Data import ClassMS
         GD={"Beam":{"Model":self.BeamModel,
                     "LOFARBeamMode":"A",
-                    "DtBeamMin":5,
-                    "NBand":1,
+                    "DtBeamMin":5.,
+                    "NBand":self.BeamNBand,
                     "CenterNorm":1},
             "Image":{"PhaseCenterRADEC":None},
             "DDESolutions":{"DDSols":self.SolsName,
@@ -387,35 +393,44 @@ class ClassDynSpecMS():
         JonesMachine = ClassJones.ClassJones(GD, ms, CacheMode=False)
         JonesMachine.InitDDESols(self.DicoDATA)
         #JJ=JonesMachine.MergeJones(self.DicoDATA["killMS"]["Jones"],self.DicoDATA["Beam"]["Jones"])
-        #DicoSols = JonesMachine.GiveBeam(np.unique(self.DicoDATA["times"]), quiet=True,RaDec=(self.PosArray.ra,self.PosArray.dec))
-        import killMS.Data.ClassJonesDomains
-        DomainMachine=killMS.Data.ClassJonesDomains.ClassJonesDomains()
-        if "killMS" in self.DicoDATA.keys():
-            self.DicoDATA["killMS"]["Jones"]["FreqDomain"]=self.DicoDATA["killMS"]["Jones"]["FreqDomains"]
-        if "Beam" in self.DicoDATA.keys():
-            self.DicoDATA["Beam"]["Jones"]["FreqDomain"]=self.DicoDATA["Beam"]["Jones"]["FreqDomains"]
-
-        if "killMS" in self.DicoDATA.keys() and "Beam" in self.DicoDATA.keys():
-            JonesSols=DomainMachine.MergeJones(self.DicoDATA["killMS"]["Jones"],self.DicoDATA["Beam"]["Jones"])
-        elif "killMS" in self.DicoDATA.keys() and not ("Beam" in self.DicoDATA.keys()):
-            JonesSols=self.DicoDATA["killMS"]["Jones"]
-        elif not("killMS" in self.DicoDATA.keys()) and "Beam" in self.DicoDATA.keys():
-            JonesSols=self.DicoDATA["Beam"]["Jones"]
+        # import killMS.Data.ClassJonesDomains
+        # DomainMachine=killMS.Data.ClassJonesDomains.ClassJonesDomains()
+        # if "killMS" in self.DicoDATA.keys():
+        #     self.DicoDATA["killMS"]["Jones"]["FreqDomain"]=self.DicoDATA["killMS"]["Jones"]["FreqDomains"]
+        # if "Beam" in self.DicoDATA.keys():
+        #     self.DicoDATA["Beam"]["Jones"]["FreqDomain"]=self.DicoDATA["Beam"]["Jones"]["FreqDomains"]
+        # if "killMS" in self.DicoDATA.keys() and "Beam" in self.DicoDATA.keys():
+        #     JonesSols=DomainMachine.MergeJones(self.DicoDATA["killMS"]["Jones"],self.DicoDATA["Beam"]["Jones"])
+        # elif "killMS" in self.DicoDATA.keys() and not ("Beam" in self.DicoDATA.keys()):
+        #     JonesSols=self.DicoDATA["killMS"]["Jones"]
+        # elif not("killMS" in self.DicoDATA.keys()) and "Beam" in self.DicoDATA.keys():
+        #     JonesSols=self.DicoDATA["Beam"]["Jones"]
 
         #self.DicoJones["G"]=np.swapaxes(self.NormJones(JonesSols["Jones"]),1,3) # Normalize Jones matrices
-        self.DicoJones["G"]=np.swapaxes(JonesSols["Jones"],1,3) # Normalize Jones matrices
-        self.DicoJones['tm']=(JonesSols["t0"]+JonesSols["t1"])/2.
-        self.DicoJones['ra']=JonesMachine.ClusterCat['ra']
-        self.DicoJones['dec']=JonesMachine.ClusterCat['dec']
-        self.DicoJones['FreqDomains']=JonesSols['FreqDomain']
-        self.DicoJones['FreqDomains_mean']=np.mean(JonesSols['FreqDomain'],axis=1)
-        self.DicoJones['IDJones']=np.zeros((self.NDir,),np.int32)
-        for iDir in range(self.NDir):
-            ra=self.PosArray.ra[iDir]
-            dec=self.PosArray.dec[iDir]
-            self.DicoJones['IDJones'][iDir]=np.argmin(AngDist(ra,self.DicoJones['ra'],dec,self.DicoJones['dec']))
 
-            
+        if self.DoJonesCorr_kMS:
+            JonesSols=self.DicoDATA["killMS"]["Jones"]
+            self.DicoJones_kMS["G"]=np.swapaxes(JonesSols["Jones"],1,3) # Normalize Jones matrices
+            self.DicoJones_kMS['tm']=(JonesSols["t0"]+JonesSols["t1"])/2.
+            self.DicoJones_kMS['ra']=JonesMachine.ClusterCat['ra']
+            self.DicoJones_kMS['dec']=JonesMachine.ClusterCat['dec']
+            self.DicoJones_kMS['FreqDomains']=JonesSols['FreqDomains']
+            self.DicoJones_kMS['FreqDomains_mean']=np.mean(JonesSols['FreqDomains'],axis=1)
+            self.DicoJones_kMS['IDJones']=np.zeros((self.NDir,),np.int32)
+            for iDir in range(self.NDir):
+                ra=self.PosArray.ra[iDir]
+                dec=self.PosArray.dec[iDir]
+                self.DicoJones_kMS['IDJones'][iDir]=np.argmin(AngDist(ra,self.DicoJones_kMS['ra'],dec,self.DicoJones_kMS['dec']))
+
+        if self.DoJonesCorr_Beam:
+            JonesSols = JonesMachine.GiveBeam(np.unique(self.DicoDATA["times"]), quiet=True,RaDec=(self.PosArray.ra,self.PosArray.dec))
+            self.DicoJones_Beam["G"]=np.swapaxes(JonesSols["Jones"],1,3) # Normalize Jones matrices
+            self.DicoJones_Beam['tm']=(JonesSols["t0"]+JonesSols["t1"])/2.
+            self.DicoJones_Beam['ra']=self.PosArray.ra
+            self.DicoJones_Beam['dec']=self.PosArray.dec
+            self.DicoJones_Beam['FreqDomains']=JonesSols['FreqDomains']
+            self.DicoJones_Beam['FreqDomains_mean']=np.mean(JonesSols['FreqDomains'],axis=1)
+
         
         # from DDFacet.Data import ClassLOFARBeam
         # GD,D={},{}
@@ -430,64 +445,6 @@ class ClassDynSpecMS():
         #                        ra,dec)
         
 
-    def MergeJones(self, DicoJ0, DicoJ1):
-        T0 = DicoJ0["t0"][0]
-        DicoOut = {}
-        DicoOut["t0"] = []
-        DicoOut["t1"] = []
-        DicoOut["tm"] = []
-        it = 0
-        CurrentT0 = T0
-
-        while True:
-            DicoOut["t0"].append(CurrentT0)
-            T0 = DicoOut["t0"][it]
-
-            dT0 = DicoJ0["t1"]-T0
-            dT0 = dT0[dT0 > 0]
-            dT1 = DicoJ1["t1"]-T0
-            dT1 = dT1[dT1 > 0]
-            if(dT0.size == 0) & (dT1.size == 0):
-                break
-            elif dT0.size == 0:
-                dT = dT1[0]
-            elif dT1.size == 0:
-                dT = dT0[0]
-            else:
-                dT = np.min([dT0[0], dT1[0]])
-
-            T1 = T0+dT
-            DicoOut["t1"].append(T1)
-            Tm = (T0+T1)/2.
-            DicoOut["tm"].append(Tm)
-            CurrentT0 = T1
-            it += 1
-
-        DicoOut["t0"] = np.array(DicoOut["t0"])
-        DicoOut["t1"] = np.array(DicoOut["t1"])
-        DicoOut["tm"] = np.array(DicoOut["tm"])
-
-        _, nd, na, nch, _, _ = DicoJ0["Jones"].shape
-        _, nd1, na1, nch1, _, _ = DicoJ1["Jones"].shape
-        nt = DicoOut["tm"].size
-        nchout=np.max([nch,nch1])
-        
-        DicoOut["Jones"] = np.zeros((nt, nd, na, nchout, 2, 2), np.complex64)
-
-        nt0 = DicoJ0["t0"].size
-        nt1 = DicoJ1["t0"].size
-
-        iG0 = np.argmin(np.abs(DicoOut["tm"].reshape(
-            (nt, 1))-DicoJ0["tm"].reshape((1, nt0))), axis=1)
-        iG1 = np.argmin(np.abs(DicoOut["tm"].reshape(
-            (nt, 1))-DicoJ1["tm"].reshape((1, nt1))), axis=1)
-
-        for itime in xrange(nt):
-            G0 = DicoJ0["Jones"][iG0[itime]]
-            G1 = DicoJ1["Jones"][iG1[itime]]
-            DicoOut["Jones"][itime] = ModLinAlg.BatchDot(G0, G1)
-
-        return DicoOut
 
     # def StackAll(self):
     #     while self.iCurrentMS<self.nMS:
@@ -586,20 +543,55 @@ class ClassDynSpecMS():
         _,nch,_=self.DicoDATA["data"].shape
 
         dcorr=d
-        if self.DoJonesCorr:
-            self.DicoJones.reload()
-            tm = self.DicoJones['tm']
+        if self.DoJonesCorr_kMS:
+            self.DicoJones_kMS.reload()
+            tm = self.DicoJones_kMS['tm']
             # Time slot for the solution
             iTJones=np.argmin(np.abs(tm-self.times[iTime]))
-            iDJones=np.argmin(AngDist(ra,self.DicoJones['ra'],dec,self.DicoJones['dec']))
-            iFJones=np.argmin(np.abs(chfreq_mean-self.DicoJones['FreqDomains_mean']))
-            # construct corrected visibilities
-            J0 = self.DicoJones['G'][iTJones, iFJones, A0s, iDJones, 0, 0]
-            J1 = self.DicoJones['G'][iTJones, iFJones, A1s, iDJones, 0, 0]
-            J0 = J0.reshape((-1, 1, 1))*np.ones((1, nch, 1))
-            J1 = J1.reshape((-1, 1, 1))*np.ones((1, nch, 1))
-            dcorr = J0.conj() * d * J1
+            iDJones=np.argmin(AngDist(ra,self.DicoJones_kMS['ra'],dec,self.DicoJones_kMS['dec']))
+            _,nchJones,_,_,_,_=self.DicoJones_kMS['G'].shape
+            for iFJones in range(nchJones):
+                nu0,nu1=self.DicoJones_kMS['FreqDomains'][iFJones]
+                fData=self.DicoMSInfos[iMS]["ChanFreq"].ravel()
+                indCh=np.where((fData>=nu0) & (fData<nu1))[0]
+                #iFJones=np.argmin(np.abs(chfreq_mean-self.DicoJones_kMS['FreqDomains_mean']))
+                # construct corrected visibilities
+                J0 = self.DicoJones_kMS['G'][iTJones, iFJones, A0s, iDJones, 0, 0]
+                J1 = self.DicoJones_kMS['G'][iTJones, iFJones, A1s, iDJones, 0, 0]
+                J0 = J0.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
+                J1 = J1.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
+                #dcorr[:,indCh,:] = J0.conj() * dcorr[:,indCh,:] * J1
+                dcorr[:,indCh,:] = 1./J0 * dcorr[:,indCh,:] * 1./J1.conj()
+            # iFJones=np.argmin(np.abs(chfreq_mean-self.DicoJones_kMS['FreqDomains_mean']))
+            # # construct corrected visibilities
+            # J0 = self.DicoJones_kMS['G'][iTJones, iFJones, A0s, iDJones, 0, 0]
+            # J1 = self.DicoJones_kMS['G'][iTJones, iFJones, A1s, iDJones, 0, 0]
+            # J0 = J0.reshape((-1, 1, 1))*np.ones((1, nch, 1))
+            # J1 = J1.reshape((-1, 1, 1))*np.ones((1, nch, 1))
+            # dcorr = J0.conj() * dcorr * J1
 
+        if self.DoJonesCorr_Beam:
+            self.DicoJones_Beam.reload()
+            tm = self.DicoJones_Beam['tm']
+            # Time slot for the solution
+            iTJones=np.argmin(np.abs(tm-self.times[iTime]))
+            iDJones=np.argmin(AngDist(ra,self.DicoJones_Beam['ra'],dec,self.DicoJones_Beam['dec']))
+            _,nchJones,_,_,_,_=self.DicoJones_Beam['G'].shape
+            for iFJones in range(nchJones):
+                nu0,nu1=self.DicoJones_Beam['FreqDomains'][iFJones]
+                fData=self.DicoMSInfos[iMS]["ChanFreq"].ravel()
+                indCh=np.where((fData>=nu0) & (fData<nu1))[0]
+                #iFJones=np.argmin(np.abs(chfreq_mean-self.DicoJones_Beam['FreqDomains_mean']))
+                # construct corrected visibilities
+                J0 = self.DicoJones_Beam['G'][iTJones, iFJones, A0s, iDJones, 0, 0]
+                J1 = self.DicoJones_Beam['G'][iTJones, iFJones, A1s, iDJones, 0, 0]
+                J0 = J0.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
+                J1 = J1.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
+                #dcorr[:,indCh,:] = J0.conj() * dcorr[:,indCh,:] * J1
+                dcorr[:,indCh,:] = 1./J0 * dcorr[:,indCh,:] * 1./J1.conj()
+                
+
+            
         #ds=np.sum(d*kk, axis=0) # without Jones
         ds = np.sum(dcorr * kk, axis=0) # with Jones
         ws = np.sum(1-f, axis=0)
