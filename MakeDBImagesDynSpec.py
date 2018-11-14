@@ -27,6 +27,7 @@ import numpy as np
 #import pylab
 import os
 from DDFacet.Other import MyLogger
+from DDFacet.Other import MyPickle
 from DDFacet.Other import ModColor
 log=MyLogger.getLogger("ClassInterpol")
 IdSharedMem=str(int(os.getpid()))+"."
@@ -72,6 +73,8 @@ def main(options=None):
         D[iFile]["OBSID"]=str(OBSID)
         D[iFile]["Field"]=str(Field)
     sdb.close()
+
+    MyPickle.Save(D,"LoTSS_OBSID_vs_Field.Dico")
 
     for iFile in D.keys():
         OBSID=D[iFile]["OBSID"]

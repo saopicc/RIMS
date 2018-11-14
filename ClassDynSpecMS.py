@@ -383,13 +383,19 @@ class ClassDynSpecMS():
     def setJones(self):
         from DDFacet.Data import ClassJones
         from DDFacet.Data import ClassMS
+
+        SolsName=self.SolsName
+        if "[" in SolsName:
+            SolsName=SolsName.replace("[","")
+            SolsName=SolsName.replace("]","")
+            SolsName=SolsName.split(",")
         GD={"Beam":{"Model":self.BeamModel,
                     "LOFARBeamMode":"A",
                     "DtBeamMin":5.,
                     "NBand":self.BeamNBand,
                     "CenterNorm":1},
             "Image":{"PhaseCenterRADEC":None},
-            "DDESolutions":{"DDSols":self.SolsName,
+            "DDESolutions":{"DDSols":SolsName,
                             "SolsDir":self.SolsDir,
                             "GlobalNorm":None,
                             "JonesNormList":"AP"},
