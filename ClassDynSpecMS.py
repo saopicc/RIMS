@@ -23,7 +23,14 @@ def AngDist(ra0,ra1,dec0,dec1):
     AC=np.arccos
     C=np.cos
     S=np.sin
-    return AC(S(dec0)*S(dec1)+C(dec0)*C(dec1)*C(ra0-ra1))
+    D=S(dec0)*S(dec1)+C(dec0)*C(dec1)*C(ra0-ra1)
+    if type(D).__name__=="ndarray":
+        D[D>1.]=1.
+        D[D<-1.]=-1.
+    else:
+        if D>1.: D=1.
+        if D<-1.: D=-1.
+    return AC(D)
 
 class ClassDynSpecMS():
     def __init__(self,
@@ -383,6 +390,7 @@ class ClassDynSpecMS():
                     "CenterNorm":1},
             "Image":{"PhaseCenterRADEC":None},
             "DDESolutions":{"DDSols":self.SolsName,
+                            "SolsDir":self.SolsDir,
                             "GlobalNorm":None,
                             "JonesNormList":"AP"},
             "Cache":{"Dir":""}

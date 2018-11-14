@@ -56,6 +56,15 @@ from DDFacet.Data.ClassMS import expandMSList
 from DDFacet.Other import ModColor
 from DDFacet.Other import progressbar
 
+# ##############################
+# Catch numpy warning
+np.seterr(all='raise')
+import warnings
+warnings.filterwarnings('error')
+#with warnings.catch_warnings():
+#    warnings.filterwarnings('error')
+# ##############################
+
 # =========================================================================
 # =========================================================================
 def angSep(ra1, dec1, ra2, dec2):
