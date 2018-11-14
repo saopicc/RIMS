@@ -403,7 +403,7 @@ class ClassDynSpecMS():
             }
         print>>log,"Reading Jones matrices solution file:"
 
-        ms=ClassMS.ClassMS(self.DicoMSInfos[0]["MSName"],GD=GD,DoReadData=False,)
+        ms=ClassMS.ClassMS(self.DicoMSInfos[self.iCurrentMS]["MSName"],GD=GD,DoReadData=False,)
         JonesMachine = ClassJones.ClassJones(GD, ms, CacheMode=False)
         JonesMachine.InitDDESols(self.DicoDATA)
         #JJ=JonesMachine.MergeJones(self.DicoDATA["killMS"]["Jones"],self.DicoDATA["Beam"]["Jones"])
