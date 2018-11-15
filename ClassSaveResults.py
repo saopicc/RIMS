@@ -127,6 +127,7 @@ class ClassSaveResults():
             Gn = self.DynSpecMS.GOut[iDir,:, :, :].real
 
         hdu = fits.PrimaryHDU(np.rollaxis(Gn, 2), header=prihdr)
+
         hdu.writeto(fitsname, clobber=True)
 
 
