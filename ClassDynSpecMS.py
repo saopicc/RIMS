@@ -157,8 +157,14 @@ class ClassDynSpecMS():
             l=[]
             for r in result:
                 l.append((r['id'],r['ra'],r['decl'],r['type']))
+            if FileCoords is not None:
+                print>>log,'Adding data from file '+FileCoords
+                additional=np.genfromtxt(FileCoords,dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')],delimiter=",")[()]
+                for r in additional:
+                    l.append(tuple(r))
             self.PosArray=np.asarray(l,dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')])
             print>>log,"Created an array with %i records" % len(result)
+
         else:
             
             #FileCoords="Transient_LOTTS.csv"
