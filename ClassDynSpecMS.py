@@ -146,6 +146,7 @@ class ClassDynSpecMS():
     def InitFromCatalog(self):
 
         FileCoords=self.FileCoords
+        dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')]
         # should we use the surveys DB?
         if 'DDF_PIPELINE_DATABASE' in os.environ:
             print>>log,"Using the surveys database"
@@ -159,10 +160,13 @@ class ClassDynSpecMS():
                 l.append((r['id'],r['ra'],r['decl'],r['type']))
             if FileCoords is not None:
                 print>>log,'Adding data from file '+FileCoords
-                additional=np.genfromtxt(FileCoords,dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')],delimiter=",")[()]
+                additional=np.genfromtxt(FileCoords,dtype=dtype,delimiter=",")[()]
+                if not additional.shape:
+                    # deal with a one-line input file
+                    additional=np.array([additional],dtype=dtype)
                 for r in additional:
                     l.append(tuple(r))
-            self.PosArray=np.asarray(l,dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')])
+            self.PosArray=np.asarray(l,dtype=dtype)
             print>>log,"Created an array with %i records" % len(result)
 
         else:
@@ -174,7 +178,7 @@ class ClassDynSpecMS():
                     print>>log,"Downloading %s"%FileCoords
                     print>>log, "   Executing: %s"%ssExec
                     os.system(ssExec)
-            self.PosArray=np.genfromtxt(FileCoords,dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')],delimiter=",")[()]
+            self.PosArray=np.genfromtxt(FileCoords,dtype=dtype,delimiter=",")[()]
             
             
         self.PosArray=self.PosArray.view(np.recarray)
