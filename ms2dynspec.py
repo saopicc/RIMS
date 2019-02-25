@@ -112,11 +112,12 @@ def main(args=None, messages=[]):
     if D.Mode=="Spec":
         SaveMachine.WriteFits()
         SaveMachine.PlotSpec()
+        SaveMachine.SaveCatalog()
         SaveMachine.tarDirectory()
     else:
+        SaveMachine.SaveCatalog()
         SaveMachine.PlotSpec(Prefix="_replot")
 
-    SaveMachine.SaveCatalog()
 
         
 
