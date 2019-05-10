@@ -1,3 +1,4 @@
+from distutils.spawn import find_executable
 from astropy.time import Time
 from astropy import units as uni
 from astropy.io import fits
@@ -139,7 +140,8 @@ class ClassSaveResults():
         label = ["I", "Q", "U", "V"]
 
         pylab.clf()
-        pylab.rc('text', usetex=True)
+        if find_executable("latex") is not None:
+            pylab.rc('text', usetex=True)
         font = {'family':'serif', 'serif': ['Times']}
         pylab.rc('font', **font)
         

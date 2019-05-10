@@ -31,12 +31,14 @@ SaveFile = "last_dynspec.obj"
 import sys
 import os
 import argparse
+from distutils.spawn import find_executable
 import matplotlib
 matplotlib.use('Agg')
 from matplotlib import rc
 fontsize=12
 rc('font',**{'family':'serif','serif':['Times'],'size':fontsize})
-rc('text', usetex=True)
+if find_executable("latex") is not None:
+    rc('text', usetex=True)
 
 from pyrap.tables import table
 from astropy.time import Time
