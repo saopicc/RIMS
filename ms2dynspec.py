@@ -58,6 +58,15 @@ from DDFacet.Data.ClassMS import expandMSList
 from DDFacet.Other import ModColor
 from DDFacet.Other import progressbar
 
+# # ##############################
+# # Catch numpy warning
+# np.seterr(all='raise')
+# import warnings
+# warnings.filterwarnings('error')
+# #with warnings.catch_warnings():
+# #    warnings.filterwarnings('error')
+# # ##############################
+
 # =========================================================================
 # =========================================================================
 def angSep(ra1, dec1, ra2, dec2):
@@ -76,9 +85,11 @@ def angSep(ra1, dec1, ra2, dec2):
 def main(args=None, messages=[]):
     if args is None:
         args = MyPickle.Load(SaveFile)
-    
-    MSList=expandMSList(args.ms)
-    MSList=[mstuple[0] for mstuple in MSList]
+
+    MSList=None
+    if args.ms:
+        MSList=expandMSList(args.ms)
+        MSList=[mstuple[0] for mstuple in MSList]
 
     D = ClassDynSpecMS(ListMSName=MSList, 
                        ColName=args.data, ModelName=args.model, 
@@ -87,35 +98,52 @@ def main(args=None, messages=[]):
                        FileCoords=args.srclist,
                        Radius=args.rad,
                        NOff=args.noff,
-                       Image=args.image,
-                       SolsDir=args.SolsDir,NCPU=args.NCPU)
+                       ImageI=args.imageI,
+                       ImageV=args.imageV,
+                       SolsDir=args.SolsDir,NCPU=args.NCPU,
+                       BaseDirSpecs=args.BaseDirSpecs,
+                       BeamModel=args.BeamModel,
+                       BeamNBand=args.BeamNBand)
 
     if D.NDirSelected==0:
         return
 
-    D.StackAll()
+    if D.Mode=="Spec": D.StackAll()
 
     SaveMachine=ClassSaveResults.ClassSaveResults(D)
-    SaveMachine.WriteFits()
-    SaveMachine.PlotSpec()
-    SaveMachine.tarDirectory()
+    if D.Mode=="Spec":
+        SaveMachine.WriteFits()
+        SaveMachine.PlotSpec()
+        SaveMachine.SaveCatalog()
+        SaveMachine.tarDirectory()
+    else:
+        SaveMachine.SaveCatalog()
+        SaveMachine.PlotSpec(Prefix="_replot")
+
+
+        
 
 # =========================================================================
 # =========================================================================
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--ms", type=str, help="Name of MS file / directory", required=True)
-    parser.add_argument("--data", type=str, default="CORRECTED", help="Name of DATA column", required=True)
+    parser.add_argument("--ms", type=str, help="Name of MS file / directory", required=False)
+    parser.add_argument("--data", type=str, default="CORRECTED", help="Name of DATA column", required=False)
     parser.add_argument("--model", type=str, help="Name of MODEL column",default="")#, required=True)
     parser.add_argument("--sols", type=str, help="Jones solutions",default="")
-    parser.add_argument("--srclist", type=str, default=None, help="List of targets --> 'source_name ra dec'")
+    parser.add_argument("--srclist", type=str, default="Transient_LOTTS.csv", help="List of targets --> 'source_name ra dec'")
     parser.add_argument("--rad", type=float, default=3., help="Radius of the field", required=False)
     parser.add_argument("--noff", type=float, default=-1, help="Number of off sources. -1 means twice as much as there are sources in the catalog", required=False)
     parser.add_argument("--LogBoring", type=int, default=0, help="Boring?", required=False)
-    parser.add_argument("--image", type=str, default=None, help="Survey image to plot", required=False)
+    parser.add_argument("--imageI", type=str, default=None, help="Survey image to plot", required=False)
+    parser.add_argument("--imageV", type=str, default=None, help="Survey image to plot", required=False)
+    parser.add_argument("--BaseDirSpecs", type=str, default=None, help="Path to the precomputed specs", required=False)
     parser.add_argument("--uv", type=list, default=[1., 1000.], help="UV range in km [UVmin, UVmax]", required=False)
     parser.add_argument("--SolsDir", type=str, default="", help="Base directory for the DDE solutions", required=False)
     parser.add_argument("--NCPU", type=int, default=0, help="NCPU", required=False)
+    parser.add_argument("--BeamModel", type=str, default=None, help="Beam Model to be used", required=False)
+    parser.add_argument("--BeamNBand", type=int, default=1, help="Number of channels in the Beam Jones matrix", required=False)
+
     args = parser.parse_args()
 
     MyPickle.Save(args, SaveFile)

@@ -14,37 +14,139 @@ import os
 from killMS.Other import reformat
 from DDFacet.Other import AsyncProcessPool
 from dynspecms_version import version
+import glob
+from astropy.io import fits
+from astropy.wcs import WCS
+from DDFacet.ToolsDir.rad2hmsdms import rad2hmsdms
 
 def AngDist(ra0,ra1,dec0,dec1):
     AC=np.arccos
     C=np.cos
     S=np.sin
-    return AC(S(dec0)*S(dec1)+C(dec0)*C(dec1)*C(ra0-ra1))
+    D=S(dec0)*S(dec1)+C(dec0)*C(dec1)*C(ra0-ra1)
+    if type(D).__name__=="ndarray":
+        D[D>1.]=1.
+        D[D<-1.]=-1.
+    else:
+        if D>1.: D=1.
+        if D<-1.: D=-1.
+    return AC(D)
 
 class ClassDynSpecMS():
-    def __init__(self, ListMSName, ColName="DATA", ModelName="PREDICT_KMS", UVRange=[1.,1000.], 
+    def __init__(self,
+                 ListMSName=None,
+                 ColName="DATA", ModelName="PREDICT_KMS", UVRange=[1.,1000.], 
                  SolsName=None,
-                 FileCoords=None,
+                 FileCoords="Transient_LOTTS.csv",
                  Radius=3.,
                  NOff=-1,
-                 Image=None,
+                 ImageI=None,
+                 ImageV=None,
                  SolsDir=None,
-                 NCPU=1):
-        self.ListMSName = sorted(ListMSName)#[0:2]
-        self.nMS         = len(self.ListMSName)
+                 NCPU=1,
+                 BaseDirSpecs=None,BeamModel=None,BeamNBand=1):
+
         self.ColName    = ColName
         self.ModelName  = ModelName
-        self.OutName    = self.ListMSName[0].split("/")[-1].split("_")[0]
+        self.BeamNBand  = BeamNBand
         self.UVRange    = UVRange
-        self.ReadMSInfos()
+        self.Mode="Spec"
+        self.BaseDirSpecs=BaseDirSpecs
+        self.NOff=NOff
+        self.SolsName=SolsName
+        self.NCPU=NCPU
+        self.BeamModel=BeamModel
+        
+        if ListMSName is None:
+            print>>log,ModColor.Str("WORKING IN REPLOT MODE")
+            self.Mode="Plot"
+            
+            
         self.Radius=Radius
-        self.Image = Image
+        self.ImageI = ImageI
+        self.ImageV = ImageV
         self.SolsDir=SolsDir
         #self.PosArray=np.genfromtxt(FileCoords,dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')],delimiter="\t")
 
         # identify version in logs
         print>>log,"DynSpecMS version %s starting up" % version()
+        self.FileCoords=FileCoords
         
+        if self.Mode=="Spec":
+            self.ListMSName = sorted(ListMSName)#[0:2]
+            self.nMS         = len(self.ListMSName)
+            self.OutName    = self.ListMSName[0].split("/")[-1].split("_")[0]
+            self.ReadMSInfos()
+            self.InitFromCatalog()
+
+        elif self.Mode=="Plot":
+            self.OutName    = self.BaseDirSpecs.split("_")[-1]
+            self.InitFromSpecs()
+
+
+    def InitFromSpecs(self):
+        print>>log,"Initialising from precomputed spectra"
+        ListTargetFits=glob.glob("%s/TARGET/*.fits"%self.BaseDirSpecs)#[0:1]
+        F=fits.open(ListTargetFits[0])
+        _,self.NChan, self.NTimes = F[0].data.shape
+        t0=F[0].header['OBS-STAR']
+        dt=F[0].header['CDELT1']
+        t0 = Time(t0, format='isot').mjd * 3600. * 24. + (dt/2.)
+        self.times=np.arange(self.NTimes)*dt+t0
+
+        self.fMin=float(F[0].header['FRQ-MIN'])
+        self.fMax=float(F[0].header['FRQ-MAX'])
+
+        self.NDirSelected=len(ListTargetFits)
+        NOrig=len(ListTargetFits)
+        
+        ListOffFits=glob.glob("%s/OFF/*.fits"%self.BaseDirSpecs)
+        NOff=len(ListOffFits)
+        
+        self.PosArray=np.zeros((self.NDirSelected+NOff,),dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')])
+        self.PosArray=self.PosArray.view(np.recarray)
+        self.PosArray.Type[len(ListTargetFits)::]="Off"
+        self.NDir=self.PosArray.shape[0]
+        print>>log,"For a total of %i targets"%(self.NDir)
+        self.GOut=np.zeros((self.NDir,self.NChan, self.NTimes, 4), np.complex128)
+        W=fits.open("%s/Weights.fits"%self.BaseDirSpecs)[0].data
+
+        for iDir,File in enumerate(ListTargetFits+ListOffFits):
+            print>>log,"  Reading %s"%File
+            F=fits.open(File)
+            d=F[0].data
+            ra=float(F[0].header['RA_RAD'])
+            if ra<0.: ra+=2.*np.pi
+            self.PosArray.ra[iDir]=ra
+            dec=self.PosArray.dec[iDir]=float(F[0].header['DEC_RAD'])
+            
+            # print File,rad2hmsdms(ra,Type="ra").replace(" ",":"),rad2hmsdms(dec,Type="dec").replace(" ",":")
+            # if self.PosArray.Type[iDir]=="Off": stop
+            for iPol in range(4):
+                self.GOut[iDir,:,:,iPol]=d[iPol][:,:]
+
+        r=1./3600*np.pi/180
+        if self.FileCoords:
+            print>>log,"Matching ra/dec with original catalogue"
+            PosArrayTarget=np.genfromtxt(self.FileCoords,dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')],delimiter=",")[()]
+            PosArrayTarget=PosArrayTarget.view(np.recarray)
+            PosArrayTarget.ra*=np.pi/180
+            PosArrayTarget.dec*=np.pi/180
+            for iDir in range(self.PosArray.dec.shape[0]):
+                dra=self.PosArray.ra[iDir]-PosArrayTarget.ra
+                ddec=self.PosArray.dec[iDir]-PosArrayTarget.dec
+                d=np.sqrt(dra**2+ddec**2)
+                iS=np.argmin(d)
+                if d[iS]>r:
+                    print>>log,ModColor.Str("DID NOT FIND A MATCH FOR A SOURCE")
+                    continue
+                self.PosArray.Type[iDir]=PosArrayTarget.Type[iS]
+                self.PosArray.Name[iDir]=PosArrayTarget.Name[iS]
+            
+    def InitFromCatalog(self):
+
+        FileCoords=self.FileCoords
+        dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')]
         # should we use the surveys DB?
         if 'DDF_PIPELINE_DATABASE' in os.environ:
             print>>log,"Using the surveys database"
@@ -56,22 +158,34 @@ class ClassDynSpecMS():
             l=[]
             for r in result:
                 l.append((r['id'],r['ra'],r['decl'],r['type']))
-            self.PosArray=np.asarray(l,dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')])
+            if FileCoords is not None:
+                print>>log,'Adding data from file '+FileCoords
+                additional=np.genfromtxt(FileCoords,dtype=dtype,delimiter=",")[()]
+                if not additional.shape:
+                    # deal with a one-line input file
+                    additional=np.array([additional],dtype=dtype)
+                for r in additional:
+                    l.append(tuple(r))
+            self.PosArray=np.asarray(l,dtype=dtype)
             print>>log,"Created an array with %i records" % len(result)
+
         else:
+            
+            #FileCoords="Transient_LOTTS.csv"
             if FileCoords is None:
-                FileCoords="Transient_LOTTS.csv"
                 if not os.path.isfile(FileCoords):
                     ssExec="wget -q --user=anonymous ftp://ftp.strw.leidenuniv.nl/pub/tasse/%s -O %s"%(FileCoords,FileCoords)
                     print>>log,"Downloading %s"%FileCoords
                     print>>log, "   Executing: %s"%ssExec
                     os.system(ssExec)
-            self.PosArray=np.genfromtxt(FileCoords,dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')],delimiter=",")[()]
+            self.PosArray=np.genfromtxt(FileCoords,dtype=dtype,delimiter=",")[()]
+            
+            
         self.PosArray=self.PosArray.view(np.recarray)
         self.PosArray.ra*=np.pi/180.
         self.PosArray.dec*=np.pi/180.
 
-        
+        Radius=self.Radius
         NOrig=self.PosArray.shape[0]
         Dist=AngDist(self.ra0,self.PosArray.ra,self.dec0,self.PosArray.dec)
         ind=np.where(Dist<Radius*np.pi/180)[0]
@@ -82,7 +196,9 @@ class ClassDynSpecMS():
         if self.NDirSelected==0:
             print>>log,ModColor.Str("   Have found no sources - returning")
             self.killWorkers()
-            return 
+            return
+        
+        NOff=self.NOff
         
         if NOff==-1:
             NOff=self.PosArray.shape[0]*2
@@ -99,15 +215,23 @@ class ClassDynSpecMS():
         self.DicoGrids["GridLinPol"] = np.zeros((self.NDir,self.NChan, self.NTimes, 4), np.complex128)
         self.DicoGrids["GridWeight"] = np.zeros((self.NDir,self.NChan, self.NTimes, 4), np.complex128)
 
-        self.SolsName   = SolsName
-        self.DoJonesCorr=False
+
+        
+
+        self.DoJonesCorr_kMS =False
+        self.DicoJones=None
         if self.SolsName:
-            self.DoJonesCorr=True
-            self.DicoJones=shared_dict.create("DicoJones")
+            self.DoJonesCorr_kMS=True
+            self.DicoJones_kMS=shared_dict.create("DicoJones_kMS")
+
+        self.DoJonesCorr_Beam=False
+        if self.BeamModel:
+            self.DoJonesCorr_Beam=True
+            self.DicoJones_Beam=shared_dict.create("DicoJones_Beam")
 
 
         APP.registerJobHandlers(self)
-        AsyncProcessPool.init(ncpu=NCPU,affinity=0)
+        AsyncProcessPool.init(ncpu=self.NCPU,affinity=0)
         APP.startWorkers()
 
 
@@ -143,6 +267,7 @@ class ClassDynSpecMS():
 
         tField = table("%s::FIELD"%MSName, ack=False)
         self.ra0, self.dec0 = tField.getcol("PHASE_DIR").ravel() # radians!
+        if self.ra0<0.: self.ra0+=2.*np.pi
         tField.close()
 
         pBAR = ProgressBar(Title="Reading metadata")
@@ -213,6 +338,7 @@ class ClassDynSpecMS():
         self.iCurrentMS=0
 
 
+    
     def LoadNextMS(self):
         iMS=self.iCurrentMS
         if not self.DicoMSInfos[iMS]["Readable"]: 
@@ -257,33 +383,91 @@ class ClassDynSpecMS():
         self.DicoDATA["u"]=u0
         self.DicoDATA["v"]=v0
         self.DicoDATA["w"]=w0
-        
-        if self.DoJonesCorr:
-            # Extract Jones matrices that will be appliedto the visibilities
-            FileName="%s/%s"%(MSName, self.SolsName)
+        self.DicoDATA["uniq_times"]=np.unique(self.DicoDATA["times"])
 
-            if not(self.SolsDir):
-                FileName="%s/%s"%(MSName, self.SolsName)
-            else:
-                _MSName=reformat.reformat(MSName).split("/")[-2]
-                DirName=os.path.abspath("%s%s"%(reformat.reformat(self.SolsDir),_MSName))
-                if not os.path.isdir(DirName):
-                    os.makedirs(DirName)
-                FileName="%s/killMS.%s.sols.npz"%(DirName,self.SolsName)
-
-
-            print>>log,"Reading Jones matrices solution file:"
-            print>>log,"   %s"%FileName
-            JonesSols = np.load(FileName)
-            self.DicoJones["G"]=self.NormJones(JonesSols["Sols"]["G"]) # Normalize Jones matrices
-            self.DicoJones['tm']=(JonesSols["Sols"]["t0"]+JonesSols["Sols"]["t1"])/2.
-            self.DicoJones['ra']=JonesSols['ClusterCat']['ra']
-            self.DicoJones['dec']=JonesSols['ClusterCat']['dec']
-            self.DicoJones['FreqDomains']=JonesSols['FreqDomains']
-            self.DicoJones['FreqDomains_mean']=np.mean(JonesSols['FreqDomains'],axis=1)
-
+            
+        if self.DoJonesCorr_kMS or self.DoJonesCorr_Beam:
+            self.setJones()
         self.iCurrentMS+=1
 
+    def setJones(self):
+        from DDFacet.Data import ClassJones
+        from DDFacet.Data import ClassMS
+
+        SolsName=self.SolsName
+        if "[" in SolsName:
+            SolsName=SolsName.replace("[","")
+            SolsName=SolsName.replace("]","")
+            SolsName=SolsName.split(",")
+        GD={"Beam":{"Model":self.BeamModel,
+                    "LOFARBeamMode":"A",
+                    "DtBeamMin":5.,
+                    "NBand":self.BeamNBand,
+                    "CenterNorm":1},
+            "Image":{"PhaseCenterRADEC":None},
+            "DDESolutions":{"DDSols":SolsName,
+                            "SolsDir":self.SolsDir,
+                            "GlobalNorm":None,
+                            "JonesNormList":"AP"},
+            "Cache":{"Dir":""}
+            }
+        print>>log,"Reading Jones matrices solution file:"
+
+        ms=ClassMS.ClassMS(self.DicoMSInfos[self.iCurrentMS]["MSName"],GD=GD,DoReadData=False,)
+        JonesMachine = ClassJones.ClassJones(GD, ms, CacheMode=False)
+        JonesMachine.InitDDESols(self.DicoDATA)
+        #JJ=JonesMachine.MergeJones(self.DicoDATA["killMS"]["Jones"],self.DicoDATA["Beam"]["Jones"])
+        # import killMS.Data.ClassJonesDomains
+        # DomainMachine=killMS.Data.ClassJonesDomains.ClassJonesDomains()
+        # if "killMS" in self.DicoDATA.keys():
+        #     self.DicoDATA["killMS"]["Jones"]["FreqDomain"]=self.DicoDATA["killMS"]["Jones"]["FreqDomains"]
+        # if "Beam" in self.DicoDATA.keys():
+        #     self.DicoDATA["Beam"]["Jones"]["FreqDomain"]=self.DicoDATA["Beam"]["Jones"]["FreqDomains"]
+        # if "killMS" in self.DicoDATA.keys() and "Beam" in self.DicoDATA.keys():
+        #     JonesSols=DomainMachine.MergeJones(self.DicoDATA["killMS"]["Jones"],self.DicoDATA["Beam"]["Jones"])
+        # elif "killMS" in self.DicoDATA.keys() and not ("Beam" in self.DicoDATA.keys()):
+        #     JonesSols=self.DicoDATA["killMS"]["Jones"]
+        # elif not("killMS" in self.DicoDATA.keys()) and "Beam" in self.DicoDATA.keys():
+        #     JonesSols=self.DicoDATA["Beam"]["Jones"]
+
+        #self.DicoJones["G"]=np.swapaxes(self.NormJones(JonesSols["Jones"]),1,3) # Normalize Jones matrices
+
+        if self.DoJonesCorr_kMS:
+            JonesSols=self.DicoDATA["killMS"]["Jones"]
+            self.DicoJones_kMS["G"]=np.swapaxes(JonesSols["Jones"],1,3) # Normalize Jones matrices
+            self.DicoJones_kMS['tm']=(JonesSols["t0"]+JonesSols["t1"])/2.
+            self.DicoJones_kMS['ra']=JonesMachine.ClusterCat['ra']
+            self.DicoJones_kMS['dec']=JonesMachine.ClusterCat['dec']
+            self.DicoJones_kMS['FreqDomains']=JonesSols['FreqDomains']
+            self.DicoJones_kMS['FreqDomains_mean']=np.mean(JonesSols['FreqDomains'],axis=1)
+            self.DicoJones_kMS['IDJones']=np.zeros((self.NDir,),np.int32)
+            for iDir in range(self.NDir):
+                ra=self.PosArray.ra[iDir]
+                dec=self.PosArray.dec[iDir]
+                self.DicoJones_kMS['IDJones'][iDir]=np.argmin(AngDist(ra,self.DicoJones_kMS['ra'],dec,self.DicoJones_kMS['dec']))
+
+        if self.DoJonesCorr_Beam:
+            JonesSols = JonesMachine.GiveBeam(np.unique(self.DicoDATA["times"]), quiet=True,RaDec=(self.PosArray.ra,self.PosArray.dec))
+            self.DicoJones_Beam["G"]=np.swapaxes(JonesSols["Jones"],1,3) # Normalize Jones matrices
+            self.DicoJones_Beam['tm']=(JonesSols["t0"]+JonesSols["t1"])/2.
+            self.DicoJones_Beam['ra']=self.PosArray.ra
+            self.DicoJones_Beam['dec']=self.PosArray.dec
+            self.DicoJones_Beam['FreqDomains']=JonesSols['FreqDomains']
+            self.DicoJones_Beam['FreqDomains_mean']=np.mean(JonesSols['FreqDomains'],axis=1)
+
+        
+        # from DDFacet.Data import ClassLOFARBeam
+        # GD,D={},{}
+        # D["LOFARBeamMode"]="A"
+        # D["DtBeamMin"]=5
+        # D["NBand"]=1
+        # GD["Beam"]=D
+        # BeamMachine=BeamClassLOFARBeam(self.DicoMSInfos["MSName"],GD)
+        # BeamMachine.InitBeamMachine()
+        # BeamTimes=BM.getBeamSampleTimes()
+        # return BM.EstimateBeam(BeamTimes,
+        #                        ra,dec)
+        
 
 
     # def StackAll(self):
@@ -383,20 +567,55 @@ class ClassDynSpecMS():
         _,nch,_=self.DicoDATA["data"].shape
 
         dcorr=d
-        if self.DoJonesCorr:
-            self.DicoJones.reload()
-            tm = self.DicoJones['tm']
+        if self.DoJonesCorr_kMS:
+            self.DicoJones_kMS.reload()
+            tm = self.DicoJones_kMS['tm']
             # Time slot for the solution
             iTJones=np.argmin(np.abs(tm-self.times[iTime]))
-            iDJones=np.argmin(AngDist(ra,self.DicoJones['ra'],dec,self.DicoJones['dec']))
-            iFJones=np.argmin(np.abs(chfreq_mean-self.DicoJones['FreqDomains_mean']))
-            # construct corrected visibilities
-            J0 = self.DicoJones['G'][iTJones, iFJones, A0s, iDJones, 0, 0]
-            J1 = self.DicoJones['G'][iTJones, iFJones, A1s, iDJones, 0, 0]
-            J0 = J0.reshape((-1, 1, 1))*np.ones((1, nch, 1))
-            J1 = J1.reshape((-1, 1, 1))*np.ones((1, nch, 1))
-            dcorr = J0.conj() * d * J1
+            iDJones=np.argmin(AngDist(ra,self.DicoJones_kMS['ra'],dec,self.DicoJones_kMS['dec']))
+            _,nchJones,_,_,_,_=self.DicoJones_kMS['G'].shape
+            for iFJones in range(nchJones):
+                nu0,nu1=self.DicoJones_kMS['FreqDomains'][iFJones]
+                fData=self.DicoMSInfos[iMS]["ChanFreq"].ravel()
+                indCh=np.where((fData>=nu0) & (fData<nu1))[0]
+                #iFJones=np.argmin(np.abs(chfreq_mean-self.DicoJones_kMS['FreqDomains_mean']))
+                # construct corrected visibilities
+                J0 = self.DicoJones_kMS['G'][iTJones, iFJones, A0s, iDJones, 0, 0]
+                J1 = self.DicoJones_kMS['G'][iTJones, iFJones, A1s, iDJones, 0, 0]
+                J0 = J0.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
+                J1 = J1.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
+                #dcorr[:,indCh,:] = J0.conj() * dcorr[:,indCh,:] * J1
+                dcorr[:,indCh,:] = 1./J0 * dcorr[:,indCh,:] * 1./J1.conj()
+            # iFJones=np.argmin(np.abs(chfreq_mean-self.DicoJones_kMS['FreqDomains_mean']))
+            # # construct corrected visibilities
+            # J0 = self.DicoJones_kMS['G'][iTJones, iFJones, A0s, iDJones, 0, 0]
+            # J1 = self.DicoJones_kMS['G'][iTJones, iFJones, A1s, iDJones, 0, 0]
+            # J0 = J0.reshape((-1, 1, 1))*np.ones((1, nch, 1))
+            # J1 = J1.reshape((-1, 1, 1))*np.ones((1, nch, 1))
+            # dcorr = J0.conj() * dcorr * J1
 
+        if self.DoJonesCorr_Beam:
+            self.DicoJones_Beam.reload()
+            tm = self.DicoJones_Beam['tm']
+            # Time slot for the solution
+            iTJones=np.argmin(np.abs(tm-self.times[iTime]))
+            iDJones=np.argmin(AngDist(ra,self.DicoJones_Beam['ra'],dec,self.DicoJones_Beam['dec']))
+            _,nchJones,_,_,_,_=self.DicoJones_Beam['G'].shape
+            for iFJones in range(nchJones):
+                nu0,nu1=self.DicoJones_Beam['FreqDomains'][iFJones]
+                fData=self.DicoMSInfos[iMS]["ChanFreq"].ravel()
+                indCh=np.where((fData>=nu0) & (fData<nu1))[0]
+                #iFJones=np.argmin(np.abs(chfreq_mean-self.DicoJones_Beam['FreqDomains_mean']))
+                # construct corrected visibilities
+                J0 = self.DicoJones_Beam['G'][iTJones, iFJones, A0s, iDJones, 0, 0]
+                J1 = self.DicoJones_Beam['G'][iTJones, iFJones, A1s, iDJones, 0, 0]
+                J0 = J0.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
+                J1 = J1.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
+                #dcorr[:,indCh,:] = J0.conj() * dcorr[:,indCh,:] * J1
+                dcorr[:,indCh,:] = 1./J0 * dcorr[:,indCh,:] * 1./J1.conj()
+                
+
+            
         #ds=np.sum(d*kk, axis=0) # without Jones
         ds = np.sum(dcorr * kk, axis=0) # with Jones
         ws = np.sum(1-f, axis=0)
