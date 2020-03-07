@@ -1,3 +1,8 @@
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from builtins import range
+from builtins import object
 from distutils.spawn import find_executable
 from astropy.time import Time
 from astropy import units as uni
@@ -20,7 +25,7 @@ from dynspecms_version import version
 def GiveMAD(X):
     return np.median(np.abs(X-np.median(X)))
 
-class ClassSaveResults():
+class ClassSaveResults(object):
     def __init__(self, DynSpecMS):
         self.DynSpecMS=DynSpecMS
         self.DIRNAME="DynSpecs_%s"%self.DynSpecMS.OutName
@@ -54,9 +59,9 @@ class ClassSaveResults():
         #os.system("mkdir -p %s/PNG"%self.DIRNAME)
 
     def tarDirectory(self):
-        print>>log,"Taring the result directory"
+        print("Taring the result directory", file=log)
         ss="tar -zcvf %s.tgz %s > /dev/null 2>&1"%(self.DIRNAME,self.DIRNAME)
-        print>>log,"  ... executing %s"%ss
+        print("  ... executing %s"%ss, file=log)
         os.system(ss)
 
 
@@ -71,7 +76,7 @@ class ClassSaveResults():
 
     def SaveCatalog(self):
         FileName = "%s/%s.npy"%(self.DIRNAME,"Catalog")
-        print>>log,"Saving flux catalogs in %s"%FileName
+        print("Saving flux catalogs in %s"%FileName, file=log)
         np.save(FileName,self.CatFlux)
         
     def GiveSubDir(self,Type):
@@ -135,7 +140,7 @@ class ClassSaveResults():
     def PlotSpec(self,Prefix=""):
         # Pdf file of target positions
         pdfname = "%s/%s_TARGET%s.pdf"%(self.DIRNAME,self.DynSpecMS.OutName,Prefix)
-        print>>log,"Making pdf overview: %s"%pdfname
+        print("Making pdf overview: %s"%pdfname, file=log)
         pBAR = ProgressBar(Title="Making pages")        
         NPages=self.DynSpecMS.NDirSelected #Selected
         iDone=0
@@ -154,7 +159,7 @@ class ClassSaveResults():
         NPages=self.DynSpecMS.NDir-self.DynSpecMS.NDirSelected #Off pix
         if NPages==0: return
         pdfname = "%s/%s_OFF%s.pdf"%(self.DIRNAME,self.DynSpecMS.OutName,Prefix)
-        print>>log,"Making pdf overview: %s"%pdfname
+        print("Making pdf overview: %s"%pdfname, file=log)
         pBAR = ProgressBar(Title="Making pages")
         pBAR.render(0, NPages)
         iDone=0
@@ -407,7 +412,7 @@ class ClassSaveResults():
             pos_ra_pix, pos_dec_pix = wcs.wcs_world2pix(np.degrees(self.DynSpecMS.PosArray.ra[iDir]), np.degrees(self.DynSpecMS.PosArray.dec[iDir]), 1)
             nn=self.ImageVData.shape[-1]
             #boxv = int(box / np.abs(wcs.wcs.cdelt[0]) * np.abs(CDEL[0]))
-            boxv=int(abs((BoxArcSec/3600.)/wcs.wcs.cdelt[0]))
+            boxv=int(abs((BoxArcSec/3600.),wcs.wcs.cdelt[0]))
             def giveBounded(x):
                 x=np.max([0,x])
                 return np.min([x,nn-1])

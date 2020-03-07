@@ -18,8 +18,10 @@ You should have received a copy of the GNU General Public License
 along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 """
+from __future__ import print_function
 #!/usr/bin/env python
 
+from builtins import str
 import optparse
 import pickle
 import numpy as np
@@ -76,11 +78,11 @@ def main(options=None):
 
     MyPickle.Save(D,"LoTSS_OBSID_vs_Field.Dico")
 
-    for iFile in D.keys():
+    for iFile in list(D.keys()):
         OBSID=D[iFile]["OBSID"]
         Field=D[iFile]["Field"]
         ss="ms2dynspec.py --imageI /databf/lofar/SURVEYS_KSP/LOTSS/DynSpecMS/IMAGES/%s/image_full_ampphase_di_m.NS_shift.int.facetRestored.fits --imageV /databf/lofar/SURVEYS_KSP/LOTSS/DynSpecMS/IMAGES/%s/image_full_low_stokesV.dirty.fits --BaseDirSpecs /databf/lofar/SURVEYS_KSP/LOTSS/DynSpecMS/DynSpecs_L%s --srclist Transient_LOTTS.csv"%(Field,Field,OBSID)
-        print ss
+        print(ss)
         os.system(ss)
 
         

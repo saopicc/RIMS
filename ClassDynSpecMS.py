@@ -1,3 +1,9 @@
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from builtins import str
+from builtins import range
+from builtins import object
 from pyrap.tables import table
 import sys
 from DDFacet.Other import MyLogger
@@ -32,7 +38,7 @@ def AngDist(ra0,ra1,dec0,dec1):
         if D<-1.: D=-1.
     return AC(D)
 
-class ClassDynSpecMS():
+class ClassDynSpecMS(object):
     def __init__(self,
                  ListMSName=None,
                  ColName="DATA", ModelName="PREDICT_KMS", UVRange=[1.,1000.], 
@@ -58,7 +64,7 @@ class ClassDynSpecMS():
         self.BeamModel=BeamModel
         
         if ListMSName is None:
-            print>>log,ModColor.Str("WORKING IN REPLOT MODE")
+            print(ModColor.Str("WORKING IN REPLOT MODE"), file=log)
             self.Mode="Plot"
             
             
@@ -69,7 +75,7 @@ class ClassDynSpecMS():
         #self.PosArray=np.genfromtxt(FileCoords,dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')],delimiter="\t")
 
         # identify version in logs
-        print>>log,"DynSpecMS version %s starting up" % version()
+        print("DynSpecMS version %s starting up" % version(), file=log)
         self.FileCoords=FileCoords
         
         if self.Mode=="Spec":
@@ -85,7 +91,7 @@ class ClassDynSpecMS():
 
 
     def InitFromSpecs(self):
-        print>>log,"Initialising from precomputed spectra"
+        print("Initialising from precomputed spectra", file=log)
         ListTargetFits=glob.glob("%s/TARGET/*.fits"%self.BaseDirSpecs)#[0:1]
         F=fits.open(ListTargetFits[0])
         _,self.NChan, self.NTimes = F[0].data.shape
@@ -107,12 +113,12 @@ class ClassDynSpecMS():
         self.PosArray=self.PosArray.view(np.recarray)
         self.PosArray.Type[len(ListTargetFits)::]="Off"
         self.NDir=self.PosArray.shape[0]
-        print>>log,"For a total of %i targets"%(self.NDir)
+        print("For a total of %i targets"%(self.NDir), file=log)
         self.GOut=np.zeros((self.NDir,self.NChan, self.NTimes, 4), np.complex128)
         W=fits.open("%s/Weights.fits"%self.BaseDirSpecs)[0].data
 
         for iDir,File in enumerate(ListTargetFits+ListOffFits):
-            print>>log,"  Reading %s"%File
+            print("  Reading %s"%File, file=log)
             F=fits.open(File)
             d=F[0].data
             ra=float(F[0].header['RA_RAD'])
@@ -127,7 +133,7 @@ class ClassDynSpecMS():
 
         r=1./3600*np.pi/180
         if self.FileCoords:
-            print>>log,"Matching ra/dec with original catalogue"
+            print("Matching ra/dec with original catalogue", file=log)
             PosArrayTarget=np.genfromtxt(self.FileCoords,dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')],delimiter=",")[()]
             PosArrayTarget=PosArrayTarget.view(np.recarray)
             PosArrayTarget.ra*=np.pi/180
@@ -138,7 +144,7 @@ class ClassDynSpecMS():
                 d=np.sqrt(dra**2+ddec**2)
                 iS=np.argmin(d)
                 if d[iS]>r:
-                    print>>log,ModColor.Str("DID NOT FIND A MATCH FOR A SOURCE")
+                    print(ModColor.Str("DID NOT FIND A MATCH FOR A SOURCE"), file=log)
                     continue
                 self.PosArray.Type[iDir]=PosArrayTarget.Type[iS]
                 self.PosArray.Name[iDir]=PosArrayTarget.Name[iS]
@@ -149,7 +155,7 @@ class ClassDynSpecMS():
         dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')]
         # should we use the surveys DB?
         if 'DDF_PIPELINE_DATABASE' in os.environ:
-            print>>log,"Using the surveys database"
+            print("Using the surveys database", file=log)
             from surveys_db import SurveysDB
             with SurveysDB() as sdb:
                 sdb.cur.execute('select * from transients')
@@ -159,7 +165,7 @@ class ClassDynSpecMS():
             for r in result:
                 l.append((r['id'],r['ra'],r['decl'],r['type']))
             if FileCoords is not None:
-                print>>log,'Adding data from file '+FileCoords
+                print('Adding data from file '+FileCoords, file=log)
                 additional=np.genfromtxt(FileCoords,dtype=dtype,delimiter=",")[()]
                 if not additional.shape:
                     # deal with a one-line input file
@@ -167,7 +173,7 @@ class ClassDynSpecMS():
                 for r in additional:
                     l.append(tuple(r))
             self.PosArray=np.asarray(l,dtype=dtype)
-            print>>log,"Created an array with %i records" % len(result)
+            print("Created an array with %i records" % len(result), file=log)
 
         else:
             
@@ -175,8 +181,8 @@ class ClassDynSpecMS():
             if FileCoords is None:
                 if not os.path.isfile(FileCoords):
                     ssExec="wget -q --user=anonymous ftp://ftp.strw.leidenuniv.nl/pub/tasse/%s -O %s"%(FileCoords,FileCoords)
-                    print>>log,"Downloading %s"%FileCoords
-                    print>>log, "   Executing: %s"%ssExec
+                    print("Downloading %s"%FileCoords, file=log)
+                    print("   Executing: %s"%ssExec, file=log)
                     os.system(ssExec)
             self.PosArray=np.genfromtxt(FileCoords,dtype=dtype,delimiter=",")[()]
             
@@ -188,13 +194,13 @@ class ClassDynSpecMS():
         Radius=self.Radius
         NOrig=self.PosArray.shape[0]
         Dist=AngDist(self.ra0,self.PosArray.ra,self.dec0,self.PosArray.dec)
-        ind=np.where(Dist<Radius*np.pi/180)[0]
+        ind=np.where(Dist<(Radius*np.pi/180))[0]
         self.PosArray=self.PosArray[ind]
         self.NDirSelected=self.PosArray.shape[0]
 
-        print>>log,"Selected %i target [out of the %i in the original list]"%(self.NDirSelected,NOrig)
+        print("Selected %i target [out of the %i in the original list]"%(self.NDirSelected,NOrig), file=log)
         if self.NDirSelected==0:
-            print>>log,ModColor.Str("   Have found no sources - returning")
+            print(ModColor.Str("   Have found no sources - returning"), file=log)
             self.killWorkers()
             return
         
@@ -203,11 +209,11 @@ class ClassDynSpecMS():
         if NOff==-1:
             NOff=self.PosArray.shape[0]*2
         if NOff is not None:
-            print>>log,"Including %i off targets"%(NOff)
+            print("Including %i off targets"%(NOff), file=log)
             self.PosArray=np.concatenate([self.PosArray,self.GiveOffPosArray(NOff)])
             self.PosArray=self.PosArray.view(np.recarray)
         self.NDir=self.PosArray.shape[0]
-        print>>log,"For a total of %i targets"%(self.NDir)
+        print("For a total of %i targets"%(self.NDir), file=log)
 
 
         self.DicoDATA = shared_dict.create("DATA")
@@ -236,7 +242,7 @@ class ClassDynSpecMS():
 
 
     def GiveOffPosArray(self,NOff):
-        print>>log,"Making random off catalog with %i directions"%NOff
+        print("Making random off catalog with %i directions"%NOff, file=log)
         CatOff=np.zeros((NOff,),self.PosArray.dtype)
         CatOff=CatOff.view(np.recarray)
         CatOff.Type="Off"
@@ -316,14 +322,14 @@ class ClassDynSpecMS():
             
         for iMS in range(self.nMS):
             if not DicoMSInfos[iMS]["Readable"]:
-                print>>log, ModColor.Str("Problem reading %s"%MSName)
-                print>>log, ModColor.Str("   %s"%DicoMSInfos[iMS]["Exception"])
+                print(ModColor.Str("Problem reading %s"%MSName), file=log)
+                print(ModColor.Str("   %s"%DicoMSInfos[iMS]["Exception"]), file=log)
                 
 
         t.close()
         tf.close()
         self.DicoMSInfos = DicoMSInfos
-        self.FreqsAll    = np.array([DicoMSInfos[iMS]["ChanFreq"] for iMS in DicoMSInfos.keys() if DicoMSInfos[iMS]["Readable"]])
+        self.FreqsAll    = np.array([DicoMSInfos[iMS]["ChanFreq"] for iMS in list(DicoMSInfos.keys()) if DicoMSInfos[iMS]["Readable"]])
         self.Freq_minmax = np.min(self.FreqsAll), np.max(self.FreqsAll)
         self.NTimes      = self.times.size
         f0, f1           = self.Freq_minmax
@@ -342,10 +348,10 @@ class ClassDynSpecMS():
     def LoadNextMS(self):
         iMS=self.iCurrentMS
         if not self.DicoMSInfos[iMS]["Readable"]: 
-            print>>log, "Skipping [%i/%i]: %s"%(iMS+1, self.nMS, self.ListMSName[iMS])
+            print("Skipping [%i/%i]: %s"%(iMS+1, self.nMS, self.ListMSName[iMS]), file=log)
             self.iCurrentMS+=1
             return "NotRead"
-        print>>log, "Reading [%i/%i]: %s"%(iMS+1, self.nMS, self.ListMSName[iMS])
+        print("Reading [%i/%i]: %s"%(iMS+1, self.nMS, self.ListMSName[iMS]), file=log)
 
         MSName=self.ListMSName[self.iCurrentMS]
         
@@ -353,7 +359,7 @@ class ClassDynSpecMS():
         data   = t.getcol(self.ColName)
 
         if self.ModelName:
-            print>>log,"  Substracting %s from %s"%(self.ModelName,self.ColName)
+            print("  Substracting %s from %s"%(self.ModelName,self.ColName), file=log)
             data-=t.getcol(self.ModelName)
 
         flag   = t.getcol("FLAG")
@@ -411,7 +417,7 @@ class ClassDynSpecMS():
                             "JonesNormList":"AP"},
             "Cache":{"Dir":""}
             }
-        print>>log,"Reading Jones matrices solution file:"
+        print("Reading Jones matrices solution file:", file=log)
 
         ms=ClassMS.ClassMS(self.DicoMSInfos[self.iCurrentMS]["MSName"],GD=GD,DoReadData=False,)
         JonesMachine = ClassJones.ClassJones(GD, ms, CacheMode=False)
@@ -481,7 +487,7 @@ class ClassDynSpecMS():
     def StackAll(self):
         while self.iCurrentMS<self.nMS:
             if self.LoadNextMS()=="NotRead": continue
-            print>>log,"Making dynamic spectra..."
+            print("Making dynamic spectra...", file=log)
             for iTime in range(self.NTimes):
                 APP.runJob("Stack_SingleTime:%d"%(iTime), 
                            self.Stack_SingleTime,
@@ -495,7 +501,7 @@ class ClassDynSpecMS():
 
 
     def killWorkers(self):
-        print>>log, "Killing workers"
+        print("Killing workers", file=log)
         APP.terminate()
         APP.shutdown()
         Multiprocessing.cleanupShm()
@@ -546,7 +552,7 @@ class ClassDynSpecMS():
         chfreq_mean=np.mean(chfreq)
         # kk  = np.exp( -2.*np.pi*1j* f/const.c.value *(u0*l + v0*m + w0*(n-1)) ) # Phasing term
         #print iTime,iDir
-        kk  = np.exp( -2.*np.pi*1j* chfreq/const.c.value *(u0*l + v0*m + w0*(n-1)) ) # Phasing term
+        kk  = np.exp(-2.*np.pi*1j* chfreq/const.c.value *(u0*l + v0*m + w0*(n-1)) ) # Phasing term
 
         # #ind=np.where((A0s==0)&(A1s==10))[0]
         # ind=np.where((A0s!=1000))[0]
@@ -626,7 +632,7 @@ class ClassDynSpecMS():
 
 
     def NormJones(self, G):
-        print>>log, "  Normalising Jones matrices by the amplitude"
+        print("  Normalising Jones matrices by the amplitude", file=log)
         G[G != 0.] /= np.abs(G[G != 0.])
         return G
         

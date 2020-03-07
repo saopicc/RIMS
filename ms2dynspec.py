@@ -1,14 +1,12 @@
 #!/usr/bin/env python
 
+from __future__ import division
+from __future__ import absolute_import
+from past.builtins import cmp
 __author__ = "Cyril Tasse, and Alan Loh"
-#__copyright__ = "Copyright 2007, The Cogent Project"
 __credits__ = ["Cyril Tasse", "Alan Loh"]
-#__license__ = "GPL"
 from dynspecms_version import version
 __version__ = version()
-#__maintainer__ = "Rob Knight"
-#__email__ = "rob@spot.colorado.edu"
-#__status__ = "Production"
 SaveFile = "last_dynspec.obj"
 
 """
@@ -73,8 +71,8 @@ def angSep(ra1, dec1, ra2, dec2):
     """ Find the angular separation of two sources (ra# dec# in deg) in deg
         (Stolen from the LOFAR scripts), works --> compared with astropy (A. Loh)
     """
-    b = (np.pi / 2) - np.radians(dec1)
-    c = (np.pi / 2) - np.radians(dec2)
+    b = np.pi/2 - np.radians(dec1)
+    c = np.pi/2 - np.radians(dec2)
     temp = (np.cos(b) * np.cos(c)) + (np.sin(b) * np.sin(c) * np.cos(np.radians(ra1 - ra2)))
     if abs(temp) > 1.0:
         temp = 1.0 * cmp(temp, 0)
