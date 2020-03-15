@@ -124,7 +124,11 @@ class ClassSaveResults(object):
         prihdr.set('OBS-STOP', self.DynSpecMS.tStop, 'Observation end date')
         prihdr.set('RA_RAD', ra, 'Pixel right ascension')
         prihdr.set('DEC_RAD', dec, 'Pixel declination')
-        prihdr.set('NAME', self.DynSpecMS.PosArray.Name[iDir], 'Name of the source in the source list')
+        name=self.DynSpecMS.PosArray.Name[iDir]
+        if not isinstance(name,str):
+            # it must be a byte string, this must be Python 3, act accordingly
+            name=name.decode('utf-8')
+        prihdr.set('NAME', name, 'Name of the source in the source list')
         prihdr.set('ORIGIN', 'DynSpecMS '+version(),'Created by')
         
         if Weight:
@@ -412,7 +416,7 @@ class ClassSaveResults(object):
             pos_ra_pix, pos_dec_pix = wcs.wcs_world2pix(np.degrees(self.DynSpecMS.PosArray.ra[iDir]), np.degrees(self.DynSpecMS.PosArray.dec[iDir]), 1)
             nn=self.ImageVData.shape[-1]
             #boxv = int(box / np.abs(wcs.wcs.cdelt[0]) * np.abs(CDEL[0]))
-            boxv=int(abs((BoxArcSec/3600.),wcs.wcs.cdelt[0]))
+            boxv=int(abs((BoxArcSec/3600.)/wcs.wcs.cdelt[0]))
             def giveBounded(x):
                 x=np.max([0,x])
                 return np.min([x,nn-1])

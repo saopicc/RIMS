@@ -89,7 +89,6 @@ class ClassDynSpecMS(object):
             self.OutName    = self.BaseDirSpecs.split("_")[-1]
             self.InitFromSpecs()
 
-
     def InitFromSpecs(self):
         print("Initialising from precomputed spectra", file=log)
         ListTargetFits=glob.glob("%s/TARGET/*.fits"%self.BaseDirSpecs)#[0:1]
