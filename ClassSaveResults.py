@@ -465,7 +465,13 @@ class ClassSaveResults(object):
 
 
         #pylab.subplots_adjust(wspace=0.15, hspace=0.30)
-        pylab.figtext(x=0.5, y=0.92, s="Name: %s, Type: %s, RA: %s, Dec: %s"%(self.DynSpecMS.PosArray.Name[iDir].replace('_', ' '), self.DynSpecMS.PosArray.Type[iDir].replace('_', ' '), strRA, strDEC), fontsize=bigfont+2, horizontalalignment='center', verticalalignment='bottom')
+        name=self.DynSpecMS.PosArray.Name[iDir]
+        if not isinstance(name,str):
+            name=name.decode('utf-8')
+        typ=self.DynSpecMS.PosArray.Type[iDir]
+        if not isinstance(typ,str):
+            typ=typ.decode('utf-8')
+        pylab.figtext(x=0.5, y=0.92, s="Name: %s, Type: %s, RA: %s, Dec: %s"%(name.replace('_', ' '), typ.replace('_', ' '), strRA, strDEC), fontsize=bigfont+2, horizontalalignment='center', verticalalignment='bottom')
         #pylab.suptitle("Name: %s, Type: %s, RA: %s, Dec: %s"%(self.DynSpecMS.PosArray.Name[iDir], self.DynSpecMS.PosArray.Type[iDir], self.DynSpecMS.PosArray.ra[iDir], self.DynSpecMS.PosArray.dec[iDir]))
 
 
