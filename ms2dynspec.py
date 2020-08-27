@@ -91,7 +91,8 @@ def main(args=None, messages=[]):
 
     D = ClassDynSpecMS(ListMSName=MSList, 
                        ColName=args.data, ModelName=args.model, 
-                       SolsName=args.sols, 
+                       SolsName=args.sols,
+                       ColWeights=args.WeightCol,
                        UVRange=args.uv,
                        FileCoords=args.srclist,
                        Radius=args.rad,
@@ -127,6 +128,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--ms", type=str, help="Name of MS file / directory", required=False)
     parser.add_argument("--data", type=str, default="CORRECTED", help="Name of DATA column", required=False)
+    parser.add_argument("--WeightCol", type=str, default=None, help="Name of weights column to be taken into account", required=False)
     parser.add_argument("--model", type=str, help="Name of MODEL column",default="")#, required=True)
     parser.add_argument("--sols", type=str, help="Jones solutions",default="")
     parser.add_argument("--srclist", type=str, default="Transient_LOTTS.csv", help="List of targets --> 'source_name ra dec'")

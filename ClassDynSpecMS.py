@@ -6,8 +6,8 @@ from builtins import range
 from builtins import object
 from pyrap.tables import table
 import sys
-from DDFacet.Other import MyLogger
-log=MyLogger.getLogger("DynSpecMS")
+from DDFacet.Other import logger
+log=logger.getLogger("DynSpecMS")
 from DDFacet.Array import shared_dict
 from DDFacet.Other.AsyncProcessPool import APP, WorkerProcessError
 from DDFacet.Other import Multiprocessing
@@ -41,7 +41,10 @@ def AngDist(ra0,ra1,dec0,dec1):
 class ClassDynSpecMS(object):
     def __init__(self,
                  ListMSName=None,
-                 ColName="DATA", ModelName="PREDICT_KMS", UVRange=[1.,1000.], 
+                 ColName="DATA",
+                 ModelName="PREDICT_KMS",
+                 UVRange=[1.,1000.], 
+                 ColWeights=None, 
                  SolsName=None,
                  FileCoords="Transient_LOTTS.csv",
                  Radius=3.,
@@ -54,6 +57,7 @@ class ClassDynSpecMS(object):
 
         self.ColName    = ColName
         self.ModelName  = ModelName
+        self.ColWeights = ColWeights
         self.BeamNBand  = BeamNBand
         self.UVRange    = UVRange
         self.Mode="Spec"
@@ -183,15 +187,15 @@ class ClassDynSpecMS(object):
                     print("Downloading %s"%FileCoords, file=log)
                     print("   Executing: %s"%ssExec, file=log)
                     os.system(ssExec)
-            self.PosArray=np.genfromtxt(FileCoords,dtype=dtype,delimiter=",")[()]
-            
+            log.print("Reading cvs file: %s"%FileCoords)
+            #self.PosArray=np.genfromtxt(FileCoords,dtype=dtype,delimiter=",")[()]
+            self.PosArray=np.genfromtxt(FileCoords,dtype=dtype,delimiter=",")
             
         self.PosArray=self.PosArray.view(np.recarray)
         self.PosArray.ra*=np.pi/180.
         self.PosArray.dec*=np.pi/180.
-
         Radius=self.Radius
-        NOrig=self.PosArray.shape[0]
+        NOrig=self.PosArray.Name.shape[0]
         Dist=AngDist(self.ra0,self.PosArray.ra,self.dec0,self.PosArray.dec)
         ind=np.where(Dist<(Radius*np.pi/180))[0]
         self.PosArray=self.PosArray[ind]
@@ -295,6 +299,12 @@ class ClassDynSpecMS(object):
                 pBAR.render(iMS+1, self.nMS)
                 continue
 
+            if self.ColWeights not in t.colnames():
+                DicoMSInfos[iMS] = {"Readable": False,
+                                    "Exception": "Missing colname %s"%self.ColWeights}
+                pBAR.render(iMS+1, self.nMS)
+                continue
+
             
             if  self.ModelName and (self.ModelName not in t.colnames()):
                 DicoMSInfos[iMS] = {"Readable": False,
@@ -354,13 +364,19 @@ class ClassDynSpecMS(object):
 
         MSName=self.ListMSName[self.iCurrentMS]
         
-        t      = table(MSName, ack=False)
-        data   = t.getcol(self.ColName)
-
+        t         = table(MSName, ack=False)
+        data      = t.getcol(self.ColName)
         if self.ModelName:
             print("  Substracting %s from %s"%(self.ModelName,self.ColName), file=log)
             data-=t.getcol(self.ModelName)
-
+            
+        if self.ColWeights:
+            print("  Reading weight column %s"%(self.ColWeights), file=log)
+            weights   = t.getcol(self.ColWeights)
+        else:
+            nrow,nch,_=data.shape
+            weights=np.ones((nrow,nch),np.float32)
+        
         flag   = t.getcol("FLAG")
         times  = t.getcol("TIME")
         A0, A1 = t.getcol("ANTENNA1"), t.getcol("ANTENNA2")
@@ -381,6 +397,7 @@ class ClassDynSpecMS(object):
         w0 = w.reshape( (-1, 1, 1) )
         self.DicoDATA["iMS"]=self.iCurrentMS
         self.DicoDATA["data"]=data
+        self.DicoDATA["weights"]=weights
         self.DicoDATA["flag"]=flag
         self.DicoDATA["times"]=times
         self.DicoDATA["A0"]=A0
@@ -539,6 +556,8 @@ class ClassDynSpecMS(object):
         #indRow = np.where(self.DicoDATA["times"]>0)[0]
         f   = self.DicoDATA["flag"][indRow, :, :]
         d   = self.DicoDATA["data"][indRow, :, :]
+        nrow,nch,_=d.shape
+        weights   = (self.DicoDATA["weights"][indRow, :]).reshape((nrow,nch,1))
         A0s = self.DicoDATA["A0"][indRow]
         A1s = self.DicoDATA["A1"][indRow]
         u0  = self.DicoDATA["u"][indRow].reshape((-1,1,1))
@@ -622,8 +641,8 @@ class ClassDynSpecMS(object):
 
             
         #ds=np.sum(d*kk, axis=0) # without Jones
-        ds = np.sum(dcorr * kk, axis=0) # with Jones
-        ws = np.sum(1-f, axis=0)
+        ds = np.sum(dcorr * kk*weights, axis=0) # with Jones
+        ws = np.sum((1-f)*weights, axis=0)
 
         ich0 = int( (self.DicoMSInfos[iMS]["ChanFreq"][0] - f0)/self.ChanWidth )
         self.DicoGrids["GridLinPol"][iDir,ich0:ich0+nch, iTime, :] = ds

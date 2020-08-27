@@ -13,8 +13,8 @@ from astropy import constants as const
 import numpy as np
 import glob, os
 #import pylab
-from DDFacet.Other import MyLogger
-log=MyLogger.getLogger("ClassSaveResults")
+from DDFacet.Other import logger
+log=logger.getLogger("ClassSaveResults")
 from DDFacet.ToolsDir.rad2hmsdms import rad2hmsdms
 from matplotlib.backends.backend_pdf import PdfPages
 import matplotlib.pyplot as pylab
