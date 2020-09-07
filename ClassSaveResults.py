@@ -138,7 +138,7 @@ class ClassSaveResults(object):
 
         hdu = fits.PrimaryHDU(np.rollaxis(Gn, 2), header=prihdr)
 
-        hdu.writeto(fitsname, clobber=True)
+        hdu.writeto(fitsname, overwrite=True)
 
 
     def PlotSpec(self,Prefix=""):

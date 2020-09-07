@@ -295,20 +295,20 @@ class ClassDynSpecMS(object):
 
             if self.ColName not in t.colnames():
                 DicoMSInfos[iMS] = {"Readable": False,
-                                    "Exception": "Missing colname %s"%self.ColName}
+                                    "Exception": "Missing Data colname %s"%self.ColName}
                 pBAR.render(iMS+1, self.nMS)
                 continue
 
-            if self.ColWeights not in t.colnames():
+            if self.ColWeights and (self.ColWeights not in t.colnames()):
                 DicoMSInfos[iMS] = {"Readable": False,
-                                    "Exception": "Missing colname %s"%self.ColWeights}
+                                    "Exception": "Missing Weights colname %s"%self.ColWeights}
                 pBAR.render(iMS+1, self.nMS)
                 continue
 
             
             if  self.ModelName and (self.ModelName not in t.colnames()):
                 DicoMSInfos[iMS] = {"Readable": False,
-                                    "Exception": "Missing colname %s"%self.ModelName}
+                                    "Exception": "Missing Model colname %s"%self.ModelName}
                 pBAR.render(iMS+1, self.nMS)
                 continue
             
