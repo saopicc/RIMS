@@ -81,7 +81,9 @@ class ClassSaveResults(object):
         
     def GiveSubDir(self,Type):
         SubDir="OFF"
-        if Type!=b"Off": SubDir="TARGET"
+        if Type!=b"Off":
+            SubDir="TARGET"
+            
         return SubDir
 
     def WriteFitsThisDir(self,iDir,Weight=False):
@@ -151,8 +153,8 @@ class ClassSaveResults(object):
         pBAR.render(0, NPages)
         with PdfPages(pdfname) as pdf:
             for iDir in range(self.DynSpecMS.NDir):
-                self.fig = pylab.figure(1, figsize=(15, 15))
-                if self.DynSpecMS.PosArray.Type[iDir]=="Off": continue
+                self.fig = pylab.figure(1,figsize=(15, 15))
+                if self.DynSpecMS.PosArray.Type[iDir] == b"Off": continue
                 self.PlotSpecSingleDir(iDir)
                 pdf.savefig(bbox_inches='tight')
                 pylab.close()
@@ -170,7 +172,7 @@ class ClassSaveResults(object):
         with PdfPages(pdfname) as pdf:
             for iDir in range(self.DynSpecMS.NDir):
                 self.fig = pylab.figure(1, figsize=(15, 15))
-                if self.DynSpecMS.PosArray.Type[iDir]!="Off": continue
+                if self.DynSpecMS.PosArray.Type[iDir]!=b"Off": continue
                 self.PlotSpecSingleDir(iDir)
                 pdf.savefig(bbox_inches='tight')
                 pylab.close()
