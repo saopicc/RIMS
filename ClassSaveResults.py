@@ -81,7 +81,7 @@ class ClassSaveResults(object):
         
     def GiveSubDir(self,Type):
         SubDir="OFF"
-        if Type!="Off": SubDir="TARGET"
+        if Type!=b"Off": SubDir="TARGET"
         return SubDir
 
     def WriteFitsThisDir(self,iDir,Weight=False):
@@ -91,11 +91,11 @@ class ClassSaveResults(object):
         
         strRA=rad2hmsdms(ra,Type="ra").replace(" ",":")
         strDEC=rad2hmsdms(dec,Type="dec").replace(" ",":")
-
+        
         fitsname = "%s/%s/%s_%s_%s.fits"%(self.DIRNAME,self.GiveSubDir(self.DynSpecMS.PosArray.Type[iDir]),self.DynSpecMS.OutName, strRA, strDEC)
         if Weight:
             fitsname = "%s/%s.fits"%(self.DIRNAME,"Weights")
-            
+        print(iDir,self.DynSpecMS.PosArray.Type[iDir],fitsname)
 
         # Create the fits file
         prihdr  = fits.Header() 
