@@ -1,3 +1,8 @@
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from builtins import range
+from builtins import object
 from distutils.spawn import find_executable
 from astropy.time import Time
 from astropy import units as uni
@@ -8,8 +13,8 @@ from astropy import constants as const
 import numpy as np
 import glob, os
 #import pylab
-from DDFacet.Other import MyLogger
-log=MyLogger.getLogger("ClassSaveResults")
+from DDFacet.Other import logger
+log=logger.getLogger("ClassSaveResults")
 from DDFacet.ToolsDir.rad2hmsdms import rad2hmsdms
 from matplotlib.backends.backend_pdf import PdfPages
 import matplotlib.pyplot as pylab
@@ -20,7 +25,7 @@ from dynspecms_version import version
 def GiveMAD(X):
     return np.median(np.abs(X-np.median(X)))
 
-class ClassSaveResults():
+class ClassSaveResults(object):
     def __init__(self, DynSpecMS):
         self.DynSpecMS=DynSpecMS
         self.DIRNAME="DynSpecs_%s"%self.DynSpecMS.OutName
@@ -54,9 +59,9 @@ class ClassSaveResults():
         #os.system("mkdir -p %s/PNG"%self.DIRNAME)
 
     def tarDirectory(self):
-        print>>log,"Taring the result directory"
+        print("Taring the result directory", file=log)
         ss="tar -zcvf %s.tgz %s > /dev/null 2>&1"%(self.DIRNAME,self.DIRNAME)
-        print>>log,"  ... executing %s"%ss
+        print("  ... executing %s"%ss, file=log)
         os.system(ss)
 
 
@@ -71,12 +76,14 @@ class ClassSaveResults():
 
     def SaveCatalog(self):
         FileName = "%s/%s.npy"%(self.DIRNAME,"Catalog")
-        print>>log,"Saving flux catalogs in %s"%FileName
+        print("Saving flux catalogs in %s"%FileName, file=log)
         np.save(FileName,self.CatFlux)
         
     def GiveSubDir(self,Type):
         SubDir="OFF"
-        if Type!="Off": SubDir="TARGET"
+        if Type!=b"Off":
+            SubDir="TARGET"
+            
         return SubDir
 
     def WriteFitsThisDir(self,iDir,Weight=False):
@@ -86,11 +93,11 @@ class ClassSaveResults():
         
         strRA=rad2hmsdms(ra,Type="ra").replace(" ",":")
         strDEC=rad2hmsdms(dec,Type="dec").replace(" ",":")
-
+        
         fitsname = "%s/%s/%s_%s_%s.fits"%(self.DIRNAME,self.GiveSubDir(self.DynSpecMS.PosArray.Type[iDir]),self.DynSpecMS.OutName, strRA, strDEC)
         if Weight:
             fitsname = "%s/%s.fits"%(self.DIRNAME,"Weights")
-            
+        print(iDir,self.DynSpecMS.PosArray.Type[iDir],fitsname)
 
         # Create the fits file
         prihdr  = fits.Header() 
@@ -119,7 +126,11 @@ class ClassSaveResults():
         prihdr.set('OBS-STOP', self.DynSpecMS.tStop, 'Observation end date')
         prihdr.set('RA_RAD', ra, 'Pixel right ascension')
         prihdr.set('DEC_RAD', dec, 'Pixel declination')
-        prihdr.set('NAME', self.DynSpecMS.PosArray.Name[iDir], 'Name of the source in the source list')
+        name=self.DynSpecMS.PosArray.Name[iDir]
+        if not isinstance(name,str):
+            # it must be a byte string, this must be Python 3, act accordingly
+            name=name.decode('utf-8')
+        prihdr.set('NAME', name, 'Name of the source in the source list')
         prihdr.set('ORIGIN', 'DynSpecMS '+version(),'Created by')
         
         if Weight:
@@ -129,21 +140,21 @@ class ClassSaveResults():
 
         hdu = fits.PrimaryHDU(np.rollaxis(Gn, 2), header=prihdr)
 
-        hdu.writeto(fitsname, clobber=True)
+        hdu.writeto(fitsname, overwrite=True)
 
 
     def PlotSpec(self,Prefix=""):
         # Pdf file of target positions
         pdfname = "%s/%s_TARGET%s.pdf"%(self.DIRNAME,self.DynSpecMS.OutName,Prefix)
-        print>>log,"Making pdf overview: %s"%pdfname
+        print("Making pdf overview: %s"%pdfname, file=log)
         pBAR = ProgressBar(Title="Making pages")        
         NPages=self.DynSpecMS.NDirSelected #Selected
         iDone=0
         pBAR.render(0, NPages)
         with PdfPages(pdfname) as pdf:
             for iDir in range(self.DynSpecMS.NDir):
-                self.fig = pylab.figure(1, figsize=(15, 15))
-                if self.DynSpecMS.PosArray.Type[iDir]=="Off": continue
+                self.fig = pylab.figure(1,figsize=(15, 15))
+                if self.DynSpecMS.PosArray.Type[iDir] == b"Off": continue
                 self.PlotSpecSingleDir(iDir)
                 pdf.savefig(bbox_inches='tight')
                 pylab.close()
@@ -154,14 +165,14 @@ class ClassSaveResults():
         NPages=self.DynSpecMS.NDir-self.DynSpecMS.NDirSelected #Off pix
         if NPages==0: return
         pdfname = "%s/%s_OFF%s.pdf"%(self.DIRNAME,self.DynSpecMS.OutName,Prefix)
-        print>>log,"Making pdf overview: %s"%pdfname
+        print("Making pdf overview: %s"%pdfname, file=log)
         pBAR = ProgressBar(Title="Making pages")
         pBAR.render(0, NPages)
         iDone=0
         with PdfPages(pdfname) as pdf:
             for iDir in range(self.DynSpecMS.NDir):
                 self.fig = pylab.figure(1, figsize=(15, 15))
-                if self.DynSpecMS.PosArray.Type[iDir]!="Off": continue
+                if self.DynSpecMS.PosArray.Type[iDir]!=b"Off": continue
                 self.PlotSpecSingleDir(iDir)
                 pdf.savefig(bbox_inches='tight')
                 pylab.close()
@@ -456,7 +467,13 @@ class ClassSaveResults():
 
 
         #pylab.subplots_adjust(wspace=0.15, hspace=0.30)
-        pylab.figtext(x=0.5, y=0.92, s="Name: %s, Type: %s, RA: %s, Dec: %s"%(self.DynSpecMS.PosArray.Name[iDir].replace('_', ' '), self.DynSpecMS.PosArray.Type[iDir].replace('_', ' '), strRA, strDEC), fontsize=bigfont+2, horizontalalignment='center', verticalalignment='bottom')
+        name=self.DynSpecMS.PosArray.Name[iDir]
+        if not isinstance(name,str):
+            name=name.decode('utf-8')
+        typ=self.DynSpecMS.PosArray.Type[iDir]
+        if not isinstance(typ,str):
+            typ=typ.decode('utf-8')
+        pylab.figtext(x=0.5, y=0.92, s="Name: %s, Type: %s, RA: %s, Dec: %s"%(name.replace('_', ' '), typ.replace('_', ' '), strRA, strDEC), fontsize=bigfont+2, horizontalalignment='center', verticalalignment='bottom')
         #pylab.suptitle("Name: %s, Type: %s, RA: %s, Dec: %s"%(self.DynSpecMS.PosArray.Name[iDir], self.DynSpecMS.PosArray.Type[iDir], self.DynSpecMS.PosArray.ra[iDir], self.DynSpecMS.PosArray.dec[iDir]))
 
 

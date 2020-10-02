@@ -1,14 +1,12 @@
 #!/usr/bin/env python
 
+from __future__ import division
+from __future__ import absolute_import
+from past.builtins import cmp
 __author__ = "Cyril Tasse, and Alan Loh"
-#__copyright__ = "Copyright 2007, The Cogent Project"
 __credits__ = ["Cyril Tasse", "Alan Loh"]
-#__license__ = "GPL"
 from dynspecms_version import version
 __version__ = version()
-#__maintainer__ = "Rob Knight"
-#__email__ = "rob@spot.colorado.edu"
-#__status__ = "Production"
 SaveFile = "last_dynspec.obj"
 
 """
@@ -73,8 +71,8 @@ def angSep(ra1, dec1, ra2, dec2):
     """ Find the angular separation of two sources (ra# dec# in deg) in deg
         (Stolen from the LOFAR scripts), works --> compared with astropy (A. Loh)
     """
-    b = (np.pi / 2) - np.radians(dec1)
-    c = (np.pi / 2) - np.radians(dec2)
+    b = np.pi/2 - np.radians(dec1)
+    c = np.pi/2 - np.radians(dec2)
     temp = (np.cos(b) * np.cos(c)) + (np.sin(b) * np.sin(c) * np.cos(np.radians(ra1 - ra2)))
     if abs(temp) > 1.0:
         temp = 1.0 * cmp(temp, 0)
@@ -93,7 +91,8 @@ def main(args=None, messages=[]):
 
     D = ClassDynSpecMS(ListMSName=MSList, 
                        ColName=args.data, ModelName=args.model, 
-                       SolsName=args.sols, 
+                       SolsName=args.sols,
+                       ColWeights=args.WeightCol,
                        UVRange=args.uv,
                        FileCoords=args.srclist,
                        Radius=args.rad,
@@ -129,6 +128,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--ms", type=str, help="Name of MS file / directory", required=False)
     parser.add_argument("--data", type=str, default="CORRECTED", help="Name of DATA column", required=False)
+    parser.add_argument("--WeightCol", type=str, default=None, help="Name of weights column to be taken into account", required=False)
     parser.add_argument("--model", type=str, help="Name of MODEL column",default="")#, required=True)
     parser.add_argument("--sols", type=str, help="Jones solutions",default="")
     parser.add_argument("--srclist", type=str, default="Transient_LOTTS.csv", help="List of targets --> 'source_name ra dec'")
