@@ -43,7 +43,7 @@ class ClassSaveResults(object):
         if self.ImageV and os.path.isfile(self.ImageV):
             self.imV=image(self.DynSpecMS.ImageV)
             self.ImageVData=self.imV.getdata()[0,1]
-        else:
+        elif self.ImageI is not None:
             self.ImageVData=self.ImageIData.copy()
             self.imV=self.imI
             self.ImageVData=np.random.randn(*self.ImageVData.shape)
@@ -220,7 +220,10 @@ class ClassSaveResults(object):
         freqs = np.linspace(self.DynSpecMS.fMin,self.DynSpecMS.fMax,num=self.DynSpecMS.GOut[0, :, :, 0].shape[0], endpoint=True)*1e-6
         image  = self.DynSpecMS.ImageI
 
-        if (image is None) | (not os.path.isfile(image)):
+        CondImage=False
+        if image is not None:
+            CondImage=os.path.isfile(image)
+        if (image is None) | (not CondImage):
             # Just plot a series of dynamic spectra
             for ipol in range(4):
                 # Gn = self.DynSpecMS.GOut[iDir,:, :, ipol].T.real
