@@ -151,7 +151,7 @@ class ClassDynSpecMS(object):
                     continue
                 self.PosArray.Type[iDir]=PosArrayTarget.Type[iS]
                 self.PosArray.Name[iDir]=PosArrayTarget.Name[iS]
-            
+                
     def InitFromCatalog(self):
 
         FileCoords=self.FileCoords
