@@ -240,7 +240,7 @@ class ClassDynSpecMS(object):
 
 
         APP.registerJobHandlers(self)
-        AsyncProcessPool.init(ncpu=self.NCPU,affinity=0)
+        AsyncProcessPool.init(ncpu=self.NCPU,affinity="disable")
         APP.startWorkers()
 
 
