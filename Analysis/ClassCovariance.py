@@ -7,7 +7,7 @@ import scipy.stats
 import DynSpecMS.Analysis.GeneDist
 import glob
 import _pickle as cPickle
-from surveys_db import SurveysDB
+#from surveys_db import SurveysDB
 import copy
 import os
 
@@ -64,25 +64,29 @@ class ClassDist():
 
 
 def runAllDir():
+    
     with SurveysDB() as sdb:
         sdb.cur.execute('UNLOCK TABLES')
         sdb.cur.execute('select * from spectra')
         result=sdb.cur.fetchall()
-
     DB={}
     for t in result:
         F=t["filename"].split("/")[-1]
         DB[F]=t
 
-    L=glob.glob("/data/cyril.tasse/DataDynSpec_May21/*/DynSpecs_*")
     
+    L=glob.glob("/data/cyril.tasse/DataDynSpec_May21/*/DynSpecs_*")
     #L=["/data/cyril.tasse/DataDynSpec_May21/P156+42/DynSpecs_L352758"]
-    #L=["/data/cyril.tasse/DataDynSpec_May21/P005+01/DynSpecs_L789888"]
+    
+    # L=["/data/cyril.tasse/TestDynSpecMS/DynSpecs_1608538564"]
+    # DB={"1608538564_20:09:36.800_-20:26:46.000.fits":{"filename":"/data/cyril.tasse/TestDynSpecMS/DynSpecs_1608538564/TARGET/1608538564_20:09:36.800_-20:26:46.000.fits","type":"Oleg"}}
+
+
     
     DBOut=[]
 
     for iDir,BaseDir in enumerate(L):
-        if iDir<692: continue
+        #if iDir<692: continue
         print("========================== [%i / %i]"%(iDir,len(L)))
         print(BaseDir)
         CRD=ClassRunDir(BaseDir=BaseDir,DB=DB,pol=3)
@@ -93,12 +97,17 @@ def runAllDir():
         
         CRD=ClassRunDir(BaseDir=BaseDir,DB=DB,pol=0)
         L0=CRD.runDir()
+        
+        # CRD=ClassRunDir(BaseDir=BaseDir,DB=DB,pol=1)
+        # L0=CRD.runDir()
+        # CRD=ClassRunDir(BaseDir=BaseDir,DB=DB,pol=2)
+        # L0=CRD.runDir()
 
         for it in range(len(L3)):
-            tDB=copy.deepcopy(DB[F])
-            
             t=L3[it]
             F=t["File"]
+            tDB=copy.deepcopy(DB[F])
+            
             tDB["R3"]=t["R"]
             
             t=L0[it]
@@ -116,7 +125,7 @@ class ClassRunDir():
         self.SaveDir="/data/cyril.tasse/VE_Py3_nancep6/TestAnalysis/PNG"
         self.DB=DB
         self.pol=pol
-        self.GaussPar=(10.,30.,0.)
+        self.GaussPar=(10.,5.,0.)
 
         self.WeightFile=Weight="%s/Weights.fits"%BaseDir
         W=fits.open(Weight)[0]
@@ -214,7 +223,7 @@ class ClassRunDir():
                             "R":R})
             
             #print(DicoDyn[i]["CD"].File.split("/")[-1],R)
-            if R<0.1: continue
+            #if R<0.01: continue
             pylab.clf()
             pylab.subplot(1,3,1)
             imShow(DicoDyn[i]["CD"].I)
