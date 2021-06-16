@@ -7,7 +7,7 @@ import scipy.stats
 import DynSpecMS.Analysis.GeneDist
 import glob
 import _pickle as cPickle
-from surveys_db import SurveysDB
+#from surveys_db import SurveysDB
 import copy
 import os
 from . import ClassPlotImage
@@ -38,20 +38,24 @@ def doRunDir(BaseDirDB):
     L3=CRD.runDir()
 
 def runAllDir():
+    
     with SurveysDB() as sdb:
         sdb.cur.execute('UNLOCK TABLES')
         sdb.cur.execute('select * from spectra')
         result=sdb.cur.fetchall()
-
     DB={}
     for t in result:
         F=t["filename"].split("/")[-1]
         DB[F]=t
 
-    L=glob.glob("/data/cyril.tasse/DataDynSpec_May21/*/DynSpecs_*")
     
+    L=glob.glob("/data/cyril.tasse/DataDynSpec_May21/*/DynSpecs_*")
     #L=["/data/cyril.tasse/DataDynSpec_May21/P156+42/DynSpecs_L352758"]
-    #L=["/data/cyril.tasse/DataDynSpec_May21/P005+01/DynSpecs_L789888"]
+    
+    # L=["/data/cyril.tasse/TestDynSpecMS/DynSpecs_1608538564"]
+    # DB={"1608538564_20:09:36.800_-20:26:46.000.fits":{"filename":"/data/cyril.tasse/TestDynSpecMS/DynSpecs_1608538564/TARGET/1608538564_20:09:36.800_-20:26:46.000.fits","type":"Oleg"}}
+
+
     
     DBOut=[]
 
@@ -83,14 +87,19 @@ def runAllDir():
             print("!!!!! does not have Offs")
             continue
         
-        # CRD=ClassRunDir(BaseDir=BaseDir,DB=DB,pol=0)
+        CRD=ClassRunDir(BaseDir=BaseDir,DB=DB,pol=0)
+        L0=CRD.runDir()
+        
+        # CRD=ClassRunDir(BaseDir=BaseDir,DB=DB,pol=1)
+        # L0=CRD.runDir()
+        # CRD=ClassRunDir(BaseDir=BaseDir,DB=DB,pol=2)
         # L0=CRD.runDir()
 
         for it in range(len(L3)):
-            tDB=copy.deepcopy(DB[F])
-            
             t=L3[it]
             F=t["File"]
+            tDB=copy.deepcopy(DB[F])
+            
             tDB["R3"]=t["R"]
             
             # t=L0[it]
@@ -190,6 +199,7 @@ class ClassRunDir():
         self.SaveDir="/data/cyril.tasse/VE_Py3_nancep6/TestAnalysis/PNG5"
         self.DB=DB
         self.pol=pol
+        self.GaussPar=(10.,5.,0.)
         self.GaussPar=(20.,60.,0.)
 
         self.WeightFile=Weight="%s/Weights.fits"%BaseDir
@@ -327,6 +337,7 @@ class ClassRunDir():
             #imShow(DicoDyn[i]["CD"].Mask)
             
             ax = fig.add_subplot(gs[2,0])
+
             for j in range(CumulOff.shape[0]):
                 pylab.plot(x,CumulOff[j],color="gray")
             pylab.plot(x,CumulTarget[i],color="black")
