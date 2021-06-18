@@ -15,6 +15,7 @@ from DDFacet.Other import ModColor
 from DDFacet.Other.progressbar import ProgressBar
 import numpy as np
 from astropy.time import Time
+from DDFacet.Other import ClassTimeIt
 from astropy import constants as const
 import os
 from killMS.Other import reformat
@@ -244,7 +245,8 @@ class ClassDynSpecMS(object):
 
 
         APP.registerJobHandlers(self)
-        AsyncProcessPool.init(ncpu=self.NCPU,affinity="disable")
+        AsyncProcessPool.init(ncpu=self.NCPU,
+                              affinity="disable")
         APP.startWorkers()
 
 
@@ -612,120 +614,179 @@ class ClassDynSpecMS(object):
         self.GOut = GOut
 
     def Stack_SingleTime(self,iTime):
-        for iDir in range(self.NDir):
-            self.Stack_SingleTimeDir(iTime,iDir)
-        
-    def Stack_SingleTimeDir(self,iTime,iDir):
-        ra=self.PosArray.ra[iDir]
-        dec=self.PosArray.dec[iDir]
-
-        l, m = self.radec2lm(ra, dec)
-        n  = np.sqrt(1. - l**2. - m**2.)
         self.DicoDATA.reload()
         self.DicoGrids.reload()
+        # for iDir in range(self.NDir):
+        #     self.Stack_SingleTimeDir(iTime,iDir)
+        
+        self.Stack_SingleTimeDir(iTime)
+        
+    def Stack_SingleTimeDir(self,iTime):
 
         
         indRow = np.where(self.DicoDATA["times"]==self.times[iTime])[0]
         if indRow.size==0: return
+
+        nrow,nch,npol=self.DicoDATA["data"].shape
+        indCh=np.int64(np.arange(nch)).reshape((1,nch,1))
+        indPol=np.int64(np.arange(npol)).reshape((1,1,npol))
+        indR=indRow.reshape((indRow.size,1,1))
+        nRowOut=indRow.size
+        indArr=nch*npol*np.int64(indR)+npol*np.int64(indCh)+np.int64(indPol)
         
         #indRow = np.where(self.DicoDATA["times"]>0)[0]
-        f   = self.DicoDATA["flag"][indRow, :, :]
-        d   = self.DicoDATA["data"][indRow, :, :]
+        #f   = self.DicoDATA["flag"][indRow, :, :]
+        #d   = self.DicoDATA["data"][indRow, :, :]
+
+        T=ClassTimeIt.ClassTimeIt()
+        T.disable()
+        d   = np.array((self.DicoDATA["data"].flat[indArr.flat[:]]).reshape((nRowOut,nch,npol))).copy()
+        f   = np.array((self.DicoDATA["flag"].flat[indArr.flat[:]]).reshape((nRowOut,nch,npol))).copy()
+        T.timeit("first")
+        
+        # for i in range(10):
+        #     d   = (self.DicoDATA["data"].flat[indArr.flat[:]]).reshape((nRowOut,nch,npol)).copy()
+        #     f   = (self.DicoDATA["flag"].flat[indArr.flat[:]]).reshape((nRowOut,nch,npol)).copy()
+        #     T.timeit("first %i"%i)
+        
         nrow,nch,_=d.shape
-        weights   = (self.DicoDATA["weights"][indRow, :]).reshape((nrow,nch,1))
-        A0s = self.DicoDATA["A0"][indRow]
-        A1s = self.DicoDATA["A1"][indRow]
-        u0  = self.DicoDATA["u"][indRow].reshape((-1,1,1))
-        v0  = self.DicoDATA["v"][indRow].reshape((-1,1,1))
-        w0  = self.DicoDATA["w"][indRow].reshape((-1,1,1))
+        #weights   = (self.DicoDATA["weights"][indRow, :]).reshape((nrow,nch,1))
+        
+        indArr=nch*np.int64(indR)+np.int64(indCh)
+        weights   = np.array((self.DicoDATA["weights"].flat[indArr.flat[:]]).reshape((nRowOut,nch,1))).copy()
+        
+        A0s = self.DicoDATA["A0"][indRow].copy()
+        A1s = self.DicoDATA["A1"][indRow].copy()
+        u0  = self.DicoDATA["u"][indRow].reshape((-1,1,1)).copy()
+        v0  = self.DicoDATA["v"][indRow].reshape((-1,1,1)).copy()
+        w0  = self.DicoDATA["w"][indRow].reshape((-1,1,1)).copy()
         iMS  = self.DicoDATA["iMS"]
+        T.timeit("second")
 
 
-        chfreq=self.DicoMSInfos[iMS]["ChanFreq"].reshape((1,-1,1))
+        chfreq=np.array(self.DicoMSInfos[iMS]["ChanFreq"].reshape((1,-1,1))).copy()
         chfreq_mean=np.mean(chfreq)
         # kk  = np.exp( -2.*np.pi*1j* f/const.c.value *(u0*l + v0*m + w0*(n-1)) ) # Phasing term
         #print iTime,iDir
-        kk  = np.exp(-2.*np.pi*1j* chfreq/const.c.value *(u0*l + v0*m + w0*(n-1)) ) # Phasing term
-
-        # #ind=np.where((A0s==0)&(A1s==10))[0]
-        # ind=np.where((A0s!=1000))[0]
-        # import pylab
-        # pylab.ion()
-        # pylab.clf()
-        # pylab.plot(np.angle(d[ind,2,0]))
-        # pylab.plot(np.angle(kk[ind,2,0].conj()))
-        # pylab.draw()
-        # pylab.show(False)
-        # pylab.pause(0.1)
-
+        ChanFreqs=np.array(self.DicoMSInfos[iMS]["ChanFreq"][0]).copy()
         
-        f0, _ = self.Freq_minmax
-        
-        DicoMSInfos      = self.DicoMSInfos
-
-        _,nch,_=self.DicoDATA["data"].shape
-
-        dcorr=d
-        if self.DoJonesCorr_kMS:
-            self.DicoJones_kMS.reload()
-            tm = self.DicoJones_kMS['tm']
-            # Time slot for the solution
-            iTJones=np.argmin(np.abs(tm-self.times[iTime]))
-            iDJones=np.argmin(AngDist(ra,self.DicoJones_kMS['ra'],dec,self.DicoJones_kMS['dec']))
-            _,nchJones,_,_,_,_=self.DicoJones_kMS['G'].shape
-            for iFJones in range(nchJones):
-                nu0,nu1=self.DicoJones_kMS['FreqDomains'][iFJones]
-                fData=self.DicoMSInfos[iMS]["ChanFreq"].ravel()
-                indCh=np.where((fData>=nu0) & (fData<nu1))[0]
-                #iFJones=np.argmin(np.abs(chfreq_mean-self.DicoJones_kMS['FreqDomains_mean']))
-                # construct corrected visibilities
-                J0 = self.DicoJones_kMS['G'][iTJones, iFJones, A0s, iDJones, 0, 0]
-                J1 = self.DicoJones_kMS['G'][iTJones, iFJones, A1s, iDJones, 0, 0]
-                J0 = J0.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
-                J1 = J1.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
-                #dcorr[:,indCh,:] = J0.conj() * dcorr[:,indCh,:] * J1
-                dcorr[:,indCh,:] = 1./J0 * dcorr[:,indCh,:] * 1./J1.conj()
-            # iFJones=np.argmin(np.abs(chfreq_mean-self.DicoJones_kMS['FreqDomains_mean']))
-            # # construct corrected visibilities
-            # J0 = self.DicoJones_kMS['G'][iTJones, iFJones, A0s, iDJones, 0, 0]
-            # J1 = self.DicoJones_kMS['G'][iTJones, iFJones, A1s, iDJones, 0, 0]
-            # J0 = J0.reshape((-1, 1, 1))*np.ones((1, nch, 1))
-            # J1 = J1.reshape((-1, 1, 1))*np.ones((1, nch, 1))
-            # dcorr = J0.conj() * dcorr * J1
-
-        if self.DoJonesCorr_Beam:
-            self.DicoJones_Beam.reload()
-            tm = self.DicoJones_Beam['tm']
-            # Time slot for the solution
-            iTJones=np.argmin(np.abs(tm-self.times[iTime]))
-            iDJones=np.argmin(AngDist(ra,self.DicoJones_Beam['ra'],dec,self.DicoJones_Beam['dec']))
-            _,nchJones,_,_,_,_=self.DicoJones_Beam['G'].shape
-            for iFJones in range(nchJones):
-                nu0,nu1=self.DicoJones_Beam['FreqDomains'][iFJones]
-                fData=self.DicoMSInfos[iMS]["ChanFreq"].ravel()
-                indCh=np.where((fData>=nu0) & (fData<nu1))[0]
-                #iFJones=np.argmin(np.abs(chfreq_mean-self.DicoJones_Beam['FreqDomains_mean']))
-                # construct corrected visibilities
-                J0 = self.DicoJones_Beam['G'][iTJones, iFJones, A0s, iDJones, 0, 0]
-                J1 = self.DicoJones_Beam['G'][iTJones, iFJones, A1s, iDJones, 0, 0]
-                J0 = J0.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
-                J1 = J1.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
-                #dcorr[:,indCh,:] = J0.conj() * dcorr[:,indCh,:] * J1
-                dcorr[:,indCh,:] = 1./J0 * dcorr[:,indCh,:] * 1./J1.conj()
-                
-
-            
-        #ds=np.sum(d*kk, axis=0) # without Jones
-        ds = np.sum(dcorr * kk*weights, axis=0) # with Jones
-        ws = np.sum((1-f)*weights, axis=0)
-
-        ich0 = int( (self.DicoMSInfos[iMS]["ChanFreq"][0] - f0)/self.ChanWidth )
-
         iTimeGrid=np.argmin(np.abs(self.timesGrid-self.times[iTime]))
-        #print(iTimeGrid,iTime)
+        
+        dcorr=d.copy()
+        f0, _ = self.Freq_minmax
+        ich0 = int( (ChanFreqs - f0)/self.ChanWidth )
+        OneMinusF=(1-f).copy()
+        
+        W=np.zeros((nRowOut,nch,npol),d.dtype)
+        for ipol in range(npol):
+            W[:,:,ipol]=weights[:,:,0]
+            
+        ws = np.sum(OneMinusF*weights, axis=0)
+            
+        # weights=weights*np.ones((1,1,npol))
+        # W=weights
 
-        self.DicoGrids["GridLinPol"][iDir,ich0:ich0+nch, iTimeGrid, :] = ds
-        self.DicoGrids["GridWeight"][iDir,ich0:ich0+nch, iTimeGrid, :] = ws
+        
+        kk=np.zeros_like(d)
+        for iDir in range(self.NDir):
+            ra=self.PosArray.ra[iDir]
+            dec=self.PosArray.dec[iDir]
+            l, m = self.radec2lm(ra, dec)
+            n  = np.sqrt(1. - l**2. - m**2.)
+
+        
+            kkk  = np.exp(-2.*np.pi*1j* chfreq/const.c.value *(u0*l + v0*m + w0*(n-1)) ) # Phasing term
+            for ipol in range(npol):
+                kk[:,:,ipol]=kkk[:,:,0]
+            # #ind=np.where((A0s==0)&(A1s==10))[0]
+            # ind=np.where((A0s!=1000))[0]
+            # import pylab
+            # pylab.ion()
+            # pylab.clf()
+            # pylab.plot(np.angle(d[ind,2,0]))
+            # pylab.plot(np.angle(kk[ind,2,0].conj()))
+            # pylab.draw()
+            # pylab.show(False)
+            # pylab.pause(0.1)
+    
+            
+            
+            #DicoMSInfos      = self.DicoMSInfos
+    
+            #_,nch,_=self.DicoDATA["data"].shape
+    
+            dcorr[:]=d[:]
+            #kk=kk*np.ones((1,1,npol))
+            
+            
+            if self.DoJonesCorr_kMS:
+                self.DicoJones_kMS.reload()
+                tm = self.DicoJones_kMS['tm']
+                # Time slot for the solution
+                iTJones=np.argmin(np.abs(tm-self.times[iTime]))
+                iDJones=np.argmin(AngDist(ra,self.DicoJones_kMS['ra'],dec,self.DicoJones_kMS['dec']))
+                _,nchJones,_,_,_,_=self.DicoJones_kMS['G'].shape
+                for iFJones in range(nchJones):
+                    nu0,nu1=self.DicoJones_kMS['FreqDomains'][iFJones]
+                    fData=self.DicoMSInfos[iMS]["ChanFreq"].ravel()
+                    indCh=np.where((fData>=nu0) & (fData<nu1))[0]
+                    #iFJones=np.argmin(np.abs(chfreq_mean-self.DicoJones_kMS['FreqDomains_mean']))
+                    # construct corrected visibilities
+                    J0 = self.DicoJones_kMS['G'][iTJones, iFJones, A0s, iDJones, 0, 0]
+                    J1 = self.DicoJones_kMS['G'][iTJones, iFJones, A1s, iDJones, 0, 0]
+                    J0 = J0.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
+                    J1 = J1.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
+                    #dcorr[:,indCh,:] = J0.conj() * dcorr[:,indCh,:] * J1
+                    dcorr[:,indCh,:] = 1./J0 * dcorr[:,indCh,:] * 1./J1.conj()
+                # iFJones=np.argmin(np.abs(chfreq_mean-self.DicoJones_kMS['FreqDomains_mean']))
+                # # construct corrected visibilities
+                # J0 = self.DicoJones_kMS['G'][iTJones, iFJones, A0s, iDJones, 0, 0]
+                # J1 = self.DicoJones_kMS['G'][iTJones, iFJones, A1s, iDJones, 0, 0]
+                # J0 = J0.reshape((-1, 1, 1))*np.ones((1, nch, 1))
+                # J1 = J1.reshape((-1, 1, 1))*np.ones((1, nch, 1))
+                # dcorr = J0.conj() * dcorr * J1
+    
+            if self.DoJonesCorr_Beam:
+                self.DicoJones_Beam.reload()
+                tm = self.DicoJones_Beam['tm']
+                # Time slot for the solution
+                iTJones=np.argmin(np.abs(tm-self.times[iTime]))
+                iDJones=np.argmin(AngDist(ra,self.DicoJones_Beam['ra'],dec,self.DicoJones_Beam['dec']))
+                _,nchJones,_,_,_,_=self.DicoJones_Beam['G'].shape
+                for iFJones in range(nchJones):
+                    nu0,nu1=self.DicoJones_Beam['FreqDomains'][iFJones]
+                    fData=self.DicoMSInfos[iMS]["ChanFreq"].ravel()
+                    indCh=np.where((fData>=nu0) & (fData<nu1))[0]
+                    #iFJones=np.argmin(np.abs(chfreq_mean-self.DicoJones_Beam['FreqDomains_mean']))
+                    # construct corrected visibilities
+                    J0 = self.DicoJones_Beam['G'][iTJones, iFJones, A0s, iDJones, 0, 0]
+                    J1 = self.DicoJones_Beam['G'][iTJones, iFJones, A1s, iDJones, 0, 0]
+                    J0 = J0.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
+                    J1 = J1.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
+                    #dcorr[:,indCh,:] = J0.conj() * dcorr[:,indCh,:] * J1
+                    dcorr[:,indCh,:] = 1./J0 * dcorr[:,indCh,:] * 1./J1.conj()
+                    
+    
+                
+            #ds=np.sum(d*kk, axis=0) # without Jones
+            
+            #ds = np.sum(dcorr * kk*weights, axis=0) # with Jones
+            #dcorr.flat[:]*=kk.flat[:]
+            #dcorr.flat[:]*=W.flat[:]
+            dcorr*=kk
+            #dcorr=dcorr*kk
+            dcorr*=W
+            ds = np.sum(dcorr, axis=0) # with Jones
+    
+    
+            
+            #print(iTimeGrid,iTime)
+    
+            self.DicoGrids["GridLinPol"][iDir,ich0:ich0+nch, iTimeGrid, :] = ds
+            self.DicoGrids["GridWeight"][iDir,ich0:ich0+nch, iTimeGrid, :] = np.float32(ws)
+            
+        T.timeit("rest")
+
 
 
     def NormJones(self, G):

@@ -44,8 +44,12 @@ def doRunDir(BaseDirDB):
     L3=CRD.runDir()
 
 def testBruce():
-    runAllDir(Patern="/home/ctasse/TestDynSpecMS/DynSpecs_1608538564",
-              SaveDir="/home/ctasse/TestDynSpecMS/PNG",
+    # runAllDir(Patern="/home/ctasse/TestDynSpecMS/DynSpecs_1608538564",
+    #           SaveDir="/home/ctasse/TestDynSpecMS/PNG",
+    #           UseLoTSSDB=False)
+    
+    runAllDir(Patern="/home/ctasse/TestDynSpecMS/DynSpecs_1622491578",
+              SaveDir="/home/ctasse/TestDynSpecMS/PNG_DEEP",
               UseLoTSSDB=False)
     
 def runAllDir(Patern="/data/cyril.tasse/DataDynSpec_May21/*/DynSpecs_*",SaveDir=None,UseLoTSSDB=False):
@@ -226,7 +230,7 @@ class ClassRunDir():
         self.SaveDir=SaveDir
         self.DB=DB
         self.pol=pol
-        self.GaussPar=(100.,15.,0.)
+        self.GaussPar=(50.,15.,0.)
         #self.GaussPar=(20.,60.,0.)
 
         self.WeightFile=Weight="%s/Weights.fits"%BaseDir
