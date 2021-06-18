@@ -42,6 +42,7 @@ class ClassDynSpecMS(object):
     def __init__(self,
                  ListMSName=None,
                  ColName="DATA",
+                 TChunkHours=0.,
                  ModelName="PREDICT_KMS",
                  UVRange=[1.,1000.], 
                  ColWeights=None, 
@@ -58,7 +59,7 @@ class ClassDynSpecMS(object):
         self.ColName    = ColName
         if ModelName=="None": ModelName=None
         self.ModelName  = ModelName
-        
+        self.TChunkHours=TChunkHours
         self.ColWeights = ColWeights
         self.BeamNBand  = BeamNBand
         self.UVRange    = UVRange
@@ -223,8 +224,9 @@ class ClassDynSpecMS(object):
 
         self.DicoDATA = shared_dict.create("DATA")
         self.DicoGrids = shared_dict.create("Grids")
-        self.DicoGrids["GridLinPol"] = np.zeros((self.NDir,self.NChan, self.NTimes, 4), np.complex128)
-        self.DicoGrids["GridWeight"] = np.zeros((self.NDir,self.NChan, self.NTimes, 4), np.complex128)
+
+        self.DicoGrids["GridLinPol"] = np.zeros((self.NDir,self.NChan, self.NTimesGrid, 4), np.complex128)
+        self.DicoGrids["GridWeight"] = np.zeros((self.NDir,self.NChan, self.NTimesGrid, 4), np.complex128)
 
 
         
@@ -273,7 +275,13 @@ class ClassDynSpecMS(object):
         tf0 = table("%s::SPECTRAL_WINDOW"%self.ListMSName[0], ack=False)
         self.ChanWidth = tf0.getcol("CHAN_WIDTH").ravel()[0]
         tf0.close()
+
         self.times = np.unique(t0.getcol("TIME"))
+        
+        dt=self.times[1:]-self.times[:-1]
+        if np.any(dt<0): stop
+
+        
         t0.close()
 
         tField = table("%s::FIELD"%MSName, ack=False)
@@ -317,12 +325,27 @@ class ClassDynSpecMS(object):
 
             tf = table("%s::SPECTRAL_WINDOW"%MSName, ack=False)
             ThisTimes = np.unique(t.getcol("TIME"))
+            dtBin_=np.unique(t.getcol("INTERVAL"))
+            if dtBin_.size>1: stop
+            dtBin = dtBin_.flat[0]
+            
+            
             if not np.allclose(ThisTimes, self.times):
                 raise ValueError("should have the same times")
+
+            self.NTimesGrid=int(np.ceil((self.times[-1]-self.times[0])/dtBin))
+            self.timesGrid=self.times[0]+np.arange(self.NTimesGrid)*dtBin
+
+            tp = table("%s::POLARIZATION"%MSName, ack=False)
+            npol=tp.getcol("NUM_CORR").flat[0]
+            tp.close()
+            
             DicoMSInfos[iMS] = {"MSName": MSName,
                             "ChanFreq":   tf.getcol("CHAN_FREQ").ravel(),  # Hz
                             "ChanWidth":  tf.getcol("CHAN_WIDTH").ravel(), # Hz
                             "times":      ThisTimes,
+                            "dtBin":      dtBin,
+                            "npol":       npol,
                             "startTime":  Time(ThisTimes[0]/(24*3600.), format='mjd', scale='utc').isot,
                             "stopTime":   Time(ThisTimes[-1]/(24*3600.), format='mjd', scale='utc').isot,
                             "deltaTime":  (ThisTimes[-1] - ThisTimes[0])/3600., # h
@@ -343,6 +366,13 @@ class ClassDynSpecMS(object):
         self.FreqsAll    = np.array([DicoMSInfos[iMS]["ChanFreq"] for iMS in list(DicoMSInfos.keys()) if DicoMSInfos[iMS]["Readable"]])
         self.Freq_minmax = np.min(self.FreqsAll), np.max(self.FreqsAll)
         self.NTimes      = self.times.size
+        dtArr=self.times[1:]-self.times[:-1]
+        if np.unique(dtArr).size>1:
+            log.print(ModColor.Str("Times are not regular"))
+        dt=np.median(dtArr)
+
+
+        
         f0, f1           = self.Freq_minmax
         self.NChan       = int((f1 - f0)/self.ChanWidth) + 1
 
@@ -356,8 +386,10 @@ class ClassDynSpecMS(object):
 
 
     
-    def LoadNextMS(self):
+    def LoadNextMS(self,T0,T1):
         iMS=self.iCurrentMS
+            
+            
         if not self.DicoMSInfos[iMS]["Readable"]: 
             print("Skipping [%i/%i]: %s"%(iMS+1, self.nMS, self.ListMSName[iMS]), file=log)
             self.iCurrentMS+=1
@@ -366,23 +398,45 @@ class ClassDynSpecMS(object):
 
         MSName=self.ListMSName[self.iCurrentMS]
         
-        t         = table(MSName, ack=False)
-        data      = t.getcol(self.ColName)
+        t = table(MSName, ack=False)
+
+        times  = t.getcol("TIME")
+        t0=self.times[0]
+        dT=self.times[-1]
+        ind=np.where((times>=(T0+t0))&(times<(T1+t0)))[0]
+        ROW0=ind[0]
+        NROW=ind.size
+
+        if ROW0!=0 or NROW!=t.nrows():
+            print("   reading chunk in %.3f -> %.3f h"%(T0/3600,T1/3600), file=log)
+        
+        nch  = self.DicoMSInfos[iMS]["ChanFreq"].size
+        npol  = self.DicoMSInfos[iMS]["npol"]
+        
+        data = np.zeros((NROW,nch,npol),np.complex64)
+        t.getcolnp(self.ColName,data,ROW0,NROW)
+
         if self.ModelName:
             print("  Substracting %s from %s"%(self.ModelName,self.ColName), file=log)
-            data-=t.getcol(self.ModelName)
+            model=np.zeros((NROW,nch,npol),np.complex64)
+            t.getcolnp(self.ModelName,model,ROW0,NROW)
+            data-=model
+            del(model)
             
         if self.ColWeights:
             print("  Reading weight column %s"%(self.ColWeights), file=log)
-            weights   = t.getcol(self.ColWeights)
+            weights=np.zeros((NROW,nch),np.float32)
+            t.getcolnp(self.ColWeights,weights,ROW0,NROW)
         else:
             nrow,nch,_=data.shape
             weights=np.ones((nrow,nch),np.float32)
-        
-        flag   = t.getcol("FLAG")
-        times  = t.getcol("TIME")
-        A0, A1 = t.getcol("ANTENNA1"), t.getcol("ANTENNA2")
-        u, v, w = t.getcol("UVW").T
+
+        flag=np.zeros((NROW,nch,npol),np.bool)
+        t.getcolnp("FLAG",flag,ROW0,NROW)
+        times  = t.getcol("TIME",ROW0,NROW)
+        A0, A1 = t.getcol("ANTENNA1",ROW0,NROW), t.getcol("ANTENNA2",ROW0,NROW)
+
+        u, v, w = t.getcol("UVW",ROW0,NROW).T
         t.close()
         d = np.sqrt(u**2 + v**2 + w**2)
         uv0, uv1         = np.array(self.UVRange) * 1000
@@ -391,7 +445,6 @@ class ClassDynSpecMS(object):
         data[flag] = 0 # put down to zeros flagged visibilities
 
         f0, f1           = self.Freq_minmax
-        nch  = self.DicoMSInfos[iMS]["ChanFreq"].size
 
         # Considering another position than the phase center
         u0 = u.reshape( (-1, 1, 1) )
@@ -412,7 +465,6 @@ class ClassDynSpecMS(object):
             
         if self.DoJonesCorr_kMS or self.DoJonesCorr_Beam:
             self.setJones()
-        self.iCurrentMS+=1
 
     def setJones(self):
         from DDFacet.Data import ClassJones
@@ -503,17 +555,34 @@ class ClassDynSpecMS(object):
     #     self.Finalise()
 
     def StackAll(self):
-        while self.iCurrentMS<self.nMS:
-            if self.LoadNextMS()=="NotRead": continue
-            print("Making dynamic spectra...", file=log)
-            for iTime in range(self.NTimes):
-                APP.runJob("Stack_SingleTime:%d"%(iTime), 
-                           self.Stack_SingleTime,
-                           args=(iTime,))#,serial=True)
-            APP.awaitJobResults("Stack_SingleTime:*", progress="Append MS %i"%self.DicoDATA["iMS"])
 
-            # for iTime in range(self.NTimes):
-            #     self.Stack_SingleTime(iTime)
+        if self.TChunkHours>0:
+            TChunk_s=self.TChunkHours*3600
+            TObs=self.times[-1]-self.times[0]
+            NChunks=int(np.ceil(TObs/TChunk_s))
+            T0s=np.arange(NChunks)*TChunk_s
+            T1s=np.arange(NChunks)*TChunk_s+TChunk_s
+        else:
+            T0s=np.array([0])
+            T1s=np.array([1e10])
+            
+        while self.iCurrentMS<self.nMS:
+            for iChunk in range(T0s.size):
+                T0,T1=T0s[iChunk],T1s[iChunk]
+                rep=self.LoadNextMS(T0,T1)
+                if rep=="NotRead": continue
+            
+                print("Making dynamic spectra...", file=log)
+                for iTime in range(self.NTimes):
+                    APP.runJob("Stack_SingleTime:%d"%(iTime), 
+                               self.Stack_SingleTime,
+                               args=(iTime,))#,serial=True)
+                APP.awaitJobResults("Stack_SingleTime:*", progress="Append MS %i"%self.DicoDATA["iMS"])
+                
+            self.iCurrentMS+=1
+
+                # for iTime in range(self.NTimes):
+                #     self.Stack_SingleTime(iTime)
        
         self.Finalise()
 
@@ -554,6 +623,8 @@ class ClassDynSpecMS(object):
         n  = np.sqrt(1. - l**2. - m**2.)
         self.DicoDATA.reload()
         self.DicoGrids.reload()
+
+        
         indRow = np.where(self.DicoDATA["times"]==self.times[iTime])[0]
         #indRow = np.where(self.DicoDATA["times"]>0)[0]
         f   = self.DicoDATA["flag"][indRow, :, :]
@@ -647,8 +718,11 @@ class ClassDynSpecMS(object):
         ws = np.sum((1-f)*weights, axis=0)
 
         ich0 = int( (self.DicoMSInfos[iMS]["ChanFreq"][0] - f0)/self.ChanWidth )
-        self.DicoGrids["GridLinPol"][iDir,ich0:ich0+nch, iTime, :] = ds
-        self.DicoGrids["GridWeight"][iDir,ich0:ich0+nch, iTime, :] = ws
+
+        iTimeGrid=np.argmin(np.abs(self.timesGrid-self.times[iTime]))
+
+        self.DicoGrids["GridLinPol"][iDir,ich0:ich0+nch, iTimeGrid, :] = ds
+        self.DicoGrids["GridWeight"][iDir,ich0:ich0+nch, iTimeGrid, :] = ws
 
 
     def NormJones(self, G):
