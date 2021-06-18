@@ -11,7 +11,7 @@ import _pickle as cPickle
 import copy
 import os
 from . import ClassPlotImage
-from skimage.restoration import (denoise_wavelet, estimate_sigma)
+#from skimage.restoration import (denoise_wavelet, estimate_sigma)
 from multiprocessing.pool import ThreadPool
 import subprocess
 from multiprocessing import Pool
@@ -23,8 +23,14 @@ def Save(fileout,Obj):
     cPickle.dump(Obj, open(fileout,'wb'), 2)
 
 def imShow(I,v=5,**kwargs):
-    RMS=scipy.stats.median_absolute_deviation(I[np.isnan(I)==False],axis=None)
-    pylab.imshow(I,interpolation="nearest",vmin=-v*RMS,vmax=v*RMS,aspect="auto",**kwargs)
+    if not "vmin" in kwargs.keys():
+        RMS=scipy.stats.median_absolute_deviation(I[np.isnan(I)==False],axis=None)
+        vmin=-v*RMS
+        vmax= v*RMS
+        kwargs["vmin"]=vmin
+        kwargs["vmax"]=vmax
+        
+    pylab.imshow(I,interpolation="nearest",aspect="auto",**kwargs)
 
 def Gaussian2D(x,y,GaussPar=(1.,1.,0)):
     d=np.sqrt(x**2+y**2)
@@ -37,23 +43,43 @@ def doRunDir(BaseDirDB):
     CRD=ClassRunDir(BaseDir=BaseDir,DB=DB,pol=3)
     L3=CRD.runDir()
 
-def runAllDir():
+def testBruce():
+    runAllDir(Patern="/home/ctasse/TestDynSpecMS/DynSpecs_1608538564",
+              SaveDir="/home/ctasse/TestDynSpecMS/PNG",
+              UseLoTSSDB=False)
     
-    with SurveysDB() as sdb:
-        sdb.cur.execute('UNLOCK TABLES')
-        sdb.cur.execute('select * from spectra')
-        result=sdb.cur.fetchall()
-    DB={}
-    for t in result:
-        F=t["filename"].split("/")[-1]
-        DB[F]=t
+def runAllDir(Patern="/data/cyril.tasse/DataDynSpec_May21/*/DynSpecs_*",SaveDir=None,UseLoTSSDB=False):
 
+    L=glob.glob(Patern)
     
-    L=glob.glob("/data/cyril.tasse/DataDynSpec_May21/*/DynSpecs_*")
+    if UseLoTSSDB:
+        with SurveysDB() as sdb:
+            sdb.cur.execute('UNLOCK TABLES')
+            sdb.cur.execute('select * from spectra')
+            result=sdb.cur.fetchall()
+        DB={}
+        
+        for t in result:
+            F=t["filename"].split("/")[-1]
+            DB[F]=t
+    else:
+        
+        #DB={"1608538564_20:09:36.800_-20:26:46.000.fits":{"filename":"/data/cyril.tasse/TestDynSpecMS/DynSpecs_1608538564/TARGET/1608538564_20:09:36.800_-20:26:46.000.fits","type":"Oleg"}}
+        DB={}
+        LTarget=[]
+        for DirName in L:
+            LTarget+=glob.glob("%s/TARGET/*.fits"%DirName)
+            
+        for f in LTarget:
+            F=f.split("/")[-1]
+            DB[F]={"filename":f,"type":"NoDB"}
+            
+    
+    
+    
+    
     #L=["/data/cyril.tasse/DataDynSpec_May21/P156+42/DynSpecs_L352758"]
     
-    # L=["/data/cyril.tasse/TestDynSpecMS/DynSpecs_1608538564"]
-    # DB={"1608538564_20:09:36.800_-20:26:46.000.fits":{"filename":"/data/cyril.tasse/TestDynSpecMS/DynSpecs_1608538564/TARGET/1608538564_20:09:36.800_-20:26:46.000.fits","type":"Oleg"}}
 
 
     
@@ -81,13 +107,13 @@ def runAllDir():
         
         print("========================== [%i / %i]"%(iDir,len(L)))
         print(BaseDir)
-        CRD=ClassRunDir(BaseDir=BaseDir,DB=DB,pol=3)
+        CRD=ClassRunDir(BaseDir=BaseDir,DB=DB,pol=3,SaveDir=SaveDir)
         L3=CRD.runDir()
         if L3 is None:
             print("!!!!! does not have Offs")
             continue
         
-        CRD=ClassRunDir(BaseDir=BaseDir,DB=DB,pol=0)
+        CRD=ClassRunDir(BaseDir=BaseDir,DB=DB,pol=0,SaveDir=SaveDir)
         L0=CRD.runDir()
         
         # CRD=ClassRunDir(BaseDir=BaseDir,DB=DB,pol=1)
@@ -194,13 +220,14 @@ class ClassDist():
     
 class ClassRunDir():
     def __init__(self,BaseDir="/data/cyril.tasse/DataDynSpec_May21/P156+42/DynSpecs_L352758",
+                 SaveDir="/data/cyril.tasse/VE_Py3_nancep6/TestAnalysis/PNG5",
                  DB=None,pol=3):
         self.BaseDir=BaseDir
-        self.SaveDir="/data/cyril.tasse/VE_Py3_nancep6/TestAnalysis/PNG5"
+        self.SaveDir=SaveDir
         self.DB=DB
         self.pol=pol
-        self.GaussPar=(10.,5.,0.)
-        self.GaussPar=(20.,60.,0.)
+        self.GaussPar=(100.,15.,0.)
+        #self.GaussPar=(20.,60.,0.)
 
         self.WeightFile=Weight="%s/Weights.fits"%BaseDir
         W=fits.open(Weight)[0]
@@ -304,7 +331,12 @@ class ClassRunDir():
         #print("Image",Image)
         if os.path.isfile(Image):
             CPI=ClassPlotImage.ClassPlotImage(Image)
-                
+
+        Offs=np.array([DicoDyn[i]["CD"].fI for i in range(len(DicoDyn)) if DicoDyn[i]["Type"]=="Off"])
+        MeanOff=0#np.mean(Offs,axis=0)
+        #Offs=np.array([DicoDyn[i]["CD"].fI for i in range(len(DicoDyn)) if DicoDyn[i]["Type"]=="Off"])
+        StdOff=np.std(Offs,axis=0)
+        
         for i in range(CumulTarget.shape[0]):
             R=np.sum((CumulTarget[i]-mCumulOff)**2)/x.size/Std
             FileName=DicoDyn[i]["CD"].File.split("/")[-1]
@@ -316,7 +348,7 @@ class ClassRunDir():
             
             current = 0#multiprocessing.current_process()._identity[0]
             fig = pylab.figure("DynSpecMS%i"%(current),constrained_layout=True,figsize=(8,8))
-            gs = fig.add_gridspec(3, 3)
+            gs = fig.add_gridspec(4, 3)
             
             fig.clf()
             #pylab.subplot(1,3,1)
@@ -332,7 +364,14 @@ class ClassRunDir():
             fI[DicoDyn[i]["CD"].Mask]=np.nan
             imShow(fI,extent=DicoDyn[i]["CD"].extent)
             pylab.ylabel("Frequency [MHz]")
-            pylab.xlabel("Time [hours since %s]"%(DicoDyn[i]["CD"].StrT0.replace("T",""))
+            pylab.xlabel("Time [hours since %s]"%(DicoDyn[i]["CD"].StrT0.replace("T"," @ ")))
+            
+            ax = fig.add_subplot(gs[3,:])
+            fIn=(DicoDyn[i]["CD"].fI.copy()-MeanOff)/StdOff
+            fIn[DicoDyn[i]["CD"].Mask]=np.nan
+            imShow(fIn,extent=DicoDyn[i]["CD"].extent,vmin=-5,vmax=5)
+            pylab.ylabel("Frequency [MHz]")
+            pylab.xlabel("Time [hours since %s]"%(DicoDyn[i]["CD"].StrT0.replace("T"," @ ")))
             
             #imShow(DicoDyn[i]["CD"].Mask)
             
@@ -357,7 +396,7 @@ class ClassRunDir():
             
             pylab.show(block=False)
             pylab.pause(0.5)
-            stop
+
             FitsName=LTarget[i].split("/")[-1]
             os.system("mkdir -p %s"%self.SaveDir)
             FName="%s/%s.pol%i.png"%(self.SaveDir,FitsName,self.pol)

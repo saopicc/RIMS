@@ -56,7 +56,9 @@ class ClassDynSpecMS(object):
                  BaseDirSpecs=None,BeamModel=None,BeamNBand=1):
 
         self.ColName    = ColName
+        if ModelName=="None": ModelName=None
         self.ModelName  = ModelName
+        
         self.ColWeights = ColWeights
         self.BeamNBand  = BeamNBand
         self.UVRange    = UVRange
