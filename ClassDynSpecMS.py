@@ -626,6 +626,8 @@ class ClassDynSpecMS(object):
 
         
         indRow = np.where(self.DicoDATA["times"]==self.times[iTime])[0]
+        if indRow.size==0: return
+        
         #indRow = np.where(self.DicoDATA["times"]>0)[0]
         f   = self.DicoDATA["flag"][indRow, :, :]
         d   = self.DicoDATA["data"][indRow, :, :]
@@ -720,6 +722,7 @@ class ClassDynSpecMS(object):
         ich0 = int( (self.DicoMSInfos[iMS]["ChanFreq"][0] - f0)/self.ChanWidth )
 
         iTimeGrid=np.argmin(np.abs(self.timesGrid-self.times[iTime]))
+        #print(iTimeGrid,iTime)
 
         self.DicoGrids["GridLinPol"][iDir,ich0:ich0+nch, iTimeGrid, :] = ds
         self.DicoGrids["GridWeight"][iDir,ich0:ich0+nch, iTimeGrid, :] = ws

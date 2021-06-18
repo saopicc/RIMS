@@ -26,9 +26,11 @@ def GiveMAD(X):
     return np.median(np.abs(X-np.median(X)))
 
 class ClassSaveResults(object):
-    def __init__(self, DynSpecMS):
+    def __init__(self, DynSpecMS,DIRNAME=None):
         self.DynSpecMS=DynSpecMS
-        self.DIRNAME="DynSpecs_%s"%self.DynSpecMS.OutName
+        self.DIRNAME=DIRNAME
+        if self.DIRNAME is None or self.DIRNAME=="MSName":
+            self.DIRNAME="DynSpecs_%s"%self.DynSpecMS.OutName
         
         #image  = self.DynSpecMS.Image
         #self.ImageData=np.squeeze(fits.getdata(image, ext=0))

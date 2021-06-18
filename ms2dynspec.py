@@ -110,10 +110,11 @@ def main(args=None, messages=[]):
 
     if D.Mode=="Spec": D.StackAll()
 
-    SaveMachine=ClassSaveResults.ClassSaveResults(D)
+    SaveMachine=ClassSaveResults.ClassSaveResults(D,DIRNAME=args.OutDirName)
     if D.Mode=="Spec":
         SaveMachine.WriteFits()
-        SaveMachine.PlotSpec()
+        if args.SavePDF:
+            SaveMachine.PlotSpec()
         SaveMachine.SaveCatalog()
         SaveMachine.tarDirectory()
     else:
@@ -146,6 +147,8 @@ if __name__ == "__main__":
     parser.add_argument("--NCPU", type=int, default=0, help="NCPU", required=False)
     parser.add_argument("--BeamModel", type=str, default=None, help="Beam Model to be used", required=False)
     parser.add_argument("--BeamNBand", type=int, default=1, help="Number of channels in the Beam Jones matrix", required=False)
+    parser.add_argument("--OutDirName", type=str, default="MSName", help="Name of the output directory name", required=False)
+    parser.add_argument("--SavePDF", type=int, default=1, help="Save PDF", required=False)
 
     args = parser.parse_args()
 
