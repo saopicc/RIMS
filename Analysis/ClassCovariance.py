@@ -22,16 +22,19 @@ from scipy import ndimage
 def Save(fileout,Obj):
     cPickle.dump(Obj, open(fileout,'wb'), 2)
 
-def imShow(I,v=5,**kwargs):
+def imShow(I,v=5,MeanCorr=False,**kwargs):
+    if MeanCorr:
+        I=I-np.median(I[(I!=0)&(np.isnan(I)==False)])
+        
     if not "vmin" in kwargs.keys():
-        RMS=scipy.stats.median_absolute_deviation(I[np.isnan(I)==False],axis=None)
+        RMS=scipy.stats.median_absolute_deviation(I[(I!=0)&(np.isnan(I)==False)],axis=None)
         vmin=-v*RMS
         vmax= v*RMS
         kwargs["vmin"]=vmin
         kwargs["vmax"]=vmax
-        
     pylab.imshow(I,interpolation="nearest",aspect="auto",**kwargs)
 
+    
 def Gaussian2D(x,y,GaussPar=(1.,1.,0)):
     d=np.sqrt(x**2+y**2)
     sx,sy,_=GaussPar
@@ -48,8 +51,20 @@ def testBruce():
     #           SaveDir="/home/ctasse/TestDynSpecMS/PNG",
     #           UseLoTSSDB=False)
     
-    runAllDir(Patern="/home/ctasse/TestDynSpecMS/DynSpecs_1622491578",
-              SaveDir="/home/ctasse/TestDynSpecMS/PNG_DEEP",
+    # runAllDir(Patern="/home/ctasse/TestDynSpecMS/DynSpecs_1622491578",
+    #           SaveDir="/home/ctasse/TestDynSpecMS/PNG_DEEP2",
+    #           UseLoTSSDB=False)
+    
+    # runAllDir(Patern="/home/ctasse/TestDynSpecMS/TestWeights_Natural",
+    #           SaveDir="/home/ctasse/TestDynSpecMS/PNG_DEEP_WEIGHTS_ILV",
+    #           UseLoTSSDB=False)
+
+    # runAllDir(Patern="/home/ctasse/TestDynSpecMS/TestWeights_Natural",
+    #           SaveDir="/home/ctasse/TestDynSpecMS/PNG_DEEP_Jy",
+    #           UseLoTSSDB=False)
+    
+    runAllDir(Patern="/home/ctasse/TestDynSpecMS/TestWeights",
+              SaveDir="/home/ctasse/TestDynSpecMS/PNG_DEEP_Jy_briggs",
               UseLoTSSDB=False)
     
 def runAllDir(Patern="/data/cyril.tasse/DataDynSpec_May21/*/DynSpecs_*",SaveDir=None,UseLoTSSDB=False):
@@ -111,37 +126,50 @@ def runAllDir(Patern="/data/cyril.tasse/DataDynSpec_May21/*/DynSpecs_*",SaveDir=
         
         print("========================== [%i / %i]"%(iDir,len(L)))
         print(BaseDir)
-        CRD=ClassRunDir(BaseDir=BaseDir,DB=DB,pol=3,SaveDir=SaveDir)
-        L3=CRD.runDir()
-        if L3 is None:
-            print("!!!!! does not have Offs")
-            continue
+        # CRD=ClassRunDir(BaseDir=BaseDir,DB=DB,pol="V",SaveDir=SaveDir)
+        # L3=CRD.runDir()
+        # if L3 is None:
+        #     print("!!!!! does not have Offs")
+        #     continue
         
-        CRD=ClassRunDir(BaseDir=BaseDir,DB=DB,pol=0,SaveDir=SaveDir)
+        #CRD=ClassRunDir(BaseDir=BaseDir,DB=DB,pol="L",SaveDir=SaveDir)
+        #L0=CRD.runDir()
+        
+        CRD=ClassRunDir(BaseDir=BaseDir,DB=DB,pol="Q",SaveDir=SaveDir)
+        CRD.runDir()
+        CRD.Plot()
+        return
+        CRD=ClassRunDir(BaseDir=BaseDir,DB=DB,pol="U",SaveDir=SaveDir)
         L0=CRD.runDir()
         
-        # CRD=ClassRunDir(BaseDir=BaseDir,DB=DB,pol=1)
-        # L0=CRD.runDir()
-        # CRD=ClassRunDir(BaseDir=BaseDir,DB=DB,pol=2)
-        # L0=CRD.runDir()
+        CRD=ClassRunDir(BaseDir=BaseDir,DB=DB,pol="I",SaveDir=SaveDir)
+        L0=CRD.runDir()
+        
+        CRD=ClassRunDir(BaseDir=BaseDir,DB=DB,pol="V",SaveDir=SaveDir)
+        L0=CRD.runDir()
+        
+        # # CRD=ClassRunDir(BaseDir=BaseDir,DB=DB,pol=1)
+        # # L0=CRD.runDir()
+        # # CRD=ClassRunDir(BaseDir=BaseDir,DB=DB,pol=2)
+        # # L0=CRD.runDir()
 
-        for it in range(len(L3)):
-            t=L3[it]
-            F=t["File"]
-            tDB=copy.deepcopy(DB[F])
+        # for it in range(len(L3)):
+        #     t=L3[it]
+        #     F=t["File"]
+        #     tDB=copy.deepcopy(DB[F])
             
-            tDB["R3"]=t["R"]
+        #     tDB["R3"]=t["R"]
             
-            # t=L0[it]
-            # F=t["File"]
-            # tDB["R0"]=t["R"]
+        #     # t=L0[it]
+        #     # F=t["File"]
+        #     # tDB["R0"]=t["R"]
             
-            DBOut.append(tDB)
+        #     DBOut.append(tDB)
     Save("D.pickle",DBOut)
 
 
 class ClassDist():
-    def __init__(self,File,Weight="P156+42_selection/Weights.fits",pol=3,GaussPar=(3.,10.,0.),ConvMask=None):
+    def __init__(self,File,Weight="P156+42_selection/Weights.fits",pol="I",GaussPar=(3.,10.,0.),ConvMask=None):
         #print("GiveDist: Init")
         #print("open %s"%File)
         self.File=File
@@ -157,10 +185,10 @@ class ClassDist():
         t0 = Time(t0, format='isot').mjd * 3600. * 24. + (dt/2.)
         self.times=nt
         dT_hours=dt_hours*nt
+        
         self.fMin=float(F.header['FRQ-MIN'])
         self.fMax=float(F.header['FRQ-MAX'])
         self.extent=(0,dT_hours,self.fMin/1e6,self.fMax/1e6)
-
     
         sx,sy,_=GaussPar
         dxy=4.
@@ -168,13 +196,25 @@ class ClassDist():
         xin,yin=np.mgrid[-Nsx:Nsx:(2*Nsx+1)*1j,-Nsy:Nsy:(2*Nsy+1)*1j]
         G=Gaussian2D(xin,yin,GaussPar=GaussPar)
         G/=np.sum(G)
-        I=F.data[pol].copy()
+
+        if pol=="I":
+            I0=F.data[0].copy()
+        elif pol=="Q":
+            I0=F.data[1].copy()
+        elif pol=="U":
+            I0=F.data[2].copy()
+        elif pol=="V":
+            I0=F.data[3].copy()
+        elif pol=="L":
+            I0=np.sqrt(F.data[1].copy()**2+F.data[2].copy()**2)
         
-        #I.fill(0)
-        #I[nch//3,nt//2]=1
+        # I.fill(0)
+        # I[nch//3,nt//2]=1
         
-        N[N==0]=1
-        I=I/(1./np.sqrt(N))
+        #N[N==0]=1
+        w=np.sqrt(N)
+        I=I0*w
+        
         #sI=I*N
         Sig=scipy.stats.median_absolute_deviation(I[I!=0],axis=None)
         
@@ -186,7 +226,10 @@ class ClassDist():
         self.Mask[I==0]=1
         
         I[self.Mask]=0.
-
+        w[self.Mask]=0.
+        I=I0*w
+        
+        
         # NBinT=20
         # Sum0=np.sum(I,axis=0)
         # SumN0=np.sum(self.Mask,axis=0)
@@ -199,7 +242,10 @@ class ClassDist():
         #                     rescale_sigma=True)
         
         fI=scipy.signal.fftconvolve(I,G,mode="same")
-        fI/=ConvMask
+        ws=scipy.signal.fftconvolve(w,G,mode="same")
+        fI/=ws
+        #fI/=ConvMask
+        
         fI[N==0]=0
         self.fI=fI
         self.I=I
@@ -225,12 +271,12 @@ class ClassDist():
 class ClassRunDir():
     def __init__(self,BaseDir="/data/cyril.tasse/DataDynSpec_May21/P156+42/DynSpecs_L352758",
                  SaveDir="/data/cyril.tasse/VE_Py3_nancep6/TestAnalysis/PNG5",
-                 DB=None,pol=3):
+                 DB=None,pol="I"):
         self.BaseDir=BaseDir
         self.SaveDir=SaveDir
         self.DB=DB
         self.pol=pol
-        self.GaussPar=(50.,15.,0.)
+        self.GaussPar=(40.,30.,0.)
         #self.GaussPar=(20.,60.,0.)
 
         self.WeightFile=Weight="%s/Weights.fits"%BaseDir
@@ -254,10 +300,10 @@ class ClassRunDir():
 
         DicoDyn=[]
         LTarget=glob.glob("%s/TARGET/*.fits"%BaseDir)#[0:1]
-        LOff=glob.glob("%s/OFF/*.fits"%BaseDir)#[0:5]
+        LOff=glob.glob("%s/OFF/*.fits"%BaseDir)[0:10]
         
-        #BaseDir="/data/cyril.tasse/DataDynSpec_May21/P223+52/DynSpecs_L260803"
-        #LTarget=glob.glob("%s/TARGET/L260803_14:52:17.890_+54:15:50.900.fitsL352758_10:23:52.117_+43:53:33.187.fits"%BaseDir)
+        # BaseDir="/data/cyril.tasse/DataDynSpec_May21/P223+52/DynSpecs_L260803"
+        # LTarget=glob.glob("%s/TARGET/L260803_14:52:17.890_+54:15:50.900.fitsL352758_10:23:52.117_+43:53:33.187.fits"%BaseDir)
         LTargetSel=[]
 
         
@@ -318,9 +364,15 @@ class ClassRunDir():
                 LyOff.append(y)
             DicoDyn[k]["Dist"]=(x,y)
             
-        CumulTarget=np.array(LyTarget)
-        CumulOff=np.array(LyOff)
-    
+        self.CumulTarget=np.array(LyTarget)
+        self.CumulOff=np.array(LyOff)
+        self.DicoDyn=DicoDyn
+
+    def Plot(self):
+        CumulTarget=self.CumulTarget
+        CumulOff=self.CumulOff
+        DicoDyn=self.DicoDyn
+        
         mCumulOff=np.mean(CumulOff,axis=0)
         ind=np.where((mCumulOff>0.2)&(mCumulOff<0.8))[0]
         #Std=np.sqrt(np.sum(((CumulOff-mCumulOff)[ind])**2))/ind.size
@@ -340,9 +392,10 @@ class ClassRunDir():
         MeanOff=0#np.mean(Offs,axis=0)
         #Offs=np.array([DicoDyn[i]["CD"].fI for i in range(len(DicoDyn)) if DicoDyn[i]["Type"]=="Off"])
         StdOff=np.std(Offs,axis=0)
-        
-        for i in range(CumulTarget.shape[0]):
-            R=np.sum((CumulTarget[i]-mCumulOff)**2)/x.size/Std
+        StdOff[StdOff==0]=1
+        for i in range(len(DicoDyn)):
+            if DicoDyn[i]["Type"]=="Off": continue
+            R=np.sum((CumulTarget[i]-mCumulOff)**2)/self.CumulTarget.shape[1]/Std
             FileName=DicoDyn[i]["CD"].File.split("/")[-1]
             ListOut.append({"File":FileName,
                             "R":R})
@@ -359,21 +412,26 @@ class ClassRunDir():
             ax = fig.add_subplot(gs[0,:])
             I=DicoDyn[i]["CD"].I.copy()
             I[DicoDyn[i]["CD"].Mask]=np.nan
-            imShow(I,extent=DicoDyn[i]["CD"].extent)
+            MeanCorr=False
+            if self.pol=="L": MeanCorr=True
+
+            cmap="seismic"
+            imShow(I,MeanCorr=MeanCorr,extent=DicoDyn[i]["CD"].extent)#,cmap="gray")
+
             pylab.ylabel("Frequency [MHz]")
             #print(DicoDyn[i]["CD"].I)
             
-            ax = fig.add_subplot(gs[1,:])
+            #ax = fig.add_subplot(gs[1,:])
             fI=DicoDyn[i]["CD"].fI.copy()
             fI[DicoDyn[i]["CD"].Mask]=np.nan
-            imShow(fI,extent=DicoDyn[i]["CD"].extent)
+            imShow(fI,MeanCorr=MeanCorr,extent=DicoDyn[i]["CD"].extent,cmap=cmap)
             pylab.ylabel("Frequency [MHz]")
             pylab.xlabel("Time [hours since %s]"%(DicoDyn[i]["CD"].StrT0.replace("T"," @ ")))
             
             ax = fig.add_subplot(gs[3,:])
             fIn=(DicoDyn[i]["CD"].fI.copy()-MeanOff)/StdOff
             fIn[DicoDyn[i]["CD"].Mask]=np.nan
-            imShow(fIn,extent=DicoDyn[i]["CD"].extent,vmin=-5,vmax=5)
+            imShow(fIn,MeanCorr=MeanCorr,extent=DicoDyn[i]["CD"].extent,vmin=-5,vmax=5,cmap=cmap)
             pylab.ylabel("Frequency [MHz]")
             pylab.xlabel("Time [hours since %s]"%(DicoDyn[i]["CD"].StrT0.replace("T"," @ ")))
             
@@ -381,8 +439,10 @@ class ClassRunDir():
             
             ax = fig.add_subplot(gs[2,0])
 
-            for j in range(CumulOff.shape[0]):
-                pylab.plot(x,CumulOff[j],color="gray")
+            for k in range(len(DicoDyn)):
+                if DicoDyn[k]["Type"]=="Target": continue
+                x,y=DicoDyn[k]["Dist"]
+                pylab.plot(x,y,color="gray")
             pylab.plot(x,CumulTarget[i],color="black")
             
             if os.path.isfile(Image):
@@ -401,9 +461,9 @@ class ClassRunDir():
             pylab.show(block=False)
             pylab.pause(0.5)
 
-            FitsName=LTarget[i].split("/")[-1]
+            FitsName=FileName#LTarget[i].split("/")[-1]
             os.system("mkdir -p %s"%self.SaveDir)
-            FName="%s/%s.pol%i.png"%(self.SaveDir,FitsName,self.pol)
+            FName="%s/%s.%s.png"%(self.SaveDir,FitsName,self.pol)
             print("Saving fig: %s"%FName)
             
             fig.savefig(FName)
