@@ -103,7 +103,10 @@ def main(args=None, messages=[]):
                        SolsDir=args.SolsDir,NCPU=args.NCPU,
                        BaseDirSpecs=args.BaseDirSpecs,
                        BeamModel=args.BeamModel,
-                       BeamNBand=args.BeamNBand)
+                       BeamNBand=args.BeamNBand,
+                       SourceCatOff_FluxMean=args.SourceCatOff_FluxMean,
+                       SourceCatOff_dFluxMean=args.SourceCatOff_dFluxMean,
+                       SourceCatOff=args.SourceCatOff)
 
     if D.NDirSelected==0:
         return
@@ -148,7 +151,10 @@ if __name__ == "__main__":
     parser.add_argument("--BeamModel", type=str, default=None, help="Beam Model to be used", required=False)
     parser.add_argument("--BeamNBand", type=int, default=1, help="Number of channels in the Beam Jones matrix", required=False)
     parser.add_argument("--OutDirName", type=str, default="MSName", help="Name of the output directory name", required=False)
-    parser.add_argument("--SavePDF", type=int, default=1, help="Save PDF", required=False)
+    parser.add_argument("--SavePDF", type=int, default=0, help="Save PDF", required=False)
+    parser.add_argument("--SourceCatOff", type=str, default="", help="Read the code", required=False)
+    parser.add_argument("--SourceCatOff_FluxMean", type=float, default=0, help="Read the code", required=False)
+    parser.add_argument("--SourceCatOff_dFluxMean", type=float, default=0, help="Read the code", required=False)
 
     args = parser.parse_args()
 
