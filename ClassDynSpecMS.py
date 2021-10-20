@@ -174,6 +174,7 @@ class ClassDynSpecMS(object):
             if FileCoords is not None:
                 print('Adding data from file '+FileCoords, file=log)
                 additional=np.genfromtxt(FileCoords,dtype=dtype,delimiter=",")[()]
+                if len(additional.shape)==0: additional=additional.reshape((1,))
                 if not additional.shape:
                     # deal with a one-line input file
                     additional=np.array([additional],dtype=dtype)
@@ -194,6 +195,7 @@ class ClassDynSpecMS(object):
             log.print("Reading cvs file: %s"%FileCoords)
             #self.PosArray=np.genfromtxt(FileCoords,dtype=dtype,delimiter=",")[()]
             self.PosArray=np.genfromtxt(FileCoords,dtype=dtype,delimiter=",")
+            if len(self.PosArray.shape)==0: self.PosArray=self.PosArray.reshape((1,))
             
         self.PosArray=self.PosArray.view(np.recarray)
         self.PosArray.ra*=np.pi/180.
@@ -275,7 +277,7 @@ class ClassDynSpecMS(object):
         MSName=self.ListMSName[0]
         t0  = table(MSName, ack=False)
         tf0 = table("%s::SPECTRAL_WINDOW"%self.ListMSName[0], ack=False)
-        self.ChanWidth = tf0.getcol("CHAN_WIDTH").ravel()[0]
+        self.ChanWidth = abs(tf0.getcol("CHAN_WIDTH").ravel()[0])
         tf0.close()
 
         self.times = np.unique(t0.getcol("TIME"))
@@ -341,17 +343,28 @@ class ClassDynSpecMS(object):
             tp = table("%s::POLARIZATION"%MSName, ack=False)
             npol=tp.getcol("NUM_CORR").flat[0]
             tp.close()
+
+            chFreq=tf.getcol("CHAN_FREQ").ravel()
+            if chFreq[-1]<chFreq[0]:
+                #log.print(ModColor.Str("Channels are reversed, ok I can deal with that..."))
+                chSlice=slice(None,None,-1)
+                RevertChans=True
+            else:
+                chSlice=slice(None)
+                RevertChans=False
+            
             
             DicoMSInfos[iMS] = {"MSName": MSName,
-                            "ChanFreq":   tf.getcol("CHAN_FREQ").ravel(),  # Hz
-                            "ChanWidth":  tf.getcol("CHAN_WIDTH").ravel(), # Hz
-                            "times":      ThisTimes,
-                            "dtBin":      dtBin,
-                            "npol":       npol,
-                            "startTime":  Time(ThisTimes[0]/(24*3600.), format='mjd', scale='utc').isot,
-                            "stopTime":   Time(ThisTimes[-1]/(24*3600.), format='mjd', scale='utc').isot,
-                            "deltaTime":  (ThisTimes[-1] - ThisTimes[0])/3600., # h
-                            "Readable":   True}
+                                "ChanFreq":   tf.getcol("CHAN_FREQ").ravel()[chSlice],  # Hz
+                                "ChanWidth":  abs(tf.getcol("CHAN_WIDTH").ravel()[chSlice]), # Hz
+                                "times":      ThisTimes,
+                                "dtBin":      dtBin,
+                                "npol":       npol,
+                                "startTime":  Time(ThisTimes[0]/(24*3600.), format='mjd', scale='utc').isot,
+                                "stopTime":   Time(ThisTimes[-1]/(24*3600.), format='mjd', scale='utc').isot,
+                                "deltaTime":  (ThisTimes[-1] - ThisTimes[0])/3600., # h
+                                "RevertChans": RevertChans,
+                                "Readable":   True}
             if DicoMSInfos[iMS]["ChanWidth"][0] != self.ChanWidth:
                 raise ValueError("should have the same chan width")
             pBAR.render(iMS+1, self.nMS)
@@ -414,14 +427,20 @@ class ClassDynSpecMS(object):
         
         nch  = self.DicoMSInfos[iMS]["ChanFreq"].size
         npol  = self.DicoMSInfos[iMS]["npol"]
+
+        #chSlice=self.DicoMSInfos[iMS]["chSlice"]
+        RevertChans=self.DicoMSInfos[iMS]["RevertChans"]
         
         data = np.zeros((NROW,nch,npol),np.complex64)
         t.getcolnp(self.ColName,data,ROW0,NROW)
-
+        if RevertChans: data=data[:,::-1,:]
+        
         if self.ModelName:
             print("  Substracting %s from %s"%(self.ModelName,self.ColName), file=log)
             model=np.zeros((NROW,nch,npol),np.complex64)
             t.getcolnp(self.ModelName,model,ROW0,NROW)
+            if RevertChans: model=model[:,::-1,:]
+
             data-=model
             del(model)
             
@@ -429,12 +448,15 @@ class ClassDynSpecMS(object):
             print("  Reading weight column %s"%(self.ColWeights), file=log)
             weights=np.zeros((NROW,nch),np.float32)
             t.getcolnp(self.ColWeights,weights,ROW0,NROW)
+            if RevertChans: weights=weights[:,::-1]
         else:
             nrow,nch,_=data.shape
             weights=np.ones((nrow,nch),np.float32)
 
         flag=np.zeros((NROW,nch,npol),np.bool)
         t.getcolnp("FLAG",flag,ROW0,NROW)
+        if RevertChans: flag=flag[:,::-1]
+            
         times  = t.getcol("TIME",ROW0,NROW)
         A0, A1 = t.getcol("ANTENNA1",ROW0,NROW), t.getcol("ANTENNA2",ROW0,NROW)
 
