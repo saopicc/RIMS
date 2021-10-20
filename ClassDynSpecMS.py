@@ -55,8 +55,15 @@ class ClassDynSpecMS(object):
                  ImageV=None,
                  SolsDir=None,
                  NCPU=1,
-                 BaseDirSpecs=None,BeamModel=None,BeamNBand=1):
+                 BaseDirSpecs=None,BeamModel=None,BeamNBand=1,
+                 SourceCatOff=None,
+                 SourceCatOff_FluxMean=None,
+                 SourceCatOff_dFluxMean=None):
 
+        self.SourceCatOff_FluxMean=SourceCatOff_FluxMean
+        self.SourceCatOff_dFluxMean=SourceCatOff_dFluxMean
+        self.SourceCatOff=SourceCatOff
+        
         self.ColName    = ColName
         if ModelName=="None": ModelName=None
         self.ModelName  = ModelName
@@ -70,7 +77,7 @@ class ClassDynSpecMS(object):
         self.SolsName=SolsName
         self.NCPU=NCPU
         self.BeamModel=BeamModel
-        
+        self.ra0, self.dec0=None,None
         if ListMSName is None:
             print(ModColor.Str("WORKING IN REPLOT MODE"), file=log)
             self.Mode="Plot"
@@ -221,8 +228,11 @@ class ClassDynSpecMS(object):
             print("Including %i off targets"%(NOff), file=log)
             self.PosArray=np.concatenate([self.PosArray,self.GiveOffPosArray(NOff)])
             self.PosArray=self.PosArray.view(np.recarray)
+            
         self.NDir=self.PosArray.shape[0]
         print("For a total of %i targets"%(self.NDir), file=log)
+
+        self.radecToReg(self.PosArray.ra,self.PosArray.dec,self.PosArray.Type)
 
 
         self.DicoDATA = shared_dict.create("DATA")
@@ -251,24 +261,77 @@ class ClassDynSpecMS(object):
                               affinity="disable")
         APP.startWorkers()
 
+    def radecToReg(self,ra,dec,Type):
+        FName="%s.reg"%self.OutName
 
+        log.print(("Writting target reg file: %s"%FName))
+        f=open(FName,"w")
+        
+        f.write("""# Region file format: DS9 version 4.1\n""")
+        f.write("""global color=green dashlist=8 3 width=1 font="helvetica 10 normal roman" select=1 highlite=1 dash=0 fixed=0 edit=1 move=1 delete=1 include=1 source=1\n""")
+        f.write("""fk5\n""")
+
+        for iTarget in range(ra.size):
+            ra0,dec0=ra[iTarget],dec[iTarget]
+            sRA0=rad2hmsdms(ra0,Type="ra").replace(" ",":")
+            sDEC0=rad2hmsdms(dec0,Type="dec").replace(" ",":")
+            
+            if Type[iTarget].decode('ASCII')=="Off":
+                color="red"
+            else:
+                color="green"
+                
+            f.write("""circle(%s,%s,4.465" # color=%s\n"""%(sRA0,sDEC0,color))
+            f.write("""circle(%s,%s,19.962" # color=%s\n"""%(sRA0,sDEC0,color))
+            f.write("""point(%s,%s # point=cross 55 color=%s\n"""%(sRA0,sDEC0,color))
+        f.close()
+        
+        
+
+        
     def GiveOffPosArray(self,NOff):
         print("Making random off catalog with %i directions"%NOff, file=log)
         CatOff=np.zeros((NOff,),self.PosArray.dtype)
         CatOff=CatOff.view(np.recarray)
         CatOff.Type="Off"
         NDone=0
-        while NDone<NOff:
-            dx=np.random.rand(1)[0]*self.Radius*np.pi/180
-            dy=np.random.rand(1)[0]*self.Radius*np.pi/180
-            ra=self.ra0+dx
-            dec=self.dec0+dy
-            d=AngDist(self.ra0,ra,self.dec0,dec)
-            if d<self.Radius*np.pi/180:
-                CatOff.ra[NDone]=ra
-                CatOff.dec[NDone]=dec
-                CatOff.Name[NDone]="Off%4.4i"%NDone
-                NDone+=1
+        if self.SourceCatOff is not None and self.SourceCatOff!="":
+            
+            log.print(ModColor.Str("Reading off sources catalog: %s"%(self.SourceCatOff), color="green"))
+            F=fits.open(self.SourceCatOff)
+            Fd= F[1].data
+            Fd=Fd.view(np.recarray)
+            Fd=Fd[Fd.S_Code==b"S"]
+            SMean=self.SourceCatOff_FluxMean
+            dSMean=self.SourceCatOff_dFluxMean
+            S0,S1=SMean-dSMean,SMean+dSMean
+            ind=np.where( (Fd.Isl_Total_flux>S0) & (Fd.Isl_Total_flux<S1) )[0]
+            # ind=np.where( Fd.Isl_Total_flux == Fd.Isl_Total_flux.max())[0]
+            Fd=Fd[ind]
+            
+            log.print("There are %i selected off sources with flux in [%f, %f] Jy"%(ind.size,S0,S1))
+            if Fd.RA[0]<0:
+                Fd.RA+=360.
+
+            for iS in range(NOff):
+                
+                iSel=int(np.random.rand(1)[0]*ind.size)
+                CatOff.ra[iS]=Fd.RA[iSel]*np.pi/180
+                CatOff.dec[iS]=Fd.DEC[iSel]*np.pi/180
+                CatOff.Name[iS]="Off%4.4i"%iS
+            
+        else:
+            while NDone<NOff:
+                dx=np.random.rand(1)[0]*self.Radius*np.pi/180
+                dy=np.random.rand(1)[0]*self.Radius*np.pi/180
+                ra=self.ra0+dx
+                dec=self.dec0+dy
+                d=AngDist(self.ra0,ra,self.dec0,dec)
+                if d<self.Radius*np.pi/180:
+                    CatOff.ra[NDone]=ra
+                    CatOff.dec[NDone]=dec
+                    CatOff.Name[NDone]="Off%4.4i"%NDone
+                    NDone+=1
         return CatOff
 
     def ReadMSInfos(self):
@@ -280,23 +343,25 @@ class ClassDynSpecMS(object):
         self.ChanWidth = abs(tf0.getcol("CHAN_WIDTH").ravel()[0])
         tf0.close()
 
-        self.times = np.unique(t0.getcol("TIME"))
+        times = np.unique(t0.getcol("TIME"))
         
-        dt=self.times[1:]-self.times[:-1]
+        dt=times[1:]-times[:-1]
         if np.any(dt<0): stop
 
         
         t0.close()
 
         tField = table("%s::FIELD"%MSName, ack=False)
-        self.ra0, self.dec0 = tField.getcol("PHASE_DIR").ravel() # radians!
-        if self.ra0<0.: self.ra0+=2.*np.pi
+        if self.ra0 is None:
+            self.ra0, self.dec0 = tField.getcol("PHASE_DIR").ravel() # radians!
+            if self.ra0<0.: self.ra0+=2.*np.pi
         tField.close()
 
         pBAR = ProgressBar(Title="Reading metadata")
         pBAR.render(0, self.nMS)
    
         #for iMS, MSName in enumerate(sorted(self.ListMSName)):
+        tmin,tmax=None,None
         for iMS, MSName in enumerate(self.ListMSName):
             try:
                 t = table(MSName, ack=False)
@@ -326,7 +391,15 @@ class ClassDynSpecMS(object):
                 pBAR.render(iMS+1, self.nMS)
                 continue
             
-
+            tField = table("%s::FIELD"%MSName, ack=False)
+            ThisRA0,ThisDEC0 = tField.getcol("PHASE_DIR").ravel() # radians!
+            if ThisRA0<0.: ThisRA0+=2.*np.pi
+            if (ThisRA0!=self.ra0) or (ThisDEC0!=self.dec0):
+                log.print(ModColor.Str("MS %s has a different phase center - it's ok just saying"%MSName))
+                log.print(ModColor.Str("MS %s has a different phase center - it's ok just saying"%MSName))
+                log.print(ModColor.Str("MS %s has a different phase center - it's ok just saying"%MSName))
+            tField.close()
+            
             tf = table("%s::SPECTRAL_WINDOW"%MSName, ack=False)
             ThisTimes = np.unique(t.getcol("TIME"))
             dtBin_=np.unique(t.getcol("INTERVAL"))
@@ -334,14 +407,15 @@ class ClassDynSpecMS(object):
             dtBin = dtBin_.flat[0]
             
             
-            if not np.allclose(ThisTimes, self.times):
-                raise ValueError("should have the same times")
+            # if not np.allclose(ThisTimes, self.times):
+            #     raise ValueError("should have the same times")
 
-            self.NTimesGrid=int(np.ceil((self.times[-1]-self.times[0])/dtBin))
-            self.timesGrid=self.times[0]+np.arange(self.NTimesGrid)*dtBin
 
             tp = table("%s::POLARIZATION"%MSName, ack=False)
             npol=tp.getcol("NUM_CORR").flat[0]
+            CorrType=tp.getcol("CORR_TYPE").ravel().tolist()
+            if CorrType!=[9,10,11,12]:
+                raise ValueError("Pols should be XX, XY, YX, YY")
             tp.close()
 
             chFreq=tf.getcol("CHAN_FREQ").ravel()
@@ -354,9 +428,17 @@ class ClassDynSpecMS(object):
                 RevertChans=False
             
             
+            if tmin is None:
+                tmin=ThisTimes.min()
+                tmax=ThisTimes.max()
+            else:
+                tmin=np.min([tmin,ThisTimes.min()])
+                tmax=np.max([tmax,ThisTimes.max()])
+                
             DicoMSInfos[iMS] = {"MSName": MSName,
                                 "ChanFreq":   tf.getcol("CHAN_FREQ").ravel()[chSlice],  # Hz
-                                "ChanWidth":  abs(tf.getcol("CHAN_WIDTH").ravel()[chSlice]), # Hz
+                                "ChanWidth":  np.abs(tf.getcol("CHAN_WIDTH").ravel()), # Hz
+                                "ra0dec0":  (ThisRA0,ThisDEC0) ,
                                 "times":      ThisTimes,
                                 "dtBin":      dtBin,
                                 "npol":       npol,
@@ -365,10 +447,16 @@ class ClassDynSpecMS(object):
                                 "deltaTime":  (ThisTimes[-1] - ThisTimes[0])/3600., # h
                                 "RevertChans": RevertChans,
                                 "Readable":   True}
+                                
             if DicoMSInfos[iMS]["ChanWidth"][0] != self.ChanWidth:
                 raise ValueError("should have the same chan width")
             pBAR.render(iMS+1, self.nMS)
             
+        self.NTimesGrid=int(np.ceil((tmax-tmin)/dtBin))
+        self.timesGrid=tmin+np.arange(self.NTimesGrid)*dtBin
+        self.tmin=tmin
+        self.tmax=tmax
+        
         for iMS in range(self.nMS):
             if not DicoMSInfos[iMS]["Readable"]:
                 print(ModColor.Str("Problem reading %s"%MSName), file=log)
@@ -380,11 +468,11 @@ class ClassDynSpecMS(object):
         self.DicoMSInfos = DicoMSInfos
         self.FreqsAll    = np.array([DicoMSInfos[iMS]["ChanFreq"] for iMS in list(DicoMSInfos.keys()) if DicoMSInfos[iMS]["Readable"]])
         self.Freq_minmax = np.min(self.FreqsAll), np.max(self.FreqsAll)
-        self.NTimes      = self.times.size
-        dtArr=self.times[1:]-self.times[:-1]
-        if np.unique(dtArr).size>1:
-            log.print(ModColor.Str("Times are not regular"))
-        dt=np.median(dtArr)
+        #self.NTimes      = self.times.size
+        #dtArr=self.times[1:]-self.times[:-1]
+        #if np.unique(dtArr).size>1:
+        #    log.print(ModColor.Str("Times are not regular"))
+        #dt=np.median(dtArr)
 
 
         
@@ -392,8 +480,8 @@ class ClassDynSpecMS(object):
         self.NChan       = int((f1 - f0)/self.ChanWidth) + 1
 
         # Fill properties
-        self.tStart = DicoMSInfos[0]["startTime"]
-        self.tStop  = DicoMSInfos[0]["stopTime"] 
+        self.tStart = Time(tmin/(24*3600.), format='mjd', scale='utc').isot
+        self.tStop  = Time(tmax/(24*3600.), format='mjd', scale='utc').isot
         self.fMin   = self.Freq_minmax[0]
         self.fMax   = self.Freq_minmax[1]
 
@@ -416,11 +504,14 @@ class ClassDynSpecMS(object):
         t = table(MSName, ack=False)
 
         times  = t.getcol("TIME")
-        t0=self.times[0]
-        dT=self.times[-1]
+        t0=self.tmin
+        
         ind=np.where((times>=(T0+t0))&(times<(T1+t0)))[0]
-        ROW0=ind[0]
+        if ind.size==0:
+            print("No Data in requested interval %f -> %f h time interval"%(T0/3600,T1/3600), file=log)
+            return "NotRead"
         NROW=ind.size
+        ROW0=ind[0]
 
         if ROW0!=0 or NROW!=t.nrows():
             print("   reading chunk in %.3f -> %.3f h"%(T0/3600,T1/3600), file=log)
@@ -443,7 +534,9 @@ class ClassDynSpecMS(object):
 
             data-=model
             del(model)
-            
+
+        
+        
         if self.ColWeights:
             print("  Reading weight column %s"%(self.ColWeights), file=log)
             weights=np.zeros((NROW,nch),np.float32)
@@ -457,6 +550,13 @@ class ClassDynSpecMS(object):
         t.getcolnp("FLAG",flag,ROW0,NROW)
         if RevertChans: flag=flag[:,::-1]
             
+
+        # data[:,:,:]=0
+        # data[:,0:300,0]=1
+        # flag.fill(0)
+        # weights.fill(1)
+        
+
         times  = t.getcol("TIME",ROW0,NROW)
         A0, A1 = t.getcol("ANTENNA1",ROW0,NROW), t.getcol("ANTENNA2",ROW0,NROW)
 
@@ -582,7 +682,7 @@ class ClassDynSpecMS(object):
 
         if self.TChunkHours>0:
             TChunk_s=self.TChunkHours*3600
-            TObs=self.times[-1]-self.times[0]
+            TObs=self.tmax-self.tmin
             NChunks=int(np.ceil(TObs/TChunk_s))
             T0s=np.arange(NChunks)*TChunk_s
             T1s=np.arange(NChunks)*TChunk_s+TChunk_s
@@ -591,13 +691,14 @@ class ClassDynSpecMS(object):
             T1s=np.array([1e10])
             
         while self.iCurrentMS<self.nMS:
-            for iChunk in range(T0s.size):
+            for iChunk in range(T0s.size): #[1:2]:
                 T0,T1=T0s[iChunk],T1s[iChunk]
                 rep=self.LoadNextMS(T0,T1)
                 if rep=="NotRead": continue
             
                 print("Making dynamic spectra...", file=log)
-                for iTime in range(self.NTimes):
+                NTimes=self.DicoMSInfos[self.iCurrentMS]["times"].size
+                for iTime in range(NTimes):
                     APP.runJob("Stack_SingleTime:%d"%(iTime), 
                                self.Stack_SingleTime,
                                args=(iTime,))#,serial=True)
@@ -646,7 +747,8 @@ class ClassDynSpecMS(object):
     def Stack_SingleTimeDir(self,iTime):
 
         
-        indRow = np.where(self.DicoDATA["times"]==self.times[iTime])[0]
+        iMS  = self.DicoDATA["iMS"]
+        indRow = np.where(self.DicoDATA["times"]==self.DicoMSInfos[iMS]["times"][iTime])[0]
         if indRow.size==0: return
 
         nrow,nch,npol=self.DicoDATA["data"].shape
@@ -682,7 +784,6 @@ class ClassDynSpecMS(object):
         u0  = self.DicoDATA["u"][indRow].reshape((-1,1,1)).copy()
         v0  = self.DicoDATA["v"][indRow].reshape((-1,1,1)).copy()
         w0  = self.DicoDATA["w"][indRow].reshape((-1,1,1)).copy()
-        iMS  = self.DicoDATA["iMS"]
         T.timeit("second")
 
 
@@ -692,7 +793,7 @@ class ClassDynSpecMS(object):
         #print iTime,iDir
         ChanFreqs=np.array(self.DicoMSInfos[iMS]["ChanFreq"][0]).copy()
         
-        iTimeGrid=np.argmin(np.abs(self.timesGrid-self.times[iTime]))
+        iTimeGrid=np.argmin(np.abs(self.timesGrid-self.DicoMSInfos[iMS]["times"][iTime]))
         
         dcorr=d.copy()
         f0, _ = self.Freq_minmax
@@ -704,7 +805,7 @@ class ClassDynSpecMS(object):
             W[:,:,ipol]=weights[:,:,0]
             
         ws = np.sum(OneMinusF*weights, axis=0)
-            
+        
         # weights=weights*np.ones((1,1,npol))
         # W=weights
 
@@ -713,11 +814,13 @@ class ClassDynSpecMS(object):
         for iDir in range(self.NDir):
             ra=self.PosArray.ra[iDir]
             dec=self.PosArray.dec[iDir]
-            l, m = self.radec2lm(ra, dec)
+            ra0,dec0=self.DicoMSInfos[iMS]["ra0dec0"]
+            l, m = self.radec2lm(ra, dec,ra0,dec0)
             n  = np.sqrt(1. - l**2. - m**2.)
 
         
             kkk  = np.exp(-2.*np.pi*1j* chfreq/const.c.value *(u0*l + v0*m + w0*(n-1)) ) # Phasing term
+
             for ipol in range(npol):
                 kk[:,:,ipol]=kkk[:,:,0]
             # #ind=np.where((A0s==0)&(A1s==10))[0]
@@ -818,10 +921,10 @@ class ClassDynSpecMS(object):
         
 
 
-    def radec2lm(self, ra, dec):
+    def radec2lm(self, ra, dec,ra0,dec0):
         # ra and dec must be in radians
-        l = np.cos(dec) * np.sin(ra - self.ra0)
-        m = np.sin(dec) * np.cos(self.dec0) - np.cos(dec) * np.sin(self.dec0) * np.cos(ra - self.ra0)
+        l = np.cos(dec) * np.sin(ra - ra0)
+        m = np.sin(dec) * np.cos(dec0) - np.cos(dec) * np.sin(dec0) * np.cos(ra - ra0)
         return l, m
 # =========================================================================
 # =========================================================================

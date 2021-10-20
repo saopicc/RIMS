@@ -106,7 +106,7 @@ class ClassSaveResults(object):
         prihdr.set('CTYPE1', 'Time', 'Time')
         prihdr.set('CRPIX1', 1., 'Reference')
         prihdr.set('CRVAL1', 0., 'Time at the reference pixel (sec since OBS-STAR)')
-        deltaT = (Time(self.DynSpecMS.times[1]/(24*3600.), format='mjd', scale='utc') - Time(self.DynSpecMS.times[0]/(24*3600.), format='mjd', scale='utc')).sec
+        deltaT = (Time(self.DynSpecMS.timesGrid[1]/(24*3600.), format='mjd', scale='utc') - Time(self.DynSpecMS.timesGrid[0]/(24*3600.), format='mjd', scale='utc')).sec
         prihdr.set('CDELT1', deltaT, 'Delta time (sec)')
         prihdr.set('CUNIT1', 'Time', 'unit')
         prihdr.set('CTYPE2', 'Frequency', 'Frequency')
@@ -216,8 +216,8 @@ class ClassSaveResults(object):
         strRA  = rad2hmsdms(self.DynSpecMS.PosArray.ra[iDir], Type="ra").replace(" ", ":")
         strDEC = rad2hmsdms(self.DynSpecMS.PosArray.dec[iDir], Type="dec").replace(" ", ":")
         #freqs = self.DynSpecMS.FreqsAll.ravel() * 1.e-6 # in MHz
-        t0 = Time(self.DynSpecMS.times[0]/(24*3600.), format='mjd', scale='utc')
-        t1 = Time(self.DynSpecMS.times[-1]/(24*3600.), format='mjd', scale='utc')
+        t0 = Time(self.DynSpecMS.timesGrid[0]/(24*3600.), format='mjd', scale='utc')
+        t1 = Time(self.DynSpecMS.timesGrid[-1]/(24*3600.), format='mjd', scale='utc')
         times = np.linspace(0, (t1-t0).sec/60., num=self.DynSpecMS.GOut[0, :, :, 0].shape[1], endpoint=True)
         freqs = np.linspace(self.DynSpecMS.fMin,self.DynSpecMS.fMax,num=self.DynSpecMS.GOut[0, :, :, 0].shape[0], endpoint=True)*1e-6
         image  = self.DynSpecMS.ImageI
@@ -241,13 +241,22 @@ class ClassSaveResults(object):
                 AG=np.abs(Gn)
                 sig  = GiveMAD(Gn)
                 mean = np.median(Gn)
-                ax1 = pylab.subplot(2, 2, ipol+1)
-                spec = pylab.pcolormesh(times, freqs, Gn, cmap='bone_r', vmin=mean-3*sig, vmax=mean+10*sig, rasterized=True)
+
+                import matplotlib
+                cmap="seismic"
+                import copy
+                cmap = copy.copy(matplotlib.cm.get_cmap(cmap))#.copy()
+                cmap.set_bad(color='black')
+
+                
+                ax1 = pylab.subplot(4, 1, ipol+1)
+                spec = pylab.pcolormesh(times, freqs, Gn, cmap=cmap,#'bone_r',
+                                        vmin=mean-3*sig, vmax=mean+10*sig, rasterized=True,shading='auto')
                 ax1.axis('tight')
                 cbar = pylab.colorbar()
                 cbar.ax.tick_params(labelsize=6)
                 pylab.text(times[-1]-0.1*(times[-1]-times[0]), freqs[-1]-0.1*(freqs[-1]-freqs[0]), label[ipol], horizontalalignment='center', verticalalignment='center', fontsize=bigfont)
-                if ipol==2 or ipol==3:
+                if ipol==3:
                     pylab.xlabel("Time (min since %s)"%(t0.iso), fontsize=bigfont)
                 pylab.ylabel("Frequency (MHz)", fontsize=bigfont)
                 pylab.setp(ax1.get_xticklabels(), rotation='horizontal', fontsize=smallfont)
