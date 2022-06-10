@@ -15,6 +15,7 @@ from DDFacet.Other import ModColor
 from DDFacet.Other.progressbar import ProgressBar
 import numpy as np
 from astropy.time import Time
+from DDFacet.Other import ClassTimeIt
 from astropy import constants as const
 import os
 from killMS.Other import reformat
@@ -42,6 +43,7 @@ class ClassDynSpecMS(object):
     def __init__(self,
                  ListMSName=None,
                  ColName="DATA",
+                 TChunkHours=0.,
                  ModelName="PREDICT_KMS",
                  UVRange=[1.,1000.], 
                  ColWeights=None, 
@@ -53,12 +55,19 @@ class ClassDynSpecMS(object):
                  ImageV=None,
                  SolsDir=None,
                  NCPU=1,
-                 BaseDirSpecs=None,BeamModel=None,BeamNBand=1):
+                 BaseDirSpecs=None,BeamModel=None,BeamNBand=1,
+                 SourceCatOff=None,
+                 SourceCatOff_FluxMean=None,
+                 SourceCatOff_dFluxMean=None):
 
+        self.SourceCatOff_FluxMean=SourceCatOff_FluxMean
+        self.SourceCatOff_dFluxMean=SourceCatOff_dFluxMean
+        self.SourceCatOff=SourceCatOff
+        
         self.ColName    = ColName
         if ModelName=="None": ModelName=None
         self.ModelName  = ModelName
-        
+        self.TChunkHours=TChunkHours
         self.ColWeights = ColWeights
         self.BeamNBand  = BeamNBand
         self.UVRange    = UVRange
@@ -68,7 +77,7 @@ class ClassDynSpecMS(object):
         self.SolsName=SolsName
         self.NCPU=NCPU
         self.BeamModel=BeamModel
-        
+        self.ra0, self.dec0=None,None
         if ListMSName is None:
             print(ModColor.Str("WORKING IN REPLOT MODE"), file=log)
             self.Mode="Plot"
@@ -172,6 +181,7 @@ class ClassDynSpecMS(object):
             if FileCoords is not None:
                 print('Adding data from file '+FileCoords, file=log)
                 additional=np.genfromtxt(FileCoords,dtype=dtype,delimiter=",")[()]
+                if len(additional.shape)==0: additional=additional.reshape((1,))
                 if not additional.shape:
                     # deal with a one-line input file
                     additional=np.array([additional],dtype=dtype)
@@ -192,6 +202,7 @@ class ClassDynSpecMS(object):
             log.print("Reading cvs file: %s"%FileCoords)
             #self.PosArray=np.genfromtxt(FileCoords,dtype=dtype,delimiter=",")[()]
             self.PosArray=np.genfromtxt(FileCoords,dtype=dtype,delimiter=",")
+            if len(self.PosArray.shape)==0: self.PosArray=self.PosArray.reshape((1,))
             
         self.PosArray=self.PosArray.view(np.recarray)
         self.PosArray.ra*=np.pi/180.
@@ -217,14 +228,18 @@ class ClassDynSpecMS(object):
             print("Including %i off targets"%(NOff), file=log)
             self.PosArray=np.concatenate([self.PosArray,self.GiveOffPosArray(NOff)])
             self.PosArray=self.PosArray.view(np.recarray)
+            
         self.NDir=self.PosArray.shape[0]
         print("For a total of %i targets"%(self.NDir), file=log)
+
+        self.radecToReg(self.PosArray.ra,self.PosArray.dec,self.PosArray.Type)
 
 
         self.DicoDATA = shared_dict.create("DATA")
         self.DicoGrids = shared_dict.create("Grids")
-        self.DicoGrids["GridLinPol"] = np.zeros((self.NDir,self.NChan, self.NTimes, 4), np.complex128)
-        self.DicoGrids["GridWeight"] = np.zeros((self.NDir,self.NChan, self.NTimes, 4), np.complex128)
+
+        self.DicoGrids["GridLinPol"] = np.zeros((self.NDir,self.NChan, self.NTimesGrid, 4), np.complex128)
+        self.DicoGrids["GridWeight"] = np.zeros((self.NDir,self.NChan, self.NTimesGrid, 4), np.complex128)
 
 
         
@@ -242,27 +257,81 @@ class ClassDynSpecMS(object):
 
 
         APP.registerJobHandlers(self)
-        AsyncProcessPool.init(ncpu=self.NCPU,affinity="disable")
+        AsyncProcessPool.init(ncpu=self.NCPU,
+                              affinity="disable")
         APP.startWorkers()
 
+    def radecToReg(self,ra,dec,Type):
+        FName="%s.reg"%self.OutName
 
+        log.print(("Writting target reg file: %s"%FName))
+        f=open(FName,"w")
+        
+        f.write("""# Region file format: DS9 version 4.1\n""")
+        f.write("""global color=green dashlist=8 3 width=1 font="helvetica 10 normal roman" select=1 highlite=1 dash=0 fixed=0 edit=1 move=1 delete=1 include=1 source=1\n""")
+        f.write("""fk5\n""")
+
+        for iTarget in range(ra.size):
+            ra0,dec0=ra[iTarget],dec[iTarget]
+            sRA0=rad2hmsdms(ra0,Type="ra").replace(" ",":")
+            sDEC0=rad2hmsdms(dec0,Type="dec").replace(" ",":")
+            
+            if Type[iTarget].decode('ASCII')=="Off":
+                color="red"
+            else:
+                color="green"
+                
+            f.write("""circle(%s,%s,4.465" # color=%s\n"""%(sRA0,sDEC0,color))
+            f.write("""circle(%s,%s,19.962" # color=%s\n"""%(sRA0,sDEC0,color))
+            f.write("""point(%s,%s # point=cross 55 color=%s\n"""%(sRA0,sDEC0,color))
+        f.close()
+        
+        
+
+        
     def GiveOffPosArray(self,NOff):
         print("Making random off catalog with %i directions"%NOff, file=log)
         CatOff=np.zeros((NOff,),self.PosArray.dtype)
         CatOff=CatOff.view(np.recarray)
         CatOff.Type="Off"
         NDone=0
-        while NDone<NOff:
-            dx=np.random.rand(1)[0]*self.Radius*np.pi/180
-            dy=np.random.rand(1)[0]*self.Radius*np.pi/180
-            ra=self.ra0+dx
-            dec=self.dec0+dy
-            d=AngDist(self.ra0,ra,self.dec0,dec)
-            if d<self.Radius*np.pi/180:
-                CatOff.ra[NDone]=ra
-                CatOff.dec[NDone]=dec
-                CatOff.Name[NDone]="Off%4.4i"%NDone
-                NDone+=1
+        if self.SourceCatOff is not None and self.SourceCatOff!="":
+            
+            log.print(ModColor.Str("Reading off sources catalog: %s"%(self.SourceCatOff), color="green"))
+            F=fits.open(self.SourceCatOff)
+            Fd= F[1].data
+            Fd=Fd.view(np.recarray)
+            Fd=Fd[Fd.S_Code==b"S"]
+            SMean=self.SourceCatOff_FluxMean
+            dSMean=self.SourceCatOff_dFluxMean
+            S0,S1=SMean-dSMean,SMean+dSMean
+            ind=np.where( (Fd.Isl_Total_flux>S0) & (Fd.Isl_Total_flux<S1) )[0]
+            # ind=np.where( Fd.Isl_Total_flux == Fd.Isl_Total_flux.max())[0]
+            Fd=Fd[ind]
+            
+            log.print("There are %i selected off sources with flux in [%f, %f] Jy"%(ind.size,S0,S1))
+            if Fd.RA[0]<0:
+                Fd.RA+=360.
+
+            for iS in range(NOff):
+                
+                iSel=int(np.random.rand(1)[0]*ind.size)
+                CatOff.ra[iS]=Fd.RA[iSel]*np.pi/180
+                CatOff.dec[iS]=Fd.DEC[iSel]*np.pi/180
+                CatOff.Name[iS]="Off%4.4i"%iS
+            
+        else:
+            while NDone<NOff:
+                dx=np.random.rand(1)[0]*self.Radius*np.pi/180
+                dy=np.random.rand(1)[0]*self.Radius*np.pi/180
+                ra=self.ra0+dx
+                dec=self.dec0+dy
+                d=AngDist(self.ra0,ra,self.dec0,dec)
+                if d<self.Radius*np.pi/180:
+                    CatOff.ra[NDone]=ra
+                    CatOff.dec[NDone]=dec
+                    CatOff.Name[NDone]="Off%4.4i"%NDone
+                    NDone+=1
         return CatOff
 
     def ReadMSInfos(self):
@@ -271,20 +340,28 @@ class ClassDynSpecMS(object):
         MSName=self.ListMSName[0]
         t0  = table(MSName, ack=False)
         tf0 = table("%s::SPECTRAL_WINDOW"%self.ListMSName[0], ack=False)
-        self.ChanWidth = tf0.getcol("CHAN_WIDTH").ravel()[0]
+        self.ChanWidth = abs(tf0.getcol("CHAN_WIDTH").ravel()[0])
         tf0.close()
-        self.times = np.unique(t0.getcol("TIME"))
+
+        times = np.unique(t0.getcol("TIME"))
+        
+        dt=times[1:]-times[:-1]
+        if np.any(dt<0): stop
+
+        
         t0.close()
 
         tField = table("%s::FIELD"%MSName, ack=False)
-        self.ra0, self.dec0 = tField.getcol("PHASE_DIR").ravel() # radians!
-        if self.ra0<0.: self.ra0+=2.*np.pi
+        if self.ra0 is None:
+            self.ra0, self.dec0 = tField.getcol("PHASE_DIR").ravel() # radians!
+            if self.ra0<0.: self.ra0+=2.*np.pi
         tField.close()
 
         pBAR = ProgressBar(Title="Reading metadata")
         pBAR.render(0, self.nMS)
    
         #for iMS, MSName in enumerate(sorted(self.ListMSName)):
+        tmin,tmax=None,None
         for iMS, MSName in enumerate(self.ListMSName):
             try:
                 t = table(MSName, ack=False)
@@ -314,23 +391,72 @@ class ClassDynSpecMS(object):
                 pBAR.render(iMS+1, self.nMS)
                 continue
             
-
+            tField = table("%s::FIELD"%MSName, ack=False)
+            ThisRA0,ThisDEC0 = tField.getcol("PHASE_DIR").ravel() # radians!
+            if ThisRA0<0.: ThisRA0+=2.*np.pi
+            if (ThisRA0!=self.ra0) or (ThisDEC0!=self.dec0):
+                log.print(ModColor.Str("MS %s has a different phase center - it's ok just saying"%MSName))
+                log.print(ModColor.Str("MS %s has a different phase center - it's ok just saying"%MSName))
+                log.print(ModColor.Str("MS %s has a different phase center - it's ok just saying"%MSName))
+            tField.close()
+            
             tf = table("%s::SPECTRAL_WINDOW"%MSName, ack=False)
             ThisTimes = np.unique(t.getcol("TIME"))
-            if not np.allclose(ThisTimes, self.times):
-                raise ValueError("should have the same times")
+            dtBin_=np.unique(t.getcol("INTERVAL"))
+            if dtBin_.size>1: stop
+            dtBin = dtBin_.flat[0]
+            
+            
+            # if not np.allclose(ThisTimes, self.times):
+            #     raise ValueError("should have the same times")
+
+
+            tp = table("%s::POLARIZATION"%MSName, ack=False)
+            npol=tp.getcol("NUM_CORR").flat[0]
+            CorrType=tp.getcol("CORR_TYPE").ravel().tolist()
+            if CorrType!=[9,10,11,12]:
+                raise ValueError("Pols should be XX, XY, YX, YY")
+            tp.close()
+
+            chFreq=tf.getcol("CHAN_FREQ").ravel()
+            if chFreq[-1]<chFreq[0]:
+                #log.print(ModColor.Str("Channels are reversed, ok I can deal with that..."))
+                chSlice=slice(None,None,-1)
+                RevertChans=True
+            else:
+                chSlice=slice(None)
+                RevertChans=False
+            
+            
+            if tmin is None:
+                tmin=ThisTimes.min()
+                tmax=ThisTimes.max()
+            else:
+                tmin=np.min([tmin,ThisTimes.min()])
+                tmax=np.max([tmax,ThisTimes.max()])
+                
             DicoMSInfos[iMS] = {"MSName": MSName,
-                            "ChanFreq":   tf.getcol("CHAN_FREQ").ravel(),  # Hz
-                            "ChanWidth":  tf.getcol("CHAN_WIDTH").ravel(), # Hz
-                            "times":      ThisTimes,
-                            "startTime":  Time(ThisTimes[0]/(24*3600.), format='mjd', scale='utc').isot,
-                            "stopTime":   Time(ThisTimes[-1]/(24*3600.), format='mjd', scale='utc').isot,
-                            "deltaTime":  (ThisTimes[-1] - ThisTimes[0])/3600., # h
-                            "Readable":   True}
+                                "ChanFreq":   tf.getcol("CHAN_FREQ").ravel()[chSlice],  # Hz
+                                "ChanWidth":  np.abs(tf.getcol("CHAN_WIDTH").ravel()), # Hz
+                                "ra0dec0":  (ThisRA0,ThisDEC0) ,
+                                "times":      ThisTimes,
+                                "dtBin":      dtBin,
+                                "npol":       npol,
+                                "startTime":  Time(ThisTimes[0]/(24*3600.), format='mjd', scale='utc').isot,
+                                "stopTime":   Time(ThisTimes[-1]/(24*3600.), format='mjd', scale='utc').isot,
+                                "deltaTime":  (ThisTimes[-1] - ThisTimes[0])/3600., # h
+                                "RevertChans": RevertChans,
+                                "Readable":   True}
+                                
             if DicoMSInfos[iMS]["ChanWidth"][0] != self.ChanWidth:
                 raise ValueError("should have the same chan width")
             pBAR.render(iMS+1, self.nMS)
             
+        self.NTimesGrid=int(np.ceil((tmax-tmin)/dtBin))
+        self.timesGrid=tmin+np.arange(self.NTimesGrid)*dtBin
+        self.tmin=tmin
+        self.tmax=tmax
+        
         for iMS in range(self.nMS):
             if not DicoMSInfos[iMS]["Readable"]:
                 print(ModColor.Str("Problem reading %s"%MSName), file=log)
@@ -342,13 +468,20 @@ class ClassDynSpecMS(object):
         self.DicoMSInfos = DicoMSInfos
         self.FreqsAll    = np.array([DicoMSInfos[iMS]["ChanFreq"] for iMS in list(DicoMSInfos.keys()) if DicoMSInfos[iMS]["Readable"]])
         self.Freq_minmax = np.min(self.FreqsAll), np.max(self.FreqsAll)
-        self.NTimes      = self.times.size
+        #self.NTimes      = self.times.size
+        #dtArr=self.times[1:]-self.times[:-1]
+        #if np.unique(dtArr).size>1:
+        #    log.print(ModColor.Str("Times are not regular"))
+        #dt=np.median(dtArr)
+
+
+        
         f0, f1           = self.Freq_minmax
         self.NChan       = int((f1 - f0)/self.ChanWidth) + 1
 
         # Fill properties
-        self.tStart = DicoMSInfos[0]["startTime"]
-        self.tStop  = DicoMSInfos[0]["stopTime"] 
+        self.tStart = Time(tmin/(24*3600.), format='mjd', scale='utc').isot
+        self.tStop  = Time(tmax/(24*3600.), format='mjd', scale='utc').isot
         self.fMin   = self.Freq_minmax[0]
         self.fMax   = self.Freq_minmax[1]
 
@@ -356,8 +489,10 @@ class ClassDynSpecMS(object):
 
 
     
-    def LoadNextMS(self):
+    def LoadNextMS(self,T0,T1):
         iMS=self.iCurrentMS
+            
+            
         if not self.DicoMSInfos[iMS]["Readable"]: 
             print("Skipping [%i/%i]: %s"%(iMS+1, self.nMS, self.ListMSName[iMS]), file=log)
             self.iCurrentMS+=1
@@ -366,23 +501,66 @@ class ClassDynSpecMS(object):
 
         MSName=self.ListMSName[self.iCurrentMS]
         
-        t         = table(MSName, ack=False)
-        data      = t.getcol(self.ColName)
+        t = table(MSName, ack=False)
+
+        times  = t.getcol("TIME")
+        t0=self.tmin
+        
+        ind=np.where((times>=(T0+t0))&(times<(T1+t0)))[0]
+        if ind.size==0:
+            print("No Data in requested interval %f -> %f h time interval"%(T0/3600,T1/3600), file=log)
+            return "NotRead"
+        NROW=ind.size
+        ROW0=ind[0]
+
+        if ROW0!=0 or NROW!=t.nrows():
+            print("   reading chunk in %.3f -> %.3f h"%(T0/3600,T1/3600), file=log)
+        
+        nch  = self.DicoMSInfos[iMS]["ChanFreq"].size
+        npol  = self.DicoMSInfos[iMS]["npol"]
+
+        #chSlice=self.DicoMSInfos[iMS]["chSlice"]
+        RevertChans=self.DicoMSInfos[iMS]["RevertChans"]
+        
+        data = np.zeros((NROW,nch,npol),np.complex64)
+        t.getcolnp(self.ColName,data,ROW0,NROW)
+        if RevertChans: data=data[:,::-1,:]
+        
         if self.ModelName:
             print("  Substracting %s from %s"%(self.ModelName,self.ColName), file=log)
-            data-=t.getcol(self.ModelName)
-            
+            model=np.zeros((NROW,nch,npol),np.complex64)
+            t.getcolnp(self.ModelName,model,ROW0,NROW)
+            if RevertChans: model=model[:,::-1,:]
+
+            data-=model
+            del(model)
+
+        
+        
         if self.ColWeights:
             print("  Reading weight column %s"%(self.ColWeights), file=log)
-            weights   = t.getcol(self.ColWeights)
+            weights=np.zeros((NROW,nch),np.float32)
+            t.getcolnp(self.ColWeights,weights,ROW0,NROW)
+            if RevertChans: weights=weights[:,::-1]
         else:
             nrow,nch,_=data.shape
             weights=np.ones((nrow,nch),np.float32)
+
+        flag=np.zeros((NROW,nch,npol),np.bool)
+        t.getcolnp("FLAG",flag,ROW0,NROW)
+        if RevertChans: flag=flag[:,::-1]
+            
+
+        # data[:,:,:]=0
+        # data[:,0:300,0]=1
+        # flag.fill(0)
+        # weights.fill(1)
         
-        flag   = t.getcol("FLAG")
-        times  = t.getcol("TIME")
-        A0, A1 = t.getcol("ANTENNA1"), t.getcol("ANTENNA2")
-        u, v, w = t.getcol("UVW").T
+
+        times  = t.getcol("TIME",ROW0,NROW)
+        A0, A1 = t.getcol("ANTENNA1",ROW0,NROW), t.getcol("ANTENNA2",ROW0,NROW)
+
+        u, v, w = t.getcol("UVW",ROW0,NROW).T
         t.close()
         d = np.sqrt(u**2 + v**2 + w**2)
         uv0, uv1         = np.array(self.UVRange) * 1000
@@ -391,7 +569,6 @@ class ClassDynSpecMS(object):
         data[flag] = 0 # put down to zeros flagged visibilities
 
         f0, f1           = self.Freq_minmax
-        nch  = self.DicoMSInfos[iMS]["ChanFreq"].size
 
         # Considering another position than the phase center
         u0 = u.reshape( (-1, 1, 1) )
@@ -412,7 +589,6 @@ class ClassDynSpecMS(object):
             
         if self.DoJonesCorr_kMS or self.DoJonesCorr_Beam:
             self.setJones()
-        self.iCurrentMS+=1
 
     def setJones(self):
         from DDFacet.Data import ClassJones
@@ -503,17 +679,35 @@ class ClassDynSpecMS(object):
     #     self.Finalise()
 
     def StackAll(self):
-        while self.iCurrentMS<self.nMS:
-            if self.LoadNextMS()=="NotRead": continue
-            print("Making dynamic spectra...", file=log)
-            for iTime in range(self.NTimes):
-                APP.runJob("Stack_SingleTime:%d"%(iTime), 
-                           self.Stack_SingleTime,
-                           args=(iTime,))#,serial=True)
-            APP.awaitJobResults("Stack_SingleTime:*", progress="Append MS %i"%self.DicoDATA["iMS"])
 
-            # for iTime in range(self.NTimes):
-            #     self.Stack_SingleTime(iTime)
+        if self.TChunkHours>0:
+            TChunk_s=self.TChunkHours*3600
+            TObs=self.tmax-self.tmin
+            NChunks=int(np.ceil(TObs/TChunk_s))
+            T0s=np.arange(NChunks)*TChunk_s
+            T1s=np.arange(NChunks)*TChunk_s+TChunk_s
+        else:
+            T0s=np.array([0])
+            T1s=np.array([1e10])
+            
+        while self.iCurrentMS<self.nMS:
+            for iChunk in range(T0s.size): #[1:2]:
+                T0,T1=T0s[iChunk],T1s[iChunk]
+                rep=self.LoadNextMS(T0,T1)
+                if rep=="NotRead": continue
+            
+                print("Making dynamic spectra...", file=log)
+                NTimes=self.DicoMSInfos[self.iCurrentMS]["times"].size
+                for iTime in range(NTimes):
+                    APP.runJob("Stack_SingleTime:%d"%(iTime), 
+                               self.Stack_SingleTime,
+                               args=(iTime,))#,serial=True)
+                APP.awaitJobResults("Stack_SingleTime:*", progress="Append MS %i"%self.DicoDATA["iMS"])
+                
+            self.iCurrentMS+=1
+
+                # for iTime in range(self.NTimes):
+                #     self.Stack_SingleTime(iTime)
        
         self.Finalise()
 
@@ -543,112 +737,181 @@ class ClassDynSpecMS(object):
         self.GOut = GOut
 
     def Stack_SingleTime(self,iTime):
-        for iDir in range(self.NDir):
-            self.Stack_SingleTimeDir(iTime,iDir)
-        
-    def Stack_SingleTimeDir(self,iTime,iDir):
-        ra=self.PosArray.ra[iDir]
-        dec=self.PosArray.dec[iDir]
-
-        l, m = self.radec2lm(ra, dec)
-        n  = np.sqrt(1. - l**2. - m**2.)
         self.DicoDATA.reload()
         self.DicoGrids.reload()
-        indRow = np.where(self.DicoDATA["times"]==self.times[iTime])[0]
-        #indRow = np.where(self.DicoDATA["times"]>0)[0]
-        f   = self.DicoDATA["flag"][indRow, :, :]
-        d   = self.DicoDATA["data"][indRow, :, :]
-        nrow,nch,_=d.shape
-        weights   = (self.DicoDATA["weights"][indRow, :]).reshape((nrow,nch,1))
-        A0s = self.DicoDATA["A0"][indRow]
-        A1s = self.DicoDATA["A1"][indRow]
-        u0  = self.DicoDATA["u"][indRow].reshape((-1,1,1))
-        v0  = self.DicoDATA["v"][indRow].reshape((-1,1,1))
-        w0  = self.DicoDATA["w"][indRow].reshape((-1,1,1))
+        # for iDir in range(self.NDir):
+        #     self.Stack_SingleTimeDir(iTime,iDir)
+        
+        self.Stack_SingleTimeDir(iTime)
+        
+    def Stack_SingleTimeDir(self,iTime):
+
+        
         iMS  = self.DicoDATA["iMS"]
+        indRow = np.where(self.DicoDATA["times"]==self.DicoMSInfos[iMS]["times"][iTime])[0]
+        if indRow.size==0: return
+
+        nrow,nch,npol=self.DicoDATA["data"].shape
+        indCh=np.int64(np.arange(nch)).reshape((1,nch,1))
+        indPol=np.int64(np.arange(npol)).reshape((1,1,npol))
+        indR=indRow.reshape((indRow.size,1,1))
+        nRowOut=indRow.size
+        indArr=nch*npol*np.int64(indR)+npol*np.int64(indCh)+np.int64(indPol)
+        
+        #indRow = np.where(self.DicoDATA["times"]>0)[0]
+        #f   = self.DicoDATA["flag"][indRow, :, :]
+        #d   = self.DicoDATA["data"][indRow, :, :]
+
+        T=ClassTimeIt.ClassTimeIt()
+        T.disable()
+        d   = np.array((self.DicoDATA["data"].flat[indArr.flat[:]]).reshape((nRowOut,nch,npol))).copy()
+        f   = np.array((self.DicoDATA["flag"].flat[indArr.flat[:]]).reshape((nRowOut,nch,npol))).copy()
+        T.timeit("first")
+        
+        # for i in range(10):
+        #     d   = (self.DicoDATA["data"].flat[indArr.flat[:]]).reshape((nRowOut,nch,npol)).copy()
+        #     f   = (self.DicoDATA["flag"].flat[indArr.flat[:]]).reshape((nRowOut,nch,npol)).copy()
+        #     T.timeit("first %i"%i)
+        
+        nrow,nch,_=d.shape
+        #weights   = (self.DicoDATA["weights"][indRow, :]).reshape((nrow,nch,1))
+        
+        indArr=nch*np.int64(indR)+np.int64(indCh)
+        weights   = np.array((self.DicoDATA["weights"].flat[indArr.flat[:]]).reshape((nRowOut,nch,1))).copy()
+        
+        A0s = self.DicoDATA["A0"][indRow].copy()
+        A1s = self.DicoDATA["A1"][indRow].copy()
+        u0  = self.DicoDATA["u"][indRow].reshape((-1,1,1)).copy()
+        v0  = self.DicoDATA["v"][indRow].reshape((-1,1,1)).copy()
+        w0  = self.DicoDATA["w"][indRow].reshape((-1,1,1)).copy()
+        T.timeit("second")
 
 
-        chfreq=self.DicoMSInfos[iMS]["ChanFreq"].reshape((1,-1,1))
+        chfreq=np.array(self.DicoMSInfos[iMS]["ChanFreq"].reshape((1,-1,1))).copy()
         chfreq_mean=np.mean(chfreq)
         # kk  = np.exp( -2.*np.pi*1j* f/const.c.value *(u0*l + v0*m + w0*(n-1)) ) # Phasing term
         #print iTime,iDir
-        kk  = np.exp(-2.*np.pi*1j* chfreq/const.c.value *(u0*l + v0*m + w0*(n-1)) ) # Phasing term
-
-        # #ind=np.where((A0s==0)&(A1s==10))[0]
-        # ind=np.where((A0s!=1000))[0]
-        # import pylab
-        # pylab.ion()
-        # pylab.clf()
-        # pylab.plot(np.angle(d[ind,2,0]))
-        # pylab.plot(np.angle(kk[ind,2,0].conj()))
-        # pylab.draw()
-        # pylab.show(False)
-        # pylab.pause(0.1)
-
+        ChanFreqs=np.array(self.DicoMSInfos[iMS]["ChanFreq"][0]).copy()
         
+        iTimeGrid=np.argmin(np.abs(self.timesGrid-self.DicoMSInfos[iMS]["times"][iTime]))
+        
+        dcorr=d.copy()
         f0, _ = self.Freq_minmax
+        ich0 = int( (ChanFreqs - f0)/self.ChanWidth )
+        OneMinusF=(1-f).copy()
         
-        DicoMSInfos      = self.DicoMSInfos
-
-        _,nch,_=self.DicoDATA["data"].shape
-
-        dcorr=d
-        if self.DoJonesCorr_kMS:
-            self.DicoJones_kMS.reload()
-            tm = self.DicoJones_kMS['tm']
-            # Time slot for the solution
-            iTJones=np.argmin(np.abs(tm-self.times[iTime]))
-            iDJones=np.argmin(AngDist(ra,self.DicoJones_kMS['ra'],dec,self.DicoJones_kMS['dec']))
-            _,nchJones,_,_,_,_=self.DicoJones_kMS['G'].shape
-            for iFJones in range(nchJones):
-                nu0,nu1=self.DicoJones_kMS['FreqDomains'][iFJones]
-                fData=self.DicoMSInfos[iMS]["ChanFreq"].ravel()
-                indCh=np.where((fData>=nu0) & (fData<nu1))[0]
-                #iFJones=np.argmin(np.abs(chfreq_mean-self.DicoJones_kMS['FreqDomains_mean']))
-                # construct corrected visibilities
-                J0 = self.DicoJones_kMS['G'][iTJones, iFJones, A0s, iDJones, 0, 0]
-                J1 = self.DicoJones_kMS['G'][iTJones, iFJones, A1s, iDJones, 0, 0]
-                J0 = J0.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
-                J1 = J1.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
-                #dcorr[:,indCh,:] = J0.conj() * dcorr[:,indCh,:] * J1
-                dcorr[:,indCh,:] = 1./J0 * dcorr[:,indCh,:] * 1./J1.conj()
-            # iFJones=np.argmin(np.abs(chfreq_mean-self.DicoJones_kMS['FreqDomains_mean']))
-            # # construct corrected visibilities
-            # J0 = self.DicoJones_kMS['G'][iTJones, iFJones, A0s, iDJones, 0, 0]
-            # J1 = self.DicoJones_kMS['G'][iTJones, iFJones, A1s, iDJones, 0, 0]
-            # J0 = J0.reshape((-1, 1, 1))*np.ones((1, nch, 1))
-            # J1 = J1.reshape((-1, 1, 1))*np.ones((1, nch, 1))
-            # dcorr = J0.conj() * dcorr * J1
-
-        if self.DoJonesCorr_Beam:
-            self.DicoJones_Beam.reload()
-            tm = self.DicoJones_Beam['tm']
-            # Time slot for the solution
-            iTJones=np.argmin(np.abs(tm-self.times[iTime]))
-            iDJones=np.argmin(AngDist(ra,self.DicoJones_Beam['ra'],dec,self.DicoJones_Beam['dec']))
-            _,nchJones,_,_,_,_=self.DicoJones_Beam['G'].shape
-            for iFJones in range(nchJones):
-                nu0,nu1=self.DicoJones_Beam['FreqDomains'][iFJones]
-                fData=self.DicoMSInfos[iMS]["ChanFreq"].ravel()
-                indCh=np.where((fData>=nu0) & (fData<nu1))[0]
-                #iFJones=np.argmin(np.abs(chfreq_mean-self.DicoJones_Beam['FreqDomains_mean']))
-                # construct corrected visibilities
-                J0 = self.DicoJones_Beam['G'][iTJones, iFJones, A0s, iDJones, 0, 0]
-                J1 = self.DicoJones_Beam['G'][iTJones, iFJones, A1s, iDJones, 0, 0]
-                J0 = J0.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
-                J1 = J1.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
-                #dcorr[:,indCh,:] = J0.conj() * dcorr[:,indCh,:] * J1
-                dcorr[:,indCh,:] = 1./J0 * dcorr[:,indCh,:] * 1./J1.conj()
-                
-
+        W=np.zeros((nRowOut,nch,npol),d.dtype)
+        for ipol in range(npol):
+            W[:,:,ipol]=weights[:,:,0]
             
-        #ds=np.sum(d*kk, axis=0) # without Jones
-        ds = np.sum(dcorr * kk*weights, axis=0) # with Jones
-        ws = np.sum((1-f)*weights, axis=0)
+        ws = np.sum(OneMinusF*weights, axis=0)
+        
+        # weights=weights*np.ones((1,1,npol))
+        # W=weights
 
-        ich0 = int( (self.DicoMSInfos[iMS]["ChanFreq"][0] - f0)/self.ChanWidth )
-        self.DicoGrids["GridLinPol"][iDir,ich0:ich0+nch, iTime, :] = ds
-        self.DicoGrids["GridWeight"][iDir,ich0:ich0+nch, iTime, :] = ws
+        
+        kk=np.zeros_like(d)
+        for iDir in range(self.NDir):
+            ra=self.PosArray.ra[iDir]
+            dec=self.PosArray.dec[iDir]
+            ra0,dec0=self.DicoMSInfos[iMS]["ra0dec0"]
+            l, m = self.radec2lm(ra, dec,ra0,dec0)
+            n  = np.sqrt(1. - l**2. - m**2.)
+
+        
+            kkk  = np.exp(-2.*np.pi*1j* chfreq/const.c.value *(u0*l + v0*m + w0*(n-1)) ) # Phasing term
+
+            for ipol in range(npol):
+                kk[:,:,ipol]=kkk[:,:,0]
+            # #ind=np.where((A0s==0)&(A1s==10))[0]
+            # ind=np.where((A0s!=1000))[0]
+            # import pylab
+            # pylab.ion()
+            # pylab.clf()
+            # pylab.plot(np.angle(d[ind,2,0]))
+            # pylab.plot(np.angle(kk[ind,2,0].conj()))
+            # pylab.draw()
+            # pylab.show(False)
+            # pylab.pause(0.1)
+    
+            
+            
+            #DicoMSInfos      = self.DicoMSInfos
+    
+            #_,nch,_=self.DicoDATA["data"].shape
+    
+            dcorr[:]=d[:]
+            #kk=kk*np.ones((1,1,npol))
+            
+            
+            if self.DoJonesCorr_kMS:
+                self.DicoJones_kMS.reload()
+                tm = self.DicoJones_kMS['tm']
+                # Time slot for the solution
+                iTJones=np.argmin(np.abs(tm-self.times[iTime]))
+                iDJones=np.argmin(AngDist(ra,self.DicoJones_kMS['ra'],dec,self.DicoJones_kMS['dec']))
+                _,nchJones,_,_,_,_=self.DicoJones_kMS['G'].shape
+                for iFJones in range(nchJones):
+                    nu0,nu1=self.DicoJones_kMS['FreqDomains'][iFJones]
+                    fData=self.DicoMSInfos[iMS]["ChanFreq"].ravel()
+                    indCh=np.where((fData>=nu0) & (fData<nu1))[0]
+                    #iFJones=np.argmin(np.abs(chfreq_mean-self.DicoJones_kMS['FreqDomains_mean']))
+                    # construct corrected visibilities
+                    J0 = self.DicoJones_kMS['G'][iTJones, iFJones, A0s, iDJones, 0, 0]
+                    J1 = self.DicoJones_kMS['G'][iTJones, iFJones, A1s, iDJones, 0, 0]
+                    J0 = J0.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
+                    J1 = J1.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
+                    #dcorr[:,indCh,:] = J0.conj() * dcorr[:,indCh,:] * J1
+                    dcorr[:,indCh,:] = 1./J0 * dcorr[:,indCh,:] * 1./J1.conj()
+                # iFJones=np.argmin(np.abs(chfreq_mean-self.DicoJones_kMS['FreqDomains_mean']))
+                # # construct corrected visibilities
+                # J0 = self.DicoJones_kMS['G'][iTJones, iFJones, A0s, iDJones, 0, 0]
+                # J1 = self.DicoJones_kMS['G'][iTJones, iFJones, A1s, iDJones, 0, 0]
+                # J0 = J0.reshape((-1, 1, 1))*np.ones((1, nch, 1))
+                # J1 = J1.reshape((-1, 1, 1))*np.ones((1, nch, 1))
+                # dcorr = J0.conj() * dcorr * J1
+    
+            if self.DoJonesCorr_Beam:
+                self.DicoJones_Beam.reload()
+                tm = self.DicoJones_Beam['tm']
+                # Time slot for the solution
+                iTJones=np.argmin(np.abs(tm-self.times[iTime]))
+                iDJones=np.argmin(AngDist(ra,self.DicoJones_Beam['ra'],dec,self.DicoJones_Beam['dec']))
+                _,nchJones,_,_,_,_=self.DicoJones_Beam['G'].shape
+                for iFJones in range(nchJones):
+                    nu0,nu1=self.DicoJones_Beam['FreqDomains'][iFJones]
+                    fData=self.DicoMSInfos[iMS]["ChanFreq"].ravel()
+                    indCh=np.where((fData>=nu0) & (fData<nu1))[0]
+                    #iFJones=np.argmin(np.abs(chfreq_mean-self.DicoJones_Beam['FreqDomains_mean']))
+                    # construct corrected visibilities
+                    J0 = self.DicoJones_Beam['G'][iTJones, iFJones, A0s, iDJones, 0, 0]
+                    J1 = self.DicoJones_Beam['G'][iTJones, iFJones, A1s, iDJones, 0, 0]
+                    J0 = J0.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
+                    J1 = J1.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
+                    #dcorr[:,indCh,:] = J0.conj() * dcorr[:,indCh,:] * J1
+                    dcorr[:,indCh,:] = 1./J0 * dcorr[:,indCh,:] * 1./J1.conj()
+                    
+    
+                
+            #ds=np.sum(d*kk, axis=0) # without Jones
+            
+            #ds = np.sum(dcorr * kk*weights, axis=0) # with Jones
+            #dcorr.flat[:]*=kk.flat[:]
+            #dcorr.flat[:]*=W.flat[:]
+            dcorr*=kk
+            #dcorr=dcorr*kk
+            dcorr*=W
+            ds = np.sum(dcorr, axis=0) # with Jones
+    
+    
+            
+            #print(iTimeGrid,iTime)
+    
+            self.DicoGrids["GridLinPol"][iDir,ich0:ich0+nch, iTimeGrid, :] = ds
+            self.DicoGrids["GridWeight"][iDir,ich0:ich0+nch, iTimeGrid, :] = np.float32(ws)
+            
+        T.timeit("rest")
+
 
 
     def NormJones(self, G):
@@ -658,10 +921,10 @@ class ClassDynSpecMS(object):
         
 
 
-    def radec2lm(self, ra, dec):
+    def radec2lm(self, ra, dec,ra0,dec0):
         # ra and dec must be in radians
-        l = np.cos(dec) * np.sin(ra - self.ra0)
-        m = np.sin(dec) * np.cos(self.dec0) - np.cos(dec) * np.sin(self.dec0) * np.cos(ra - self.ra0)
+        l = np.cos(dec) * np.sin(ra - ra0)
+        m = np.sin(dec) * np.cos(dec0) - np.cos(dec) * np.sin(dec0) * np.cos(ra - ra0)
         return l, m
 # =========================================================================
 # =========================================================================
