@@ -7,7 +7,7 @@ import scipy.stats
 import DynSpecMS.Analysis.GeneDist
 import glob
 import _pickle as cPickle
-#from surveys_db import SurveysDB
+from surveys_db import SurveysDB
 import copy
 import os
 from . import ClassPlotImage
@@ -47,6 +47,26 @@ def testBruce():
     runAllDir(Patern="/home/ctasse/TestDynSpecMS/DynSpecs_1608538564",
               SaveDir="/home/ctasse/TestDynSpecMS/PNG",
               UseLoTSSDB=False)
+
+def DBToASCII():
+    with SurveysDB() as sdb:
+        sdb.cur.execute('UNLOCK TABLES')
+        sdb.cur.execute('select * from spectra')
+        result=sdb.cur.fetchall()
+    DB={}
+    for t in result:
+        F=t["filename"].split("/")[-1]
+        DB[F]=t
+        #print(t)
+        
+    with open('DB.txt', 'w') as f:
+        for F in DB.keys():
+            g=DB[F]
+            f.write("%s, %s, %s \n"%(g["filename"],g["type"],g["name"]))
+            if "Bright" in g["type"]:
+                print(g["type"])
+
+    
     
 def runAllDir(Patern="/data/cyril.tasse/DataDynSpec_May21/*/DynSpecs_*",SaveDir=None,UseLoTSSDB=False):
 
