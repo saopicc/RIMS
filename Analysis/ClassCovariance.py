@@ -20,10 +20,34 @@ from astropy.time import Time
 from scipy import ndimage
 import matplotlib
 import time
+import DDFacet.Other.MyPickle
+import DDFacet.Other.ClassTimeIt
+
+from DDFacet.Other import logger
+log=logger.getLogger("ClassCovariance")
+from DDFacet.Array import shared_dict
+from DDFacet.Other.AsyncProcessPool import APP, WorkerProcessError
+from DDFacet.Other import Multiprocessing
+from DDFacet.Other import AsyncProcessPool
+
+def AngDist(ra0,ra1,dec0,dec1):
+    AC=np.arccos
+    C=np.cos
+    S=np.sin
+    D=S(dec0)*S(dec1)+C(dec0)*C(dec1)*C(ra0-ra1)
+
+    if type(D).__name__=="ndarray":
+        D[D>1.]=1.
+        D[D<-1.]=-1.
+    else:
+        if D>1.: D=1.
+        if D<-1.: D=-1.
+    return AC(D)
+
 
 def Save(fileout,Obj):
     cPickle.dump(Obj, open(fileout,'wb'), 2)
-
+    
 def imShow(I,v=5,MeanCorr=False,**kwargs):
     if MeanCorr:
         I=I-np.median(I[(I!=0)&(np.isnan(I)==False)])
@@ -75,12 +99,94 @@ def testBruce():
     runAllDir(Patern="/home/ctasse/TestDynSpecMS/TestWeights_WhereChan",
               SaveDir="/home/ctasse/TestDynSpecMS/PNG_DEEP_whereChan",
               UseLoTSSDB=False)
+    
+def DB2np(D):
+    k=list(D.keys())[0]
+    d=D[k]
+    dtype=[(k,type(d[k])) for k in d.keys()]
+    dtype=[]
+    for k in d.keys():
+        if isinstance(d[k],str):
+            s="|S200"
+        else:
+            s=np.float32
+        dtype.append((k,s))
+    Cat=np.zeros((len(D),),dtype=dtype)
+    for i,K in enumerate(D.keys()):
+        #print("%i/%i"%(i,len(D)))
+        for k in d.keys():
+            #print(k)
+            Cat[i][k]=D[K][k]
+    Cat=Cat.view(np.recarray)
+    return Cat
+    
+def PlotTargets():
+    # with SurveysDB() as sdb:
+    #     sdb.cur.execute('UNLOCK TABLES')
+    #     sdb.cur.execute('select * from spectra')
+    #     result=sdb.cur.fetchall()
+    # DB={}
+    # for t in result:
+    #     F=t["filename"].split("/")[-1]
+    #     DB[F]=t
+    # DDFacet.Other.MyPickle.Save(DB,"DB.pickle")
+    
+    # D=DDFacet.Other.MyPickle.Load("DB.pickle")
+    # Cat=DB2np(D)
+    # np.save("DB.npy",Cat)
 
+    C=np.load("DB.npy").view(np.recarray)
+    import pylab
+    pylab.clf()
+    LType=[]
+    LN=[]
+    for k in np.unique(C.type):
+        ka=k.decode("ascii")
+        if "b'"==ka[0:2]:
+            ka=ka[2:-1]
+        if "Off" in ka: continue
+        ind=np.where(C.type==k)
+        N=ind[0].size
+        # print(k,ka,N)
+        if ka in LType:
+            LN[LType.index(ka)]+=N
+        else:
+            LType.append(ka)
+            LN.append(N)
+        c=C[ind]
+    #     pylab.plot(c.ra,c.decl,ls="",marker="o",label=ka,linewidth=0, markersize=4,markeredgewidth=0,alpha=0.5)
+    # pylab.xlabel("RA (deg)")
+    # pylab.ylabel("DEC (deg)")
+    # pylab.legend()
+    # pylab.draw()
+    # pylab.show()
+
+    from matplotlib import pyplot as plt
+    # plt.pie(Popularity)
+    ind=np.argsort(LN)
+    LType=["%s [%i]"%(LType[i],LN[i]) for i in ind]
+    LN=[LN[i] for i in ind]
+    plt.pie( LN, labels = LType, autopct='%0.1f%%', explode=tuple([0.1]*len(LN)))
+    plt.axis('equal')
+    plt.show()
+
+    
+    
 def DBToASCII():
+    # with SurveysDB() as sdb:
+    #     sdb.cur.execute('select * from transients')
+    #     result=sdb.cur.fetchall()
+    #     # convert to a list, then to ndarray, then to recarray
+    # l=[]
+    # for r in result:
+    #     l.append((r['id'],r['ra'],r['decl'],r['type']))
+    # stop
+
     with SurveysDB() as sdb:
         sdb.cur.execute('UNLOCK TABLES')
         sdb.cur.execute('select * from spectra')
         result=sdb.cur.fetchall()
+        
     DB={}
     for t in result:
         F=t["filename"].split("/")[-1]
@@ -93,66 +199,192 @@ def DBToASCII():
             f.write("%s, %s, %s \n"%(g["filename"],g["type"],g["name"]))
             if "Bright" in g["type"]:
                 print(g["type"])
-    
-def runAllDir(Patern="/data/cyril.tasse/DataDynSpec_May21/*/DynSpecs_*",SaveDir=None,UseLoTSSDB=False):
 
-    L=glob.glob(Patern)
+def runOneLOFAR():
+    CRA=ClassRunAll(Patern="/data/cyril.tasse/DataDynSpec_May21/*/DynSpecs_L352758",
+                   SaveDir="PNG_PRES_ONE",
+                   UseLoTSSDB=True)
+    CRA.run()
+
+def runAllLOFAR():
+    #CRA=ClassRunAll(Patern="/data/cyril.tasse/DataDynSpec_May21/*/DynSpecs_L352758",
+    #                SaveDir="PNG_PRES",
+    #                UseLoTSSDB=True)
+
+
     
-    if UseLoTSSDB:
-        with SurveysDB() as sdb:
-            sdb.cur.execute('UNLOCK TABLES')
-            sdb.cur.execute('select * from spectra')
-            result=sdb.cur.fetchall()
-        DB={}
+    
+    CRA=ClassRunAll(Patern="/data/cyril.tasse/DataDynSpec_May21/*/DynSpecs_*",
+                    SaveDir="PNG_PRES_NEW",
+                    UseLoTSSDB=True)
+    CRA.run()
+
+import regions
+def appendFacetIDToDB(DB):
+    #DB=DDFacet.Other.MyPickle.Load("DB_In.pickle")
+    Cat=DB2np(DB)
+
+    
+    # DPointing={}
+    # ll=glob.glob("/data/cyril.tasse/DataDynSpec_May21/*/*.tessel.reg")
+    # T=DDFacet.Other.ClassTimeIt.ClassTimeIt()
+    # for ireg,reg in enumerate(ll):
+    #     print("%i/%i"%(ireg,len(ll)))
+    #     R=regions.Regions.read(reg)
+    #     PName=reg.split("/")[-2]
+    #     Lra=[]
+    #     Ldec=[]
+    #     LCluster=[]
+    #     for r in R:
+    #         if "PointSkyRegion" in r.__str__():
+    #             Lra.append(r.center.ra.deg)
+    #             Ldec.append(r.center.dec.deg)
+    #             LCluster.append(int(r.meta["label"].split("_")[1][:-1].replace("S","")))
+    #     Cp=np.zeros((len(Lra),),dtype=[("ra",np.float32),("dec",np.float32),("Cluster",int)])
+    #     Cp=Cp.view(np.recarray)
+    #     Cp.ra[:]=np.array(Lra)
+    #     Cp.dec[:]=np.array(Ldec)
+    #     Cp.Cluster[:]=np.array(LCluster)
+    #     DPointing[PName]=Cp
+    #     if ireg%10==0:
+    #         Save("ClusterDB.pickle",DPointing)
+    #     T.timeit()
+    # Save("ClusterDB.pickle",DPointing)
+
+    DPointing=DDFacet.Other.MyPickle.Load("ClusterDB.pickle")
+    for iField,field in enumerate(sorted(list(DPointing.keys()))):
+        print("%i/%i"%(iField,len(DPointing)))
+        ind=np.where(Cat["field"]==field.encode("UTF-8"))[0]
+        Cs=Cat[ind]
+        if ind.size==0:
+            continue
+
+        rap=DPointing[field]["ra"]*np.pi/180
+        if DPointing[field]["ra"].size==0: continue
+        decp=DPointing[field]["dec"]*np.pi/180
         
-        for t in result:
-            F=t["filename"].split("/")[-1]
-            DB[F]=t
-    else:
+        for iSpectra,Spectra in enumerate(Cs["filename"]):
+            ra=Cs["ra"][iSpectra]*np.pi/180
+            dec=Cs["decl"][iSpectra]*np.pi/180
+            D=AngDist(ra,rap,dec,decp)
+            iFacet=np.argmin(D)
+            iTessel=DPointing[field]["Cluster"][iFacet]
+            key=Spectra.decode("ascii").split("/")[-1]
+            DB[key]["Cluster"]=iTessel
         
-        #DB={"1608538564_20:09:36.800_-20:26:46.000.fits":{"filename":"/data/cyril.tasse/TestDynSpecMS/DynSpecs_1608538564/TARGET/1608538564_20:09:36.800_-20:26:46.000.fits","type":"Oleg"}}
-        DB={}
-        LTarget=[]
-        for DirName in L:
-            LTarget+=glob.glob("%s/TARGET/*.fits"%DirName)
+        
+class ClassRunAll():
+    def __init__(self,
+                 Patern="/data/cyril.tasse/DataDynSpec_May21/*/DynSpecs_*",
+                 SaveDir=None,
+                 UseLoTSSDB=False):
+        self.Patern=Patern
+        self.SaveDir=SaveDir
+        self.UseLoTSSDB=False
+        if UseLoTSSDB:
+            # with SurveysDB() as sdb:
+            #     sdb.cur.execute('UNLOCK TABLES')
+            #     sdb.cur.execute('select * from spectra')
+            #     result=sdb.cur.fetchall()
+            # DB={}
             
-        for f in LTarget:
-            F=f.split("/")[-1]
-            DB[F]={"filename":f,"type":"NoDB"}
+            # for t in result:
+            #     F=t["filename"].split("/")[-1]
+            #     DB[F]=t
+            # appendFacetIDToDB(DB)
+            # Save("DB_In.pickle",DB)
             
-    
-    
-    
-    
-    #L=["/data/cyril.tasse/DataDynSpec_May21/P156+42/DynSpecs_L352758"]
-    
+            DB=DDFacet.Other.MyPickle.Load("DB_In.pickle")        
+        else:
+            #DB={"1608538564_20:09:36.800_-20:26:46.000.fits":{"filename":"/data/cyril.tasse/TestDynSpecMS/DynSpecs_1608538564/TARGET/1608538564_20:09:36.800_-20:26:46.000.fits","type":"Oleg"}}
+            DB={}
+            LTarget=[]
+            for DirName in L:
+                LTarget+=glob.glob("%s/TARGET/*.fits"%DirName)
+                
+            for f in LTarget:
+                F=f.split("/")[-1]
+                DB[F]={"filename":f,"type":"NoDB"}
 
-
+        print("ok")
+        self.Taper=(20,20)
+        self.Taper=(40,40)
+        self.Taper=(5,5)
+        
+        for Obj in list(DB.keys()):
+            DB[Obj]["R_I"]=0.
+            DB[Obj]["R_V"]=0.
+            DB[Obj]["R_L"]=0.
+            DB[Obj]["W0_I"]=0.
+            DB[Obj]["W0_V"]=0.
+            DB[Obj]["W0_L"]=0.
+            DB[Obj]["W1_I"]=0.
+            DB[Obj]["W1_V"]=0.
+            DB[Obj]["W1_L"]=0.
     
-    DBOut=[]
+        # L=["/data/cyril.tasse/DataDynSpec_May21/P156+42/DynSpecs_L352758"]
+    
+        
+        APP.registerJobHandlers(self)
+        AsyncProcessPool.init(ncpu=40,
+                              affinity="disable")
+        APP.startWorkers()
+        
+        self.DB=shared_dict.dict_to_shm("DB", DB)
+        
+
+    def run(self):
+        Patern=self.Patern
+        SaveDir=self.SaveDir
+        UseLoTSSDB=self.UseLoTSSDB
+        
+        L=glob.glob(Patern)
+    
 
         
-    # #tp = ThreadPool(50)
-    # for iDir,BaseDir in enumerate(L):
-    #     tp.apply_async(doRunDir, (BaseDir,))
-    # tp.close()
-    # tp.join()
-
-    # Jobs=[(d,DB) for d in L]#[0:10]
-    # with Pool(90) as p:
-    #     print(p.map(doRunDir, Jobs))
-    # return
+        # #tp = ThreadPool(50)
+        # for iDir,BaseDir in enumerate(L):
+        #     tp.apply_async(doRunDir, (BaseDir,))
+        # tp.close()
+        # tp.join()
+        
+        # Jobs=[(d,DB) for d in L]#[0:10]
+        # with Pool(90) as p:
+        #     print(p.map(doRunDir, Jobs))
+        # return
     
-    for iDir,BaseDir in enumerate(L):
+        for iDir,BaseDir in enumerate(L):
+            #print("========================== [%i / %i]"%(iDir,len(L)))
+            #self._runDir(iDir,BaseDir)
+            APP.runJob("runDir:%d"%(iDir), 
+                       self._runDir,
+                       args=(iDir,BaseDir))#,serial=True)
+
+        APP.awaitJobResults("runDir:*", progress="Compute stat")
+
+        #Save("DBOut.pickle",self.DB)
+        DB=shared_dict.attach("DB")
+        Cat=DB2np(DB)
+        np.save("DBOut.%i_%i.npy"%(self.Taper[0],self.Taper[1]),Cat)
+
+    def _runDir(self,iDir,BaseDir):
         #if iDir<692: continue
         #if not("L658492" in BaseDir): continue
         #if not("L352758" in BaseDir): continue
         #if not("L339800" in BaseDir): continue
         #if not("L761759" in BaseDir): continue
         #if not("L259433" in BaseDir): continue
+        #L=self.L
+        DB=shared_dict.attach("DB")
+        if iDir%100==0:
+            Cat=DB2np(DB)
+            np.save("DBOut.%i_%i.npy"%(self.Taper[0],self.Taper[1]),Cat)
+
+        Patern=self.Patern
+        SaveDir=self.SaveDir
+        UseLoTSSDB=self.UseLoTSSDB
         
-        print("========================== [%i / %i]"%(iDir,len(L)))
-        print(BaseDir)
+        #print(BaseDir)
         # CRD=ClassRunDir(BaseDir=BaseDir,DB=DB,pol="V",SaveDir=SaveDir)
         # L3=CRD.runDir()
         # if L3 is None:
@@ -162,37 +394,39 @@ def runAllDir(Patern="/data/cyril.tasse/DataDynSpec_May21/*/DynSpecs_*",SaveDir=
         #CRD=ClassRunDir(BaseDir=BaseDir,DB=DB,pol="L",SaveDir=SaveDir)
         #L0=CRD.runDir()
         
-        CRD0=ClassRunDir(BaseDir=BaseDir,DB=DB,pol="Q",SaveDir=SaveDir)
-        CRD0.runDir()
-        # CRD.Plot()
+        # CRD0=ClassRunDir(BaseDir=BaseDir,DB=DB,pol="Q",SaveDir=SaveDir)
+        # CRD0.runDir()
+        # # CRD.Plot()
         
-        CRD1=ClassRunDir(BaseDir=BaseDir,DB=DB,pol="U",SaveDir=SaveDir)
-        CRD1.runDir()
+        # CRD1=ClassRunDir(BaseDir=BaseDir,DB=DB,pol="U",SaveDir=SaveDir)
+        # CRD1.runDir()
         
-        # CRD=ClassRunDir(BaseDir=BaseDir,DB=DB,pol="I",SaveDir=SaveDir)
-        # L0=CRD.runDir()
+        CRD=ClassRunDir(BaseDir=BaseDir,DB=DB,pol="I",SaveDir=SaveDir,
+                        Taper=self.Taper)
+        L0=CRD.runDir()
         
-        # CRD=ClassRunDir(BaseDir=BaseDir,DB=DB,pol="V",SaveDir=SaveDir)
-        # L0=CRD.runDir()
+        CRD=ClassRunDir(BaseDir=BaseDir,DB=DB,pol="V",SaveDir=SaveDir)
+        L0=CRD.runDir()
+        #CRD.Plot()
         
         # # CRD=ClassRunDir(BaseDir=BaseDir,DB=DB,pol=1)
         # # L0=CRD.runDir()
         # # CRD=ClassRunDir(BaseDir=BaseDir,DB=DB,pol=2)
         # # L0=CRD.runDir()
-
+        
         # for it in range(len(L3)):
         #     t=L3[it]
         #     F=t["File"]
         #     tDB=copy.deepcopy(DB[F])
-            
+        
         #     tDB["R3"]=t["R"]
-            
+        
         #     # t=L0[it]
         #     # F=t["File"]
         #     # tDB["R0"]=t["R"]
-            
+        
         #     DBOut.append(tDB)
-    Save("D.pickle",DBOut)
+            
 
 
 class ClassDist():
@@ -206,7 +440,7 @@ class ClassDist():
         F=fits.open(File)[0]
         W=fits.open(Weight)[0]
         N=W.data[0]
-        self.Name=F.header['NAME']
+        #self.Name=F.header['NAME']
         npol,nch,nt=F.data.shape
 
         t0=F.header['OBS-STAR']
@@ -307,9 +541,9 @@ class ClassDist():
     def computeMask(self):
         I=self.I
         Sig=scipy.stats.median_absolute_deviation(I[I!=0],axis=None)
-        self.Mask=(np.abs(I)>5*Sig)
-        BoxTime=11
-        BoxFreq=11
+        self.Mask=(np.abs(I)>20*Sig)
+        BoxTime=3
+        BoxFreq=1
         cMask=scipy.signal.convolve2d(self.Mask,np.ones((BoxFreq,BoxTime),np.float32),mode="same")
         self.Mask=(np.abs(cMask)>0.1)
         # print("!!!!")
@@ -324,26 +558,30 @@ class ClassDist():
             x0,x1=self.fI.min(),self.fI.max()
         else:
             x0,x1=xmm
-        return None,None
+        #return None,None
         DM=DynSpecMS.Analysis.GeneDist.ClassDistMachine()
         DM.setRefSample(self.fI[self.Mask==0].ravel(),Ns=100,xmm=(x0,x1))
+        
         #print("GiveDist: Done")
+        #stop
         return DM.xyCumulD
 
 
 
     
+
+    
 class ClassRunDir():
     def __init__(self,BaseDir="/data/cyril.tasse/DataDynSpec_May21/P156+42/DynSpecs_L352758",
                  SaveDir="/data/cyril.tasse/VE_Py3_nancep6/TestAnalysis/PNG5",
-                 DB=None,pol="I",InMask=None):
-        print("Doing pol %s"%pol)
+                 DB=None,pol="I",InMask=None,Taper=(20,20)):
+        #print("Doing pol %s"%pol)
         self.InMask=InMask
         self.BaseDir=BaseDir
         self.SaveDir=SaveDir
         self.DB=DB
         self.pol=pol
-        self.GaussPar=(20.,20.,0.)
+        self.GaussPar=(Taper[0],Taper[1],0.)
         #self.GaussPar=(20.,60.,0.)
 
         self.WeightFile=Weight="%s/Weights.fits"%BaseDir
@@ -356,32 +594,50 @@ class ClassRunDir():
         xin,yin=np.mgrid[-Nsx:Nsx:(2*Nsx+1)*1j,-Nsy:Nsy:(2*Nsy+1)*1j]
         G=Gaussian2D(xin,yin,GaussPar=self.GaussPar)
         self.ConvMask =scipy.signal.fftconvolve(np.float32(Mask),G,mode="same")
-
+        
         
 
         
     def runDir(self):
         BaseDir=self.BaseDir
         GaussPar=self.GaussPar
-        #BaseDir="/data/cyril.tasse/DataDynSpec_May21/P265+38/DynSpecs_L658492"
+        # BaseDir="/data/cyril.tasse/DataDynSpec_May21/P265+38/DynSpecs_L658492"
 
         DicoDyn=[]
         LTarget0=glob.glob("%s/TARGET/*.fits"%BaseDir)#[0:1]
         LTarget=[]
         for File in LTarget0:
             F=fits.open(File)[0]
-            Name=F.header['NAME']
-            if "Control" in Name: continue
-            LTarget.append(File)
-        
-        LOff=glob.glob("%s/OFF/*.fits"%BaseDir)[0:20]
-        import datetime
 
-        datetime_object = datetime.datetime.now()
-        print(datetime_object)
+            try:
+                Name=F.header['NAME']
+            except:
+                Name=""
+            if "Control" in Name:
+                print("Skipping %s"%Name)
+                continue
+            
+            LTarget.append(File)
+        if len(LTarget)==0:
+            print("%s/TARGET: THERE ARE NO TARGET!!!!!"%self.BaseDir)
+            print("%s/TARGET: THERE ARE NO TARGET!!!!!"%self.BaseDir)
+            print("%s/TARGET: THERE ARE NO TARGET!!!!!"%self.BaseDir)
+            print("%s/TARGET: THERE ARE NO TARGET!!!!!"%self.BaseDir)
+            return
         
-        print("There %i target"%len(LTarget))
-        print("There %i off"%len(LOff))
+        LOff=glob.glob("%s/OFF/*.fits"%BaseDir)#[0::2]
+        import datetime
+        if len(LOff)==0:
+            print("%s/OFF: THERE ARE NO OFF!!!!!"%self.BaseDir)
+            print("%s/OFF: THERE ARE NO OFF!!!!!"%self.BaseDir)
+            print("%s/OFF: THERE ARE NO OFF!!!!!"%self.BaseDir)
+            print("%s/OFF: THERE ARE NO OFF!!!!!"%self.BaseDir)
+            return
+        datetime_object = datetime.datetime.now()
+        #print(datetime_object)
+        
+        #print("There %i target"%len(LTarget))
+        #print("There %i off"%len(LOff))
         
         # BaseDir="/data/cyril.tasse/DataDynSpec_May21/P223+52/DynSpecs_L260803"
         # LTarget=glob.glob("%s/TARGET/L260803_14:52:17.890_+54:15:50.900.fitsL352758_10:23:52.117_+43:53:33.187.fits"%BaseDir)
@@ -406,15 +662,21 @@ class ClassRunDir():
         for iF,F in enumerate(LTarget):
             ThisSpectra=self.DB.get(F.split("/")[-1],None)
             if ThisSpectra is None:
-                print("!!!!!!!!!!!!!! Skipping %s"%F)
+                #print("!!!!!!!!!!!!!! Skipping %s"%F)
                 continue
             #print(ThisSpectra["type"])
             if "Bright" in ThisSpectra["type"]:
-                print("!!!!!!!!!!!!!! Skipping %s [%s]"%(F,ThisSpectra["type"]))
+                #print("!!!!!!!!!!!!!! Skipping %s [%s]"%(F,ThisSpectra["type"]))
                 continue
             LTargetSel.append(F)
 
         LTarget=LTargetSel
+        if len(LTarget)==0:
+            print("%s/TARGET: No target after DB filtering!!!!!"%self.BaseDir)
+            print("%s/TARGET: No target after DB filtering!!!!!"%self.BaseDir)
+            print("%s/TARGET: No target after DB filtering!!!!!"%self.BaseDir)
+            print("%s/TARGET: No target after DB filtering!!!!!"%self.BaseDir)
+            return
         
         Min,Max=1e10,-1e10
         for iF,F in enumerate(LTarget):
@@ -446,6 +708,7 @@ class ClassRunDir():
             if x0<Min: Min=x0
             if x1>Max: Max=x1
 
+
         
         Min=np.max([-1000,3*Min])
         Max=np.min([1000,3*Max])
@@ -464,10 +727,42 @@ class ClassRunDir():
                 LyOff.append(y)
                 self.NOff+=1
             DicoDyn[k]["Dist"]=(x,y)
-            
+
         self.CumulTarget=np.array(LyTarget)
         self.CumulOff=np.array(LyOff)
+        self.mCumulOff=np.mean(self.CumulOff,axis=0)
         self.DicoDyn=DicoDyn
+
+        ind=np.where((self.mCumulOff>0.2)&(self.mCumulOff<0.8))[0]
+
+        
+        d=(self.CumulOff-self.mCumulOff.reshape((1,-1)))
+        Std=np.std(d[:,ind])
+        Np=self.CumulTarget.shape[1]
+        try:
+            Np=self.CumulTarget.shape[1]
+        except:
+            print("self.CumulTarget",self.CumulTarget,self.BaseDir)
+            print("self.CumulTarget",self.CumulTarget,self.BaseDir)
+            print("self.CumulTarget",self.CumulTarget,self.BaseDir)
+            return
+        for i in range(len(DicoDyn)):
+            F=DicoDyn[i]["File"].split("/")[-1]
+            x,ThisCumul=DicoDyn[i]["Dist"]
+            R=np.sum((ThisCumul-self.mCumulOff)**2)/Np/Std
+            W=np.sum(np.abs(ThisCumul.reshape((1,-1))-self.CumulOff),axis=1)
+            W=W[W!=0]
+            if F in self.DB.keys():
+                self.DB[F]["R_%s"%self.pol]=R
+                SigMAD=scipy.stats.median_abs_deviation(W,scale="normal")
+                self.DB[F]["W0_%s"%self.pol]=np.mean(W)/SigMAD
+                self.DB[F]["W1_%s"%self.pol]=np.median(W)/SigMAD
+                
+            #print(self.DB[F])
+
+
+
+            
 
     def GiveTimeSliceSmooth(self,iTarget,TimeFreq,Type="Time"):
         t0,t1,f0,f1=self.DicoDyn[iTarget]["CD"].extent
