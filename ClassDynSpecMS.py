@@ -322,8 +322,10 @@ class ClassDynSpecMS(object):
             
         else:
             while NDone<NOff:
-                dx=np.random.rand(1)[0]*self.Radius*np.pi/180
-                dy=np.random.rand(1)[0]*self.Radius*np.pi/180
+                # dx=np.random.rand(1)[0]*self.Radius*np.pi/180
+                # dy=np.random.rand(1)[0]*self.Radius*np.pi/180
+                dx=(np.random.rand(1)[0]-0.5)*2*self.Radius*np.pi/180
+                dy=(np.random.rand(1)[0]-0.5)*2*self.Radius*np.pi/180
                 ra=self.ra0+dx
                 dec=self.dec0+dy
                 d=AngDist(self.ra0,ra,self.dec0,dec)

@@ -138,3 +138,18 @@ class ClassDistMachine():
         
         return xp
 
+    def solve(self,y):
+        ys=y
+        xd,yd=self.xyCumulD
+        xp=np.interp(ys, yd, xd, left=None, right=None)
+
+        # x,y=self.giveCumulDist(xp,Ns=10)
+        # pylab.clf()
+        # pylab.plot(xd,yd)
+        # pylab.plot(x,y)
+        # pylab.draw()
+        # pylab.show(False)
+        # pylab.pause(0.1)
+        
+        return xp
+    

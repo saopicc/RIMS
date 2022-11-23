@@ -29,6 +29,7 @@ from DDFacet.Array import shared_dict
 from DDFacet.Other.AsyncProcessPool import APP, WorkerProcessError
 from DDFacet.Other import Multiprocessing
 from DDFacet.Other import AsyncProcessPool
+import gc
 
 def AngDist(ra0,ra1,dec0,dec1):
     AC=np.arccos
@@ -207,9 +208,10 @@ def runOneLOFAR():
     CRA.run()
 
 def runAllLOFAR():
-    #CRA=ClassRunAll(Patern="/data/cyril.tasse/DataDynSpec_May21/*/DynSpecs_L352758",
-    #                SaveDir="PNG_PRES",
-    #                UseLoTSSDB=True)
+    
+    # CRA=ClassRunAll(Patern="/data/cyril.tasse/DataDynSpec_May21/P236+53/DynSpecs_L470106",
+    #                 SaveDir="PNG_PRES_P236+53",
+    #                 UseLoTSSDB=True)
 
 
     
@@ -217,6 +219,7 @@ def runAllLOFAR():
     CRA=ClassRunAll(Patern="/data/cyril.tasse/DataDynSpec_May21/*/DynSpecs_*",
                     SaveDir="PNG_PRES_NEW",
                     UseLoTSSDB=True)
+    
     CRA.run()
 
 import regions
@@ -280,7 +283,7 @@ class ClassRunAll():
                  UseLoTSSDB=False):
         self.Patern=Patern
         self.SaveDir=SaveDir
-        self.UseLoTSSDB=False
+        self.UseLoTSSDB=UseLoTSSDB
         if UseLoTSSDB:
             # with SurveysDB() as sdb:
             #     sdb.cur.execute('UNLOCK TABLES')
@@ -292,7 +295,20 @@ class ClassRunAll():
             #     F=t["filename"].split("/")[-1]
             #     DB[F]=t
             # appendFacetIDToDB(DB)
+            # for Obj in list(DB.keys()):
+            #     DB[Obj]["R_I"]=0.
+            #     DB[Obj]["R_V"]=0.
+            #     DB[Obj]["R_L"]=0.
+            #     DB[Obj]["W0_I"]=0.
+            #     DB[Obj]["W0_V"]=0.
+            #     DB[Obj]["W0_L"]=0.
+            #     DB[Obj]["W1_I"]=0.
+            #     DB[Obj]["W1_V"]=0.
+            #     DB[Obj]["W1_L"]=0.
+            #     DB[Obj]["MaxSig_I"]=0.
+            #     DB[Obj]["MaxSig_V"]=0.
             # Save("DB_In.pickle",DB)
+            # stop
             
             DB=DDFacet.Other.MyPickle.Load("DB_In.pickle")        
         else:
@@ -309,19 +325,11 @@ class ClassRunAll():
         print("ok")
         self.Taper=(20,20)
         self.Taper=(40,40)
-        self.Taper=(5,5)
+        self.Taper=(20,5)
         
-        for Obj in list(DB.keys()):
-            DB[Obj]["R_I"]=0.
-            DB[Obj]["R_V"]=0.
-            DB[Obj]["R_L"]=0.
-            DB[Obj]["W0_I"]=0.
-            DB[Obj]["W0_V"]=0.
-            DB[Obj]["W0_L"]=0.
-            DB[Obj]["W1_I"]=0.
-            DB[Obj]["W1_V"]=0.
-            DB[Obj]["W1_L"]=0.
-    
+                
+
+            
         # L=["/data/cyril.tasse/DataDynSpec_May21/P156+42/DynSpecs_L352758"]
     
         
@@ -368,6 +376,17 @@ class ClassRunAll():
         np.save("DBOut.%i_%i.npy"%(self.Taper[0],self.Taper[1]),Cat)
 
     def _runDir(self,iDir,BaseDir):
+        try:
+            self._runDir2(iDir,BaseDir)
+        except Exception as e:
+            print("[%s]"%self.BaseDir,e)
+            print("[%s]"%self.BaseDir,e)
+            print("[%s]"%self.BaseDir,e)
+            print("[%s]"%self.BaseDir,e)
+
+        
+        
+    def _runDir2(self,iDir,BaseDir):
         #if iDir<692: continue
         #if not("L658492" in BaseDir): continue
         #if not("L352758" in BaseDir): continue
@@ -405,9 +424,10 @@ class ClassRunAll():
                         Taper=self.Taper)
         L0=CRD.runDir()
         
+        #CRD.Plot()
+        
         CRD=ClassRunDir(BaseDir=BaseDir,DB=DB,pol="V",SaveDir=SaveDir)
         L0=CRD.runDir()
-        #CRD.Plot()
         
         # # CRD=ClassRunDir(BaseDir=BaseDir,DB=DB,pol=1)
         # # L0=CRD.runDir()
@@ -437,11 +457,15 @@ class ClassDist():
         #print("GiveDist: Init")
         #print("open %s"%File)
         self.File=File
-        F=fits.open(File)[0]
-        W=fits.open(Weight)[0]
-        N=W.data[0]
+        fitsF=fits.open(File)
+        fitsW=fits.open(Weight)
+        F=fitsF[0]
+        W=fitsW[0]
+        Fdata=F.data
+        Wdata=W.data
+        N=Wdata[0]
         #self.Name=F.header['NAME']
-        npol,nch,nt=F.data.shape
+        npol,nch,nt=Fdata.shape
 
         t0=F.header['OBS-STAR']
         self.StrT0=t0
@@ -467,15 +491,15 @@ class ClassDist():
         G/=np.sum(G)
 
         if pol=="I":
-            I0=F.data[0].copy()
+            I0=Fdata[0].copy()
         elif pol=="Q":
-            I0=F.data[1].copy()
+            I0=Fdata[1].copy()
         elif pol=="U":
-            I0=F.data[2].copy()
+            I0=Fdata[2].copy()
         elif pol=="V":
-            I0=F.data[3].copy()
+            I0=Fdata[3].copy()
         elif pol=="L":
-            I0=np.sqrt(F.data[1].copy()**2+F.data[2].copy()**2)
+            I0=np.sqrt(Fdata[1].copy()**2+Fdata[2].copy()**2)
         I0*=1e3
         # I.fill(0)
         # I[nch//3,nt//2]=1
@@ -535,7 +559,10 @@ class ClassDist():
         self.I=I
         self.N=N
         self.FracFlag=np.count_nonzero(self.Mask)/self.Mask.size
-
+        fitsF.close()
+        fitsW.close()
+        del(Fdata,Wdata)
+        gc.collect()
         #print("GiveDist: Init: done")
 
     def computeMask(self):
@@ -693,13 +720,20 @@ class ClassRunDir():
             if x1>Max: Max=x1
 
         #if len(LOff)<5: return None
-        Min,Max=1e10,-1e10
+        #Min,Max=1e10,-1e10
         for iF,F in enumerate(LOff):
-            CD=ClassDist(F,pol=self.pol,
-                         GaussPar=GaussPar,
-                         Weight=self.WeightFile,
-                         InMask=Mask,
-                         ConvMask=self.ConvMask)
+            try:
+                CD=ClassDist(F,pol=self.pol,
+                             GaussPar=GaussPar,
+                             Weight=self.WeightFile,
+                             InMask=Mask,
+                             ConvMask=self.ConvMask)
+            except Exception as e:
+                print("[%]"%self.BaseDir,self.e)
+                print("[%]"%self.BaseDir,self.e)
+                print("[%]"%self.BaseDir,self.e)
+                print("[%]"%self.BaseDir,self.e)
+                continue
             DicoDyn.append({"CD":CD,
                             "File":F,
                             "Type":"Off"})
@@ -727,16 +761,20 @@ class ClassRunDir():
                 LyOff.append(y)
                 self.NOff+=1
             DicoDyn[k]["Dist"]=(x,y)
-
+        dX=x[1]-x[0]
         self.CumulTarget=np.array(LyTarget)
         self.CumulOff=np.array(LyOff)
         self.mCumulOff=np.mean(self.CumulOff,axis=0)
         self.DicoDyn=DicoDyn
 
         ind=np.where((self.mCumulOff>0.2)&(self.mCumulOff<0.8))[0]
-
+        
         
         d=(self.CumulOff-self.mCumulOff.reshape((1,-1)))
+
+        StdMaxX=np.std(self.CumulOff,axis=0)
+        StdMaxX[StdMaxX==0]=np.min(StdMaxX[StdMaxX!=0])
+        
         Std=np.std(d[:,ind])
         Np=self.CumulTarget.shape[1]
         try:
@@ -746,11 +784,17 @@ class ClassRunDir():
             print("self.CumulTarget",self.CumulTarget,self.BaseDir)
             print("self.CumulTarget",self.CumulTarget,self.BaseDir)
             return
+
+        
         for i in range(len(DicoDyn)):
             F=DicoDyn[i]["File"].split("/")[-1]
             x,ThisCumul=DicoDyn[i]["Dist"]
             R=np.sum((ThisCumul-self.mCumulOff)**2)/Np/Std
-            W=np.sum(np.abs(ThisCumul.reshape((1,-1))-self.CumulOff),axis=1)
+            # W=np.sum(np.abs(ThisCumul.reshape((1,-1))-self.CumulOff),axis=1)
+            # W=np.sqrt( np.sum( ((ThisCumul.reshape((1,-1))-self.CumulOff)/StdMaxX.reshape((1,-1)))**2,axis=1))
+            W=( np.sum( np.abs((ThisCumul.reshape((1,-1))-self.CumulOff)/StdMaxX.reshape((1,-1)))*dX,axis=1))
+
+            
             W=W[W!=0]
             if F in self.DB.keys():
                 self.DB[F]["R_%s"%self.pol]=R
@@ -759,7 +803,19 @@ class ClassRunDir():
                 self.DB[F]["W1_%s"%self.pol]=np.median(W)/SigMAD
                 
             #print(self.DB[F])
-
+            
+        Offs=np.array([DicoDyn[i]["CD"].fI for i in range(len(DicoDyn)) if DicoDyn[i]["Type"]=="Off"])
+        MeanOff=0
+        StdOff=np.std(Offs,axis=0)
+        StdOff[StdOff==0]=1
+        for i in range(len(DicoDyn)):
+            F=DicoDyn[i]["File"].split("/")[-1]
+            fIn=(DicoDyn[i]["CD"].fI.copy()-MeanOff)/StdOff
+            fIn[DicoDyn[i]["CD"].Mask]=0
+            Max=np.max(np.abs(fIn))
+            if F in self.DB.keys():
+                self.DB[F]["MaxSig_%s"%self.pol]=Max
+        
 
 
             
@@ -898,6 +954,8 @@ class ClassRunDir():
             
             ax = fig.add_subplot(gs[3,:],sharex=ax,sharey=ax)
             fIn=(DicoDyn[i]["CD"].fI.copy()-MeanOff)/StdOff
+            fIn[DicoDyn[i]["CD"].Mask]=0
+            Max=np.max(np.abs(fIn))
             fIn[DicoDyn[i]["CD"].Mask]=np.nan
             imShow(fIn,MeanCorr=MeanCorr,extent=DicoDyn[i]["CD"].extent,vmin=-5,vmax=5,cmap=cmap)
             pylab.ylabel("Frequency [MHz]")
@@ -922,7 +980,7 @@ class ClassRunDir():
                 # CPI=ClassPlotImage.ClassPlotImage(Image,pol=1)
                 # CPI.Plot(ax)
             
-            pylab.suptitle("[%s] %s, R=%f"%(self.DB[FileName]["type"],FileName,R))
+            pylab.suptitle("[%s] %s, R=%f, Max=%f"%(self.DB[FileName]["type"],FileName,R,Max))
             pylab.tight_layout()
             pylab.draw()
             
