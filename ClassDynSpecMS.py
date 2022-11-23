@@ -51,6 +51,7 @@ class ClassDynSpecMS(object):
                  FileCoords="Transient_LOTTS.csv",
                  Radius=3.,
                  NOff=-1,
+                 DicoFacet=None,
                  ImageI=None,
                  ImageV=None,
                  SolsDir=None,
@@ -63,7 +64,7 @@ class ClassDynSpecMS(object):
         self.SourceCatOff_FluxMean=SourceCatOff_FluxMean
         self.SourceCatOff_dFluxMean=SourceCatOff_dFluxMean
         self.SourceCatOff=SourceCatOff
-        
+        self.DicoFacet=DicoFacet
         self.ColName    = ColName
         if ModelName=="None": ModelName=None
         self.ModelName  = ModelName
@@ -123,7 +124,7 @@ class ClassDynSpecMS(object):
         ListOffFits=glob.glob("%s/OFF/*.fits"%self.BaseDirSpecs)
         NOff=len(ListOffFits)
         
-        self.PosArray=np.zeros((self.NDirSelected+NOff,),dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')])
+        self.PosArray=np.zeros((self.NDirSelected+NOff,),dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200'),('iTessel',int),('iFacet',int)])
         self.PosArray=self.PosArray.view(np.recarray)
         self.PosArray.Type[len(ListTargetFits)::]="Off"
         self.NDir=self.PosArray.shape[0]
@@ -296,7 +297,6 @@ class ClassDynSpecMS(object):
         CatOff.Type="Off"
         NDone=0
         if self.SourceCatOff is not None and self.SourceCatOff!="":
-            
             log.print(ModColor.Str("Reading off sources catalog: %s"%(self.SourceCatOff), color="green"))
             F=fits.open(self.SourceCatOff)
             Fd= F[1].data
@@ -319,7 +319,77 @@ class ClassDynSpecMS(object):
                 CatOff.ra[iS]=Fd.RA[iSel]*np.pi/180
                 CatOff.dec[iS]=Fd.DEC[iSel]*np.pi/180
                 CatOff.Name[iS]="Off%4.4i"%iS
+        elif self.DicoFacet is not None:
+            import DDFacet.Other.MyPickle
+            import Polygon
+            from Polygon.Utils import convexHull
+            DFacet=DDFacet.Other.MyPickle.Load("image_dirin_SSD_m_c.DicoFacet")
+            DicoDir={}
+            for iFacet in list(DFacet.keys()):
+                iSol=DFacet[iFacet]["iSol"][0]
+                if not iSol in list(DicoDir.keys()):
+                    DicoDir[iSol]=[iFacet]
+                else:
+                    DicoDir[iSol].append(iFacet)
+            DicoPolyTessel={}
+            Rrad=self.Radius*np.pi/180
+            theta=np.linspace(0,2*np.pi,1000)
+            xC=np.cos(theta)*Rrad
+            yC=np.sin(theta)*Rrad
+            Pc=Polygon.Polygon(np.array([xC,yC]).T)
             
+            for iTessel in DicoDir.keys():
+                P=[Polygon.Polygon(DFacet[iFacet]["Polygon"]) for iFacet in DicoDir[iTessel]]
+                Ph=convexHull(P)
+                Pint=(PolyCircle&Ph)
+                if Pint.area()>0:
+                    DicoPolyTessel[iTessel]=Ph
+            
+            def give_in_points(P,NRand=5):
+                x,y=np.array(P).T
+                x0,x1=x.min(),x.max()
+                y0,y1=y.min(),y.max()
+                Lx=[]
+                Ly=[]
+                for iDone in range(NRand):
+                    while True:
+                        xx=np.random.rand(1)[0]*(x1-x0)+x0
+                        yy=np.random.rand(1)[0]*(y1-y0)+y0
+                        if P.covers(Polygon.Polygon([[xx,yy]])):
+                            break
+                    Lx.append(xx)
+                    Ly.append(yy)
+                return np.array(Lx),np.array(Ly)
+
+            NPerTessel=np.max([5,self.NOff//len(DicoPolyTessel)])
+            NDone=0
+            def give_iFacet_iTessel(l,m):
+                Plm=Polygon.Polygon(np.array([[l,m]]))
+                for iFacet in DFacet.keys():
+                    P=Polygon.Polygon(DFacet[iFacet]["Polygon"])
+                    if P.contains(Plm):
+                        return iFacet,DFacet[iFacet]["iSol"]
+
+            NOff=NPerTessel*len(DicoPolyTessel)
+            CatOff=np.zeros((NOff,),self.PosArray.dtype)
+            CatOff=CatOff.view(np.recarray)
+            CatOff.Type="Off"
+
+            for iNode in DicoPolyTessel.keys():
+                P=Polygon.Polygon(DicoPolyTessel[iNode])
+                l,m=give_in_points(P,NRand=NPerTessel)
+                ra, dec = self.CoordMachine.lm2radec(np.array(l), np.array(m))
+                for iThis in range(ra.size):
+                    CatOff.ra[NDone]=ra[iThis]
+                    CatOff.dec[NDone]=dec[iThis]
+                    iFacet,iSol=give_iFacet_iTessel(l[iThis],m[iThis])
+                    CatOff.Name[NDone]="Off%4.4i"%NDone
+                    CatOff.iFacet[NDone]=iFacet
+                    CatOff.iTessel[NDone]=iSol
+                    NDone+=1
+                    
+
+
         else:
             while NDone<NOff:
                 # dx=np.random.rand(1)[0]*self.Radius*np.pi/180
@@ -358,6 +428,8 @@ class ClassDynSpecMS(object):
             self.ra0, self.dec0 = tField.getcol("PHASE_DIR").ravel() # radians!
             if self.ra0<0.: self.ra0+=2.*np.pi
         tField.close()
+
+        self.CoordMachine = ModCoord.ClassCoordConv(self.ra0, self.dec0)
 
         pBAR = ProgressBar(Title="Reading metadata")
         pBAR.render(0, self.nMS)
@@ -703,7 +775,7 @@ class ClassDynSpecMS(object):
                 for iTime in range(NTimes):
                     APP.runJob("Stack_SingleTime:%d"%(iTime), 
                                self.Stack_SingleTime,
-                               args=(iTime,))#,serial=True)
+                               args=(iTime,),serial=True)
                 APP.awaitJobResults("Stack_SingleTime:*", progress="Append MS %i"%self.DicoDATA["iMS"])
                 
             self.iCurrentMS+=1
@@ -806,7 +878,6 @@ class ClassDynSpecMS(object):
         for ipol in range(npol):
             W[:,:,ipol]=weights[:,:,0]
             
-        ws = np.sum(OneMinusF*weights, axis=0)
         
         # weights=weights*np.ones((1,1,npol))
         # W=weights
@@ -843,6 +914,7 @@ class ClassDynSpecMS(object):
             #_,nch,_=self.DicoDATA["data"].shape
     
             dcorr[:]=d[:]
+            wdcorr=np.zeros(dcorr.shape,np.float64)
             #kk=kk*np.ones((1,1,npol))
             
             
@@ -850,21 +922,35 @@ class ClassDynSpecMS(object):
                 self.DicoJones_kMS.reload()
                 tm = self.DicoJones_kMS['tm']
                 # Time slot for the solution
-                iTJones=np.argmin(np.abs(tm-self.times[iTime]))
+                iTJones=np.argmin(np.abs(tm-self.timesGrid[iTime]))
                 iDJones=np.argmin(AngDist(ra,self.DicoJones_kMS['ra'],dec,self.DicoJones_kMS['dec']))
                 _,nchJones,_,_,_,_=self.DicoJones_kMS['G'].shape
+                
+                
+
                 for iFJones in range(nchJones):
+                    
                     nu0,nu1=self.DicoJones_kMS['FreqDomains'][iFJones]
                     fData=self.DicoMSInfos[iMS]["ChanFreq"].ravel()
                     indCh=np.where((fData>=nu0) & (fData<nu1))[0]
+
                     #iFJones=np.argmin(np.abs(chfreq_mean-self.DicoJones_kMS['FreqDomains_mean']))
                     # construct corrected visibilities
                     J0 = self.DicoJones_kMS['G'][iTJones, iFJones, A0s, iDJones, 0, 0]
                     J1 = self.DicoJones_kMS['G'][iTJones, iFJones, A1s, iDJones, 0, 0]
+
+                    #JJ0=self.DicoJones_kMS['G'][iTJones, iFJones, A0s, :, 0, 0]
+                    #JJ1=self.DicoJones_kMS['G'][iTJones, iFJones, A1s, :, 0, 0]
+                    #indZeroJones,=np.where((JJ0=0)|(JJ1==0))
+                    
+
                     J0 = J0.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
                     J1 = J1.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
-                    #dcorr[:,indCh,:] = J0.conj() * dcorr[:,indCh,:] * J1
-                    dcorr[:,indCh,:] = 1./J0 * dcorr[:,indCh,:] * 1./J1.conj()
+                    dcorr[:,indCh,:] = J0.conj() * dcorr[:,indCh,:] * J1
+                    wdcorr[:,indCh,:] += (np.abs(J0) * np.abs(J1))**2
+                    #print(iDir,iFJones,np.count_nonzero(J0==0),np.count_nonzero(J1==0))
+                    #dcorr[:,indCh,:] = 1./J0 * dcorr[:,indCh,:] * 1./J1.conj()
+
                 # iFJones=np.argmin(np.abs(chfreq_mean-self.DicoJones_kMS['FreqDomains_mean']))
                 # # construct corrected visibilities
                 # J0 = self.DicoJones_kMS['G'][iTJones, iFJones, A0s, iDJones, 0, 0]
@@ -877,7 +963,7 @@ class ClassDynSpecMS(object):
                 self.DicoJones_Beam.reload()
                 tm = self.DicoJones_Beam['tm']
                 # Time slot for the solution
-                iTJones=np.argmin(np.abs(tm-self.times[iTime]))
+                iTJones=np.argmin(np.abs(tm-self.timesGrid[iTime]))
                 iDJones=np.argmin(AngDist(ra,self.DicoJones_Beam['ra'],dec,self.DicoJones_Beam['dec']))
                 _,nchJones,_,_,_,_=self.DicoJones_Beam['G'].shape
                 for iFJones in range(nchJones):
@@ -890,8 +976,9 @@ class ClassDynSpecMS(object):
                     J1 = self.DicoJones_Beam['G'][iTJones, iFJones, A1s, iDJones, 0, 0]
                     J0 = J0.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
                     J1 = J1.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
-                    #dcorr[:,indCh,:] = J0.conj() * dcorr[:,indCh,:] * J1
-                    dcorr[:,indCh,:] = 1./J0 * dcorr[:,indCh,:] * 1./J1.conj()
+                    dcorr[:,indCh,:] = J0.conj() * dcorr[:,indCh,:] * J1
+                    wdcorr[:,indCh,:] += (np.abs(J0) * np.abs(J1))**2
+                    #dcorr[:,indCh,:] = 1./J0 * dcorr[:,indCh,:] * 1./J1.conj()
                     
     
                 
@@ -904,12 +991,16 @@ class ClassDynSpecMS(object):
             #dcorr=dcorr*kk
             dcorr*=W
             ds = np.sum(dcorr, axis=0) # with Jones
+            dcorrs=np.sum(wdcorr, axis=0)
     
+            ds/=dcorrs
     
             
             #print(iTimeGrid,iTime)
     
             self.DicoGrids["GridLinPol"][iDir,ich0:ich0+nch, iTimeGrid, :] = ds
+
+            ws = np.sum(OneMinusF*weights, axis=0)
             self.DicoGrids["GridWeight"][iDir,ich0:ich0+nch, iTimeGrid, :] = np.float32(ws)
             
         T.timeit("rest")

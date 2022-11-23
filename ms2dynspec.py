@@ -64,9 +64,8 @@ from DDFacet.Other import progressbar
 # #with warnings.catch_warnings():
 # #    warnings.filterwarnings('error')
 # # ##############################
+# =========================================================================
 
-# =========================================================================
-# =========================================================================
 def angSep(ra1, dec1, ra2, dec2):
     """ Find the angular separation of two sources (ra# dec# in deg) in deg
         (Stolen from the LOFAR scripts), works --> compared with astropy (A. Loh)
@@ -98,6 +97,7 @@ def main(args=None, messages=[]):
                        FileCoords=args.srclist,
                        Radius=args.rad,
                        NOff=args.noff,
+                       DicoFacet=args.DicoFacet,
                        ImageI=args.imageI,
                        ImageV=args.imageV,
                        SolsDir=args.SolsDir,NCPU=args.NCPU,
@@ -142,6 +142,7 @@ if __name__ == "__main__":
     parser.add_argument("--srclist", type=str, default="Transient_LOTTS.csv", help="List of targets --> 'source_name ra dec'")
     parser.add_argument("--rad", type=float, default=3., help="Radius of the field", required=False)
     parser.add_argument("--noff", type=int, default=-1, help="Number of off sources. -1 means twice as much as there are sources in the catalog", required=False)
+    parser.add_argument("--DicoFacet", type=str, default="", help="DDFacet DicoFacet file.", required=False)
     parser.add_argument("--LogBoring", type=int, default=0, help="Boring?", required=False)
     parser.add_argument("--imageI", type=str, default=None, help="Survey image to plot", required=False)
     parser.add_argument("--imageV", type=str, default=None, help="Survey image to plot", required=False)
