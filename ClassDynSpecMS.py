@@ -25,6 +25,7 @@ import glob
 from astropy.io import fits
 from astropy.wcs import WCS
 from DDFacet.ToolsDir.rad2hmsdms import rad2hmsdms
+from DDFacet.ToolsDir import ModCoord
 
 def AngDist(ra0,ra1,dec0,dec1):
     AC=np.arccos
@@ -339,7 +340,7 @@ class ClassDynSpecMS(object):
             Pc=Polygon.Polygon(np.array([xC,yC]).T)
             
             for iTessel in DicoDir.keys():
-                P=[Polygon.Polygon(DFacet[iFacet]["Polygon"]) for iFacet in DicoDir[iTessel]]
+                P=sum([Polygon.Polygon(DFacet[iFacet]["Polygon"]) for iFacet in DicoDir[iTessel]])
                 Ph=convexHull(P)
                 Pint=(PolyCircle&Ph)
                 if Pint.area()>0:
