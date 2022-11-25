@@ -26,6 +26,12 @@ from astropy.io import fits
 from astropy.wcs import WCS
 from DDFacet.ToolsDir.rad2hmsdms import rad2hmsdms
 from DDFacet.ToolsDir import ModCoord
+from SkyModel.Array import RecArrayOps
+import DDFacet.Other.MyPickle
+import Polygon
+from Polygon.Utils import convexHull
+#import DynSpecMS.testLibBeam
+
 
 def AngDist(ra0,ra1,dec0,dec1):
     AC=np.arccos
@@ -61,7 +67,9 @@ class ClassDynSpecMS(object):
                  SourceCatOff=None,
                  SourceCatOff_FluxMean=None,
                  SourceCatOff_dFluxMean=None):
-
+        if BeamModel=="None":
+            BeamModel=None
+        self.DFacet=None
         self.SourceCatOff_FluxMean=SourceCatOff_FluxMean
         self.SourceCatOff_dFluxMean=SourceCatOff_dFluxMean
         self.SourceCatOff=SourceCatOff
@@ -125,7 +133,9 @@ class ClassDynSpecMS(object):
         ListOffFits=glob.glob("%s/OFF/*.fits"%self.BaseDirSpecs)
         NOff=len(ListOffFits)
         
-        self.PosArray=np.zeros((self.NDirSelected+NOff,),dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200'),('iTessel',int),('iFacet',int)])
+        self.PosArray=np.zeros((self.NDirSelected+NOff,),dtype=[('Name','S200'),("ra",np.float64),
+                                                                ("dec",np.float64),('Type','S200'),
+                                                                ('iTessel',int),('iFacet',int)])
         self.PosArray=self.PosArray.view(np.recarray)
         self.PosArray.Type[len(ListTargetFits)::]="Off"
         self.NDir=self.PosArray.shape[0]
@@ -209,6 +219,9 @@ class ClassDynSpecMS(object):
         self.PosArray=self.PosArray.view(np.recarray)
         self.PosArray.ra*=np.pi/180.
         self.PosArray.dec*=np.pi/180.
+
+        
+        
         Radius=self.Radius
         NOrig=self.PosArray.Name.shape[0]
         Dist=AngDist(self.ra0,self.PosArray.ra,self.dec0,self.PosArray.dec)
@@ -230,11 +243,44 @@ class ClassDynSpecMS(object):
             print("Including %i off targets"%(NOff), file=log)
             self.PosArray=np.concatenate([self.PosArray,self.GiveOffPosArray(NOff)])
             self.PosArray=self.PosArray.view(np.recarray)
+
+
+        if self.DFacet is not None:
+            Rrad0=(0.001)*np.pi/180#self.Radius*np.pi/180
+            theta=np.linspace(0,2*np.pi,10)
+            xC0=np.cos(theta)*Rrad0
+            yC0=np.sin(theta)*Rrad0
             
+            def give_iFacet_iTessel(l,m):
+                #Plm=Polygon.Polygon(np.array([[l,m]]))
+                Plm=Polygon.Polygon(np.array([xC0+l,yC0+m]).T)
+                for iFacet in self.DFacet.keys():
+                    P=Polygon.Polygon(self.DFacet[iFacet]["Polygon"])
+                    Arr=(P&Plm).area()
+                    if Arr>0: #P.covers(Plm):
+                        return iFacet,self.DFacet[iFacet]["iSol"]
+                    
+            self.PosArray=RecArrayOps.AppendField(self.PosArray,'iFacet',int)
+            self.PosArray=RecArrayOps.AppendField(self.PosArray,'iTessel',int)
+            l, m = self.CoordMachine.radec2lm(self.PosArray.ra, self.PosArray.dec)
+            
+            for iThis in range(self.PosArray.size):
+                iFacet,iSol=give_iFacet_iTessel(l[iThis],m[iThis])
+                self.PosArray.iFacet[iThis]=iFacet
+                self.PosArray.iTessel[iThis]=iSol
+
+            # import pylab
+            # for iTessel in np.unique(self.PosArray.iTessel):
+            #     ind=np.where(self.PosArray.iTessel==iTessel)[0]
+            #     rap,decp=self.CoordMachine.lm2radec(self.PosArray.ra, self.PosArray.dec)
+            #     pylab.scatter(self.PosArray.ra[ind],self.PosArray.dec[ind])#,c=iTessel)
+            # pylab.draw()
+            # pylab.show()
+        
         self.NDir=self.PosArray.shape[0]
         print("For a total of %i targets"%(self.NDir), file=log)
 
-        self.radecToReg(self.PosArray.ra,self.PosArray.dec,self.PosArray.Type)
+        #self.radecToReg(self.PosArray.ra,self.PosArray.dec,self.PosArray.Type)
 
 
         self.DicoDATA = shared_dict.create("DATA")
@@ -263,30 +309,6 @@ class ClassDynSpecMS(object):
                               affinity="disable")
         APP.startWorkers()
 
-    def radecToReg(self,ra,dec,Type):
-        FName="%s.reg"%self.OutName
-
-        log.print(("Writting target reg file: %s"%FName))
-        f=open(FName,"w")
-        
-        f.write("""# Region file format: DS9 version 4.1\n""")
-        f.write("""global color=green dashlist=8 3 width=1 font="helvetica 10 normal roman" select=1 highlite=1 dash=0 fixed=0 edit=1 move=1 delete=1 include=1 source=1\n""")
-        f.write("""fk5\n""")
-
-        for iTarget in range(ra.size):
-            ra0,dec0=ra[iTarget],dec[iTarget]
-            sRA0=rad2hmsdms(ra0,Type="ra").replace(" ",":")
-            sDEC0=rad2hmsdms(dec0,Type="dec").replace(" ",":")
-            
-            if Type[iTarget].decode('ASCII')=="Off":
-                color="red"
-            else:
-                color="green"
-                
-            f.write("""circle(%s,%s,4.465" # color=%s\n"""%(sRA0,sDEC0,color))
-            f.write("""circle(%s,%s,19.962" # color=%s\n"""%(sRA0,sDEC0,color))
-            f.write("""point(%s,%s # point=cross 55 color=%s\n"""%(sRA0,sDEC0,color))
-        f.close()
         
         
 
@@ -321,10 +343,7 @@ class ClassDynSpecMS(object):
                 CatOff.dec[iS]=Fd.DEC[iSel]*np.pi/180
                 CatOff.Name[iS]="Off%4.4i"%iS
         elif self.DicoFacet is not None:
-            import DDFacet.Other.MyPickle
-            import Polygon
-            from Polygon.Utils import convexHull
-            DFacet=DDFacet.Other.MyPickle.Load("image_dirin_SSD_m_c.DicoFacet")
+            self.DFacet=DFacet=DDFacet.Other.MyPickle.Load(self.DicoFacet)
             DicoDir={}
             for iFacet in list(DFacet.keys()):
                 iSol=DFacet[iFacet]["iSol"][0]
@@ -333,63 +352,101 @@ class ClassDynSpecMS(object):
                 else:
                     DicoDir[iSol].append(iFacet)
             DicoPolyTessel={}
+            
             Rrad=self.Radius*np.pi/180
             theta=np.linspace(0,2*np.pi,1000)
             xC=np.cos(theta)*Rrad
             yC=np.sin(theta)*Rrad
             Pc=Polygon.Polygon(np.array([xC,yC]).T)
+
             
             for iTessel in DicoDir.keys():
-                P=sum([Polygon.Polygon(DFacet[iFacet]["Polygon"]) for iFacet in DicoDir[iTessel]])
+                
+                iFacet=DicoDir[iTessel][0]
+                P=Polygon.Polygon(DFacet[iFacet]["Polygon"])
+                for iFacet in DicoDir[iTessel][1:]:
+                    P+=Polygon.Polygon(DFacet[iFacet]["Polygon"])
                 Ph=convexHull(P)
-                Pint=(PolyCircle&Ph)
+                Pint=(Pc&Ph)
                 if Pint.area()>0:
                     DicoPolyTessel[iTessel]=Ph
-            
+
+            def ClosePolygon(polygon):
+                P = np.array(polygon).tolist()
+                polygon = np.array(P + [P[0]])
+                return Polygon.Polygon(polygon)
+
             def give_in_points(P,NRand=5):
+                P=ClosePolygon(P[0])
+                #P=Polygon.Polygon(np.array(P[0])*1000)
+                
                 x,y=np.array(P).T
                 x0,x1=x.min(),x.max()
                 y0,y1=y.min(),y.max()
                 Lx=[]
                 Ly=[]
+                # import pylab
+                # pylab.clf()
+                # xxx,yyy=np.array(P).T
+                # pylab.plot(xxx,yyy)
+
+                Rrad0=1/3600*np.pi/180
+                theta=np.linspace(0,2*np.pi,10)
+                xC0=np.cos(theta)*Rrad0
+                yC0=np.sin(theta)*Rrad0
+
+
+                
                 for iDone in range(NRand):
                     while True:
-                        xx=np.random.rand(1)[0]*(x1-x0)+x0
-                        yy=np.random.rand(1)[0]*(y1-y0)+y0
-                        if P.covers(Polygon.Polygon([[xx,yy]])):
+                        xx=float(np.random.rand(1)[0]*(x1-x0)+x0)
+                        yy=float(np.random.rand(1)[0]*(y1-y0)+y0)
+                        #print(P)
+                        #P1=Polygon.Polygon(np.array([[xx,yy]],np.float64))
+                        Pc0=ClosePolygon(Polygon.Polygon(np.array([xC0+xx,yC0+yy]).T)[0])
+                        Arr=(P&Pc0).area()
+                        if Arr>0:#.covers(P1):
+                            # xxc,yyc=np.array(Pc0).T
+                            # pylab.plot(xxc,yyc,color="blue")
+                            # pylab.draw()
+                            # pylab.show(block=False)
+                            # pylab.pause(0.5)
+                            # print("kkkkkk")
                             break
+                            
+                        #else:
+                            # pylab.scatter(xx,yy,color="red")
+                            # pylab.draw()
+                            # pylab.show(block=False)
+                            # pylab.pause(0.5)
+                            # print("kkk")
                     Lx.append(xx)
                     Ly.append(yy)
+
                 return np.array(Lx),np.array(Ly)
 
             NPerTessel=np.max([5,self.NOff//len(DicoPolyTessel)])
             NDone=0
-            def give_iFacet_iTessel(l,m):
-                Plm=Polygon.Polygon(np.array([[l,m]]))
-                for iFacet in DFacet.keys():
-                    P=Polygon.Polygon(DFacet[iFacet]["Polygon"])
-                    if P.contains(Plm):
-                        return iFacet,DFacet[iFacet]["iSol"]
 
             NOff=NPerTessel*len(DicoPolyTessel)
-            CatOff=np.zeros((NOff,),self.PosArray.dtype)
+            CatOff=np.zeros((1000,),self.PosArray.dtype)
             CatOff=CatOff.view(np.recarray)
             CatOff.Type="Off"
 
             for iNode in DicoPolyTessel.keys():
                 P=Polygon.Polygon(DicoPolyTessel[iNode])
+                #print(iNode,P)
                 l,m=give_in_points(P,NRand=NPerTessel)
+
                 ra, dec = self.CoordMachine.lm2radec(np.array(l), np.array(m))
                 for iThis in range(ra.size):
                     CatOff.ra[NDone]=ra[iThis]
                     CatOff.dec[NDone]=dec[iThis]
-                    iFacet,iSol=give_iFacet_iTessel(l[iThis],m[iThis])
                     CatOff.Name[NDone]="Off%4.4i"%NDone
-                    CatOff.iFacet[NDone]=iFacet
-                    CatOff.iTessel[NDone]=iSol
                     NDone+=1
                     
 
+            CatOff=CatOff[CatOff.ra!=0]
 
         else:
             while NDone<NOff:
@@ -765,6 +822,8 @@ class ClassDynSpecMS(object):
             T0s=np.array([0])
             T1s=np.array([1e10])
             
+        #import DynSpecMS.testLibBeam
+        
         while self.iCurrentMS<self.nMS:
             for iChunk in range(T0s.size): #[1:2]:
                 T0,T1=T0s[iChunk],T1s[iChunk]
@@ -772,11 +831,11 @@ class ClassDynSpecMS(object):
                 if rep=="NotRead": continue
             
                 print("Making dynamic spectra...", file=log)
-                NTimes=self.DicoMSInfos[self.iCurrentMS]["times"].size
+                NTimes=self.NTimesGrid#self.DicoMSInfos[self.iCurrentMS]["times"].size
                 for iTime in range(NTimes):
                     APP.runJob("Stack_SingleTime:%d"%(iTime), 
                                self.Stack_SingleTime,
-                               args=(iTime,),serial=True)
+                               args=(iTime,))#,serial=True)
                 APP.awaitJobResults("Stack_SingleTime:*", progress="Append MS %i"%self.DicoDATA["iMS"])
                 
             self.iCurrentMS+=1

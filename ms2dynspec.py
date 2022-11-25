@@ -31,7 +31,7 @@ import os
 import argparse
 from distutils.spawn import find_executable
 import matplotlib
-matplotlib.use('Agg')
+#matplotlib.use('Agg')
 from matplotlib import rc
 fontsize=12
 rc('font',**{'family':'serif','serif':['Times'],'size':fontsize})

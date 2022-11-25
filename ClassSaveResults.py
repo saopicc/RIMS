@@ -21,6 +21,7 @@ import matplotlib.pyplot as pylab
 from DDFacet.Other.progressbar import ProgressBar
 from pyrap.images import image
 from dynspecms_version import version
+import DDFacet.Other.MyPickle
 
 def GiveMAD(X):
     return np.median(np.abs(X-np.median(X)))
@@ -80,6 +81,9 @@ class ClassSaveResults(object):
         FileName = "%s/%s.npy"%(self.DIRNAME,"Catalog")
         print("Saving flux catalogs in %s"%FileName, file=log)
         np.save(FileName,self.CatFlux)
+        if self.DynSpecMS.DFacet is not None:
+            DDFacet.Other.MyPickle.Save(self.DynSpecMS.DFacet,"%s/%s.npy"%(self.DIRNAME,"DDF.DicoFacet"))
+        self.radecToReg()
         
     def GiveSubDir(self,Type):
         SubDir="OFF"
@@ -88,6 +92,39 @@ class ClassSaveResults(object):
             
         return SubDir
 
+    def radecToReg(self):
+        FName="%s/%s.reg"%(self.DIRNAME,self.DynSpecMS.OutName)
+        ra,dec=self.DynSpecMS.PosArray.ra,self.DynSpecMS.PosArray.dec
+        Type=self.DynSpecMS.PosArray.Type
+        
+        log.print(("Writting target reg file: %s"%FName))
+        f=open(FName,"w")
+        
+        f.write("""# Region file format: DS9 version 4.1\n""")
+        f.write("""global color=green dashlist=8 3 width=1 font="helvetica 10 normal roman" select=1 highlite=1 dash=0 fixed=0 edit=1 move=1 delete=1 include=1 source=1\n""")
+        f.write("""fk5\n""")
+        
+        sRA0=rad2hmsdms(self.DynSpecMS.ra0,Type="ra").replace(" ",":")
+        sDEC0=rad2hmsdms(self.DynSpecMS.dec0,Type="dec").replace(" ",":")
+        f.write("""circle(%s,%s,%f" # color=%s\n"""%(sRA0,sDEC0,self.DynSpecMS.Radius*3600,"green"))
+
+        for iTarget in range(ra.size):
+            ra0,dec0=ra[iTarget],dec[iTarget]
+            sRA0=rad2hmsdms(ra0,Type="ra").replace(" ",":")
+            sDEC0=rad2hmsdms(dec0,Type="dec").replace(" ",":")
+            
+            if Type[iTarget].decode('ASCII')=="Off":
+                color="blue"
+            else:
+                color="green"
+            iFacet,iTessel=self.DynSpecMS.PosArray.iFacet[iTarget],self.DynSpecMS.PosArray.iTessel[iTarget]
+            f.write("""circle(%s,%s,4.465" # color=%s\n"""%(sRA0,sDEC0,color))
+            f.write("""circle(%s,%s,19.962" # color=%s\n"""%(sRA0,sDEC0,color))
+            f.write("""point(%s,%s # point=cross 10 color=%s\n"""%(sRA0,sDEC0,color))
+            #f.write("""point(%s,%s # text={[F%i_S%i]} point=cross 5 color=%s\n"""%(sRA0,sDEC0,iFacet,iTessel,color))
+        f.close()
+
+    
     def WriteFitsThisDir(self,iDir,Weight=False):
         """ Store the dynamic spectrum in a FITS file
         """
@@ -134,7 +171,13 @@ class ClassSaveResults(object):
             name=name.decode('utf-8')
         prihdr.set('NAME', name, 'Name of the source in the source list')
         prihdr.set('ORIGIN', 'DynSpecMS '+version(),'Created by')
-        
+        if "iFacet" in self.DynSpecMS.PosArray.dtype.fields.keys():
+            iFacet=self.DynSpecMS.PosArray.iFacet[iDir]
+            iTessel=self.DynSpecMS.PosArray.iTessel[iDir]
+            prihdr.set('FACET', iFacet, 'ID of the facet')
+            prihdr.set('TESSEL', iTessel, 'ID of the Tessel')
+            
+            
         if Weight:
             Gn = self.DynSpecMS.DicoGrids["GridWeight"][iDir,:, :, :].real # dir, time, freq, pol
         else:
