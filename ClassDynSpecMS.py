@@ -283,7 +283,7 @@ class ClassDynSpecMS(object):
         #self.radecToReg(self.PosArray.ra,self.PosArray.dec,self.PosArray.Type)
 
 
-        self.DicoDATA = shared_dict.create("DATA")
+        #self.DicoDATA = shared_dict.create("DATA")
         self.DicoGrids = shared_dict.create("Grids")
 
         self.DicoGrids["GridLinPol"] = np.zeros((self.NDir,self.NChan, self.NTimesGrid, 4), np.complex128)
@@ -296,12 +296,10 @@ class ClassDynSpecMS(object):
         self.DicoJones=None
         if self.SolsName:
             self.DoJonesCorr_kMS=True
-            self.DicoJones_kMS=shared_dict.create("DicoJones_kMS")
 
         self.DoJonesCorr_Beam=False
         if self.BeamModel:
             self.DoJonesCorr_Beam=True
-            self.DicoJones_Beam=shared_dict.create("DicoJones_Beam")
 
 
         APP.registerJobHandlers(self)
@@ -345,12 +343,16 @@ class ClassDynSpecMS(object):
         elif self.DicoFacet is not None:
             self.DFacet=DFacet=DDFacet.Other.MyPickle.Load(self.DicoFacet)
             DicoDir={}
+            # for iFacet in list(DFacet.keys()):
+            #     iSol=DFacet[iFacet]["iSol"][0]
+            #     if not iSol in list(DicoDir.keys()):
+            #         DicoDir[iSol]=[iFacet]
+            #     else:
+            #         DicoDir[iSol].append(iFacet)
+            
             for iFacet in list(DFacet.keys()):
-                iSol=DFacet[iFacet]["iSol"][0]
-                if not iSol in list(DicoDir.keys()):
-                    DicoDir[iSol]=[iFacet]
-                else:
-                    DicoDir[iSol].append(iFacet)
+                iSol=iFacet
+                DicoDir[iSol]=[iFacet]
             DicoPolyTessel={}
             
             Rrad=self.Radius*np.pi/180
@@ -361,7 +363,6 @@ class ClassDynSpecMS(object):
 
             
             for iTessel in DicoDir.keys():
-                
                 iFacet=DicoDir[iTessel][0]
                 P=Polygon.Polygon(DFacet[iFacet]["Polygon"])
                 for iFacet in DicoDir[iTessel][1:]:
@@ -612,18 +613,36 @@ class ClassDynSpecMS(object):
         self.NChan       = int((f1 - f0)/self.ChanWidth) + 1
 
         # Fill properties
+        
         self.tStart = Time(tmin/(24*3600.), format='mjd', scale='utc').isot
         self.tStop  = Time(tmax/(24*3600.), format='mjd', scale='utc').isot
         self.fMin   = self.Freq_minmax[0]
         self.fMax   = self.Freq_minmax[1]
 
+        if self.TChunkHours>0:
+            TChunk_s=self.TChunkHours*3600
+            TObs=self.tmax-self.tmin
+            NChunks=int(np.ceil(TObs/TChunk_s))
+            T0s=np.arange(NChunks)*TChunk_s
+            T1s=np.arange(NChunks)*TChunk_s+TChunk_s
+        else:
+            T0s=np.array([0])
+            T1s=np.array([1e10])
+        self.T0s=T0s
+        self.T1s=T1s
         self.iCurrentMS=0
-
+        LJob=[]
+        for iMS in range(self.nMS):
+            for iChunk in range(T0s.size): #[1:2]:
+                T0,T1=T0s[iChunk],T1s[iChunk]
+                LJob.append((iMS,iChunk))
+        self.LJob=LJob
 
     
-    def LoadNextMS(self,T0,T1):
-        iMS=self.iCurrentMS
-            
+    def LoadMS(self,iJob):
+        iMS,iChunk=self.LJob[iJob]
+        T0,T1=self.T0s[iChunk],self.T1s[iChunk]
+        
             
         if not self.DicoMSInfos[iMS]["Readable"]: 
             print("Skipping [%i/%i]: %s"%(iMS+1, self.nMS, self.ListMSName[iMS]), file=log)
@@ -706,25 +725,32 @@ class ClassDynSpecMS(object):
         u0 = u.reshape( (-1, 1, 1) )
         v0 = v.reshape( (-1, 1, 1) )
         w0 = w.reshape( (-1, 1, 1) )
-        self.DicoDATA["iMS"]=self.iCurrentMS
-        self.DicoDATA["data"]=data
-        self.DicoDATA["weights"]=weights
-        self.DicoDATA["flag"]=flag
-        self.DicoDATA["times"]=times
-        self.DicoDATA["A0"]=A0
-        self.DicoDATA["A1"]=A1
-        self.DicoDATA["u"]=u0
-        self.DicoDATA["v"]=v0
-        self.DicoDATA["w"]=w0
-        self.DicoDATA["uniq_times"]=np.unique(self.DicoDATA["times"])
+        DicoDATA = shared_dict.create("DATA_%i"%(iJob))
+        DicoDATA["iMS"]=iMS
+        DicoDATA["iChunk"]=iChunk
+        DicoDATA["iJob"]=iJob
+        DicoDATA["T0T1"]=(T0,T1)
+        DicoDATA["data"]=data
+        DicoDATA["weights"]=weights
+        DicoDATA["flag"]=flag
+        DicoDATA["times"]=times
+        DicoDATA["A0"]=A0
+        DicoDATA["A1"]=A1
+        DicoDATA["u"]=u0
+        DicoDATA["v"]=v0
+        DicoDATA["w"]=w0
+        DicoDATA["uniq_times"]=np.unique(DicoDATA["times"])
 
             
         if self.DoJonesCorr_kMS or self.DoJonesCorr_Beam:
-            self.setJones()
+            self.setJones(DicoDATA)
 
-    def setJones(self):
+    def setJones(self,DicoDATA):
         from DDFacet.Data import ClassJones
         from DDFacet.Data import ClassMS
+        iJob=DicoDATA["iJob"]
+        DicoJones_kMS=shared_dict.create("DicoJones_kMS_%i"%iJob)
+        DicoJones_Beam=shared_dict.create("DicoJones_Beam_%i"%iJob)
 
         SolsName=self.SolsName
         if "[" in SolsName:
@@ -747,7 +773,7 @@ class ClassDynSpecMS(object):
 
         ms=ClassMS.ClassMS(self.DicoMSInfos[self.iCurrentMS]["MSName"],GD=GD,DoReadData=False,)
         JonesMachine = ClassJones.ClassJones(GD, ms, CacheMode=False)
-        JonesMachine.InitDDESols(self.DicoDATA)
+        JonesMachine.InitDDESols(DicoDATA)
         #JJ=JonesMachine.MergeJones(self.DicoDATA["killMS"]["Jones"],self.DicoDATA["Beam"]["Jones"])
         # import killMS.Data.ClassJonesDomains
         # DomainMachine=killMS.Data.ClassJonesDomains.ClassJonesDomains()
@@ -765,27 +791,27 @@ class ClassDynSpecMS(object):
         #self.DicoJones["G"]=np.swapaxes(self.NormJones(JonesSols["Jones"]),1,3) # Normalize Jones matrices
 
         if self.DoJonesCorr_kMS:
-            JonesSols=self.DicoDATA["killMS"]["Jones"]
-            self.DicoJones_kMS["G"]=np.swapaxes(JonesSols["Jones"],1,3) # Normalize Jones matrices
-            self.DicoJones_kMS['tm']=(JonesSols["t0"]+JonesSols["t1"])/2.
-            self.DicoJones_kMS['ra']=JonesMachine.ClusterCat['ra']
-            self.DicoJones_kMS['dec']=JonesMachine.ClusterCat['dec']
-            self.DicoJones_kMS['FreqDomains']=JonesSols['FreqDomains']
-            self.DicoJones_kMS['FreqDomains_mean']=np.mean(JonesSols['FreqDomains'],axis=1)
-            self.DicoJones_kMS['IDJones']=np.zeros((self.NDir,),np.int32)
+            JonesSols=DicoDATA["killMS"]["Jones"]
+            DicoJones_kMS["G"]=np.swapaxes(JonesSols["Jones"],1,3) # Normalize Jones matrices
+            DicoJones_kMS['tm']=(JonesSols["t0"]+JonesSols["t1"])/2.
+            DicoJones_kMS['ra']=JonesMachine.ClusterCat['ra']
+            DicoJones_kMS['dec']=JonesMachine.ClusterCat['dec']
+            DicoJones_kMS['FreqDomains']=JonesSols['FreqDomains']
+            DicoJones_kMS['FreqDomains_mean']=np.mean(JonesSols['FreqDomains'],axis=1)
+            DicoJones_kMS['IDJones']=np.zeros((self.NDir,),np.int32)
             for iDir in range(self.NDir):
                 ra=self.PosArray.ra[iDir]
                 dec=self.PosArray.dec[iDir]
-                self.DicoJones_kMS['IDJones'][iDir]=np.argmin(AngDist(ra,self.DicoJones_kMS['ra'],dec,self.DicoJones_kMS['dec']))
+                DicoJones_kMS['IDJones'][iDir]=np.argmin(AngDist(ra,DicoJones_kMS['ra'],dec,DicoJones_kMS['dec']))
 
         if self.DoJonesCorr_Beam:
-            JonesSols = JonesMachine.GiveBeam(np.unique(self.DicoDATA["times"]), quiet=True,RaDec=(self.PosArray.ra,self.PosArray.dec))
-            self.DicoJones_Beam["G"]=np.swapaxes(JonesSols["Jones"],1,3) # Normalize Jones matrices
-            self.DicoJones_Beam['tm']=(JonesSols["t0"]+JonesSols["t1"])/2.
-            self.DicoJones_Beam['ra']=self.PosArray.ra
-            self.DicoJones_Beam['dec']=self.PosArray.dec
-            self.DicoJones_Beam['FreqDomains']=JonesSols['FreqDomains']
-            self.DicoJones_Beam['FreqDomains_mean']=np.mean(JonesSols['FreqDomains'],axis=1)
+            JonesSols = JonesMachine.GiveBeam(np.unique(DicoDATA["times"]), quiet=True,RaDec=(self.PosArray.ra,self.PosArray.dec))
+            DicoJones_Beam["G"]=np.swapaxes(JonesSols["Jones"],1,3) # Normalize Jones matrices
+            DicoJones_Beam['tm']=(JonesSols["t0"]+JonesSols["t1"])/2.
+            DicoJones_Beam['ra']=self.PosArray.ra
+            DicoJones_Beam['dec']=self.PosArray.dec
+            DicoJones_Beam['FreqDomains']=JonesSols['FreqDomains']
+            DicoJones_Beam['FreqDomains_mean']=np.mean(JonesSols['FreqDomains'],axis=1)
 
         
         # from DDFacet.Data import ClassLOFARBeam
@@ -812,40 +838,58 @@ class ClassDynSpecMS(object):
 
     def StackAll(self):
 
-        if self.TChunkHours>0:
-            TChunk_s=self.TChunkHours*3600
-            TObs=self.tmax-self.tmin
-            NChunks=int(np.ceil(TObs/TChunk_s))
-            T0s=np.arange(NChunks)*TChunk_s
-            T1s=np.arange(NChunks)*TChunk_s+TChunk_s
-        else:
-            T0s=np.array([0])
-            T1s=np.array([1e10])
             
         #import DynSpecMS.testLibBeam
+        T0s,T1s=self.T0s,self.T1s
         
-        while self.iCurrentMS<self.nMS:
-            for iChunk in range(T0s.size): #[1:2]:
-                T0,T1=T0s[iChunk],T1s[iChunk]
-                rep=self.LoadNextMS(T0,T1)
-                if rep=="NotRead": continue
-            
-                print("Making dynamic spectra...", file=log)
-                NTimes=self.NTimesGrid#self.DicoMSInfos[self.iCurrentMS]["times"].size
-                for iTime in range(NTimes):
-                    APP.runJob("Stack_SingleTime:%d"%(iTime), 
-                               self.Stack_SingleTime,
-                               args=(iTime,))#,serial=True)
-                APP.awaitJobResults("Stack_SingleTime:*", progress="Append MS %i"%self.DicoDATA["iMS"])
                 
-            self.iCurrentMS+=1
+        for iJob in range(len(self.LJob)):
+            self.processJob(iJob)
+            # iMS,iChunk=LJob[iJob]
+            # rep=self.LoadMS(iJob)
+            # if rep=="NotRead": continue
+            
+            # print("Making dynamic spectra...", file=log)
+            # NTimes=self.NTimesGrid#self.DicoMSInfos[self.iCurrentMS]["times"].size
+            # for iTime in range(NTimes):
+            #     APP.runJob("Stack_SingleTime:%i_%d"%(iJob,iTime), 
+            #                self.Stack_SingleTime,
+            #                args=(iJob,iTime,))#,serial=True)
+                    
 
-                # for iTime in range(self.NTimes):
-                #     self.Stack_SingleTime(iTime)
        
         self.Finalise()
 
+    def processJob(self,iJob):
+        if iJob==0:
+            APP.runJob("LoadMS_%i"%(iJob), 
+                       self.LoadMS,
+                       args=(iJob,),
+                       io=0)
+            
+        if iJob!=len(self.LJob)-1:
+            APP.runJob("LoadMS_%i"%(iJob+1), 
+                       self.LoadMS,
+                       args=(iJob+1,),
+                       io=0)
+            
+        
+        # print(rep)
+        rep=APP.awaitJobResults("LoadMS_%i"%(iJob))
+        if rep=="NotRead": return
+        NTimes=self.NTimesGrid#self.DicoMSInfos[self.iCurrentMS]["times"].size
+        iMS,iChunk=self.LJob[iJob]
+        for iTime in range(NTimes):
+            APP.runJob("Stack_SingleTime:%i_%d"%(iJob,iTime), 
+                       self.Stack_SingleTimeAllDir,
+                       args=(iJob,iTime,))#,serial=True)
+            
+        APP.awaitJobResults("Stack_SingleTime:%i_*"%iJob, progress="Append MS %i"%iMS)
+        
+        shared_dict.delDict("DicoDATA_%i"%(iJob))
 
+        
+        
     def killWorkers(self):
         print("Killing workers", file=log)
         APP.terminate()
@@ -870,54 +914,57 @@ class ClassDynSpecMS(object):
         GOut[..., 3] = -0.5j*(Gn[..., 1] - Gn[..., 2]) # V = -0.5i(XY - YX)
         self.GOut = GOut
 
-    def Stack_SingleTime(self,iTime):
-        self.DicoDATA.reload()
-        self.DicoGrids.reload()
-        # for iDir in range(self.NDir):
-        #     self.Stack_SingleTimeDir(iTime,iDir)
+    # def Stack_SingleTime(self,DicoDATA,iTime):
+    #     #self.DicoDATA.reload()
+    #     #self.DicoGrids.reload()
         
-        self.Stack_SingleTimeDir(iTime)
+    #     # for iDir in range(self.NDir):
+    #     #     self.Stack_SingleTimeDir(iTime,iDir)
         
-    def Stack_SingleTimeDir(self,iTime):
-
+    #     self.Stack_SingleTimeDir(iTime)
         
-        iMS  = self.DicoDATA["iMS"]
-        indRow = np.where(self.DicoDATA["times"]==self.DicoMSInfos[iMS]["times"][iTime])[0]
+    def Stack_SingleTimeAllDir(self,iJob,iTime):
+        iMS,iChunk=self.LJob[iJob]
+        DicoDATA=shared_dict.attach("DATA_%i"%(iJob))
+        
+        
+        iMS  = DicoDATA["iMS"]
+        indRow = np.where(DicoDATA["times"]==self.DicoMSInfos[iMS]["times"][iTime])[0]
         if indRow.size==0: return
 
-        nrow,nch,npol=self.DicoDATA["data"].shape
+        nrow,nch,npol=DicoDATA["data"].shape
         indCh=np.int64(np.arange(nch)).reshape((1,nch,1))
         indPol=np.int64(np.arange(npol)).reshape((1,1,npol))
         indR=indRow.reshape((indRow.size,1,1))
         nRowOut=indRow.size
         indArr=nch*npol*np.int64(indR)+npol*np.int64(indCh)+np.int64(indPol)
         
-        #indRow = np.where(self.DicoDATA["times"]>0)[0]
-        #f   = self.DicoDATA["flag"][indRow, :, :]
-        #d   = self.DicoDATA["data"][indRow, :, :]
+        #indRow = np.where(DicoDATA["times"]>0)[0]
+        #f   = DicoDATA["flag"][indRow, :, :]
+        #d   = DicoDATA["data"][indRow, :, :]
 
         T=ClassTimeIt.ClassTimeIt()
         T.disable()
-        d   = np.array((self.DicoDATA["data"].flat[indArr.flat[:]]).reshape((nRowOut,nch,npol))).copy()
-        f   = np.array((self.DicoDATA["flag"].flat[indArr.flat[:]]).reshape((nRowOut,nch,npol))).copy()
+        d   = np.array((DicoDATA["data"].flat[indArr.flat[:]]).reshape((nRowOut,nch,npol))).copy()
+        f   = np.array((DicoDATA["flag"].flat[indArr.flat[:]]).reshape((nRowOut,nch,npol))).copy()
         T.timeit("first")
         
         # for i in range(10):
-        #     d   = (self.DicoDATA["data"].flat[indArr.flat[:]]).reshape((nRowOut,nch,npol)).copy()
-        #     f   = (self.DicoDATA["flag"].flat[indArr.flat[:]]).reshape((nRowOut,nch,npol)).copy()
+        #     d   = (DicoDATA["data"].flat[indArr.flat[:]]).reshape((nRowOut,nch,npol)).copy()
+        #     f   = (DicoDATA["flag"].flat[indArr.flat[:]]).reshape((nRowOut,nch,npol)).copy()
         #     T.timeit("first %i"%i)
         
         nrow,nch,_=d.shape
-        #weights   = (self.DicoDATA["weights"][indRow, :]).reshape((nrow,nch,1))
+        #weights   = (DicoDATA["weights"][indRow, :]).reshape((nrow,nch,1))
         
         indArr=nch*np.int64(indR)+np.int64(indCh)
-        weights   = np.array((self.DicoDATA["weights"].flat[indArr.flat[:]]).reshape((nRowOut,nch,1))).copy()
+        weights   = np.array((DicoDATA["weights"].flat[indArr.flat[:]]).reshape((nRowOut,nch,1))).copy()
         
-        A0s = self.DicoDATA["A0"][indRow].copy()
-        A1s = self.DicoDATA["A1"][indRow].copy()
-        u0  = self.DicoDATA["u"][indRow].reshape((-1,1,1)).copy()
-        v0  = self.DicoDATA["v"][indRow].reshape((-1,1,1)).copy()
-        w0  = self.DicoDATA["w"][indRow].reshape((-1,1,1)).copy()
+        A0s = DicoDATA["A0"][indRow].copy()
+        A1s = DicoDATA["A1"][indRow].copy()
+        u0  = DicoDATA["u"][indRow].reshape((-1,1,1)).copy()
+        v0  = DicoDATA["v"][indRow].reshape((-1,1,1)).copy()
+        w0  = DicoDATA["w"][indRow].reshape((-1,1,1)).copy()
         T.timeit("second")
 
 
@@ -971,7 +1018,7 @@ class ClassDynSpecMS(object):
             
             #DicoMSInfos      = self.DicoMSInfos
     
-            #_,nch,_=self.DicoDATA["data"].shape
+            #_,nch,_=DicoDATA["data"].shape
     
             dcorr[:]=d[:]
             wdcorr=np.zeros(dcorr.shape,np.float64)
@@ -979,25 +1026,26 @@ class ClassDynSpecMS(object):
             
             
             if self.DoJonesCorr_kMS:
-                self.DicoJones_kMS.reload()
-                tm = self.DicoJones_kMS['tm']
+                DicoJones_kMS=shared_dict.attach("DicoJones_kMS_%i"%iJob)
+                DicoJones_kMS.reload()
+                tm = DicoJones_kMS['tm']
                 # Time slot for the solution
                 iTJones=np.argmin(np.abs(tm-self.timesGrid[iTime]))
-                iDJones=np.argmin(AngDist(ra,self.DicoJones_kMS['ra'],dec,self.DicoJones_kMS['dec']))
-                _,nchJones,_,_,_,_=self.DicoJones_kMS['G'].shape
+                iDJones=np.argmin(AngDist(ra,DicoJones_kMS['ra'],dec,DicoJones_kMS['dec']))
+                _,nchJones,_,_,_,_=DicoJones_kMS['G'].shape
                 
                 
 
                 for iFJones in range(nchJones):
                     
-                    nu0,nu1=self.DicoJones_kMS['FreqDomains'][iFJones]
+                    nu0,nu1=DicoJones_kMS['FreqDomains'][iFJones]
                     fData=self.DicoMSInfos[iMS]["ChanFreq"].ravel()
                     indCh=np.where((fData>=nu0) & (fData<nu1))[0]
 
-                    #iFJones=np.argmin(np.abs(chfreq_mean-self.DicoJones_kMS['FreqDomains_mean']))
+                    #iFJones=np.argmin(np.abs(chfreq_mean-DicoJones_kMS['FreqDomains_mean']))
                     # construct corrected visibilities
-                    J0 = self.DicoJones_kMS['G'][iTJones, iFJones, A0s, iDJones, 0, 0]
-                    J1 = self.DicoJones_kMS['G'][iTJones, iFJones, A1s, iDJones, 0, 0]
+                    J0 = DicoJones_kMS['G'][iTJones, iFJones, A0s, iDJones, 0, 0]
+                    J1 = DicoJones_kMS['G'][iTJones, iFJones, A1s, iDJones, 0, 0]
 
                     #JJ0=self.DicoJones_kMS['G'][iTJones, iFJones, A0s, :, 0, 0]
                     #JJ1=self.DicoJones_kMS['G'][iTJones, iFJones, A1s, :, 0, 0]
@@ -1020,20 +1068,21 @@ class ClassDynSpecMS(object):
                 # dcorr = J0.conj() * dcorr * J1
     
             if self.DoJonesCorr_Beam:
-                self.DicoJones_Beam.reload()
-                tm = self.DicoJones_Beam['tm']
+                DicoJones_Beam=shared_dict.attach("DicoJones_Beam_%i"%iJob)
+                DicoJones_Beam.reload()
+                tm = DicoJones_Beam['tm']
                 # Time slot for the solution
                 iTJones=np.argmin(np.abs(tm-self.timesGrid[iTime]))
-                iDJones=np.argmin(AngDist(ra,self.DicoJones_Beam['ra'],dec,self.DicoJones_Beam['dec']))
-                _,nchJones,_,_,_,_=self.DicoJones_Beam['G'].shape
+                iDJones=np.argmin(AngDist(ra,DicoJones_Beam['ra'],dec,DicoJones_Beam['dec']))
+                _,nchJones,_,_,_,_=DicoJones_Beam['G'].shape
                 for iFJones in range(nchJones):
-                    nu0,nu1=self.DicoJones_Beam['FreqDomains'][iFJones]
+                    nu0,nu1=DicoJones_Beam['FreqDomains'][iFJones]
                     fData=self.DicoMSInfos[iMS]["ChanFreq"].ravel()
                     indCh=np.where((fData>=nu0) & (fData<nu1))[0]
                     #iFJones=np.argmin(np.abs(chfreq_mean-self.DicoJones_Beam['FreqDomains_mean']))
                     # construct corrected visibilities
-                    J0 = self.DicoJones_Beam['G'][iTJones, iFJones, A0s, iDJones, 0, 0]
-                    J1 = self.DicoJones_Beam['G'][iTJones, iFJones, A1s, iDJones, 0, 0]
+                    J0 = DicoJones_Beam['G'][iTJones, iFJones, A0s, iDJones, 0, 0]
+                    J1 = DicoJones_Beam['G'][iTJones, iFJones, A1s, iDJones, 0, 0]
                     J0 = J0.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
                     J1 = J1.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
                     dcorr[:,indCh,:] = J0.conj() * dcorr[:,indCh,:] * J1
