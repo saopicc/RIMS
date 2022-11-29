@@ -428,7 +428,7 @@ class ClassDynSpecMS(object):
 
                 return np.array(Lx),np.array(Ly)
 
-            NPerTessel=np.max([5,self.NOff//len(DicoPolyTessel)])
+            NPerTessel=np.max([3,self.NOff//len(DicoPolyTessel)])
             NDone=0
 
             NOff=NPerTessel*len(DicoPolyTessel)
@@ -632,7 +632,7 @@ class ClassDynSpecMS(object):
             T1s=np.array([1e10])
         self.T0s=T0s
         self.T1s=T1s
-        self.iCurrentMS=0
+        #self.iCurrentMS=0
         LJob=[]
         for iMS in range(self.nMS):
             for iChunk in range(T0s.size): #[1:2]:
@@ -648,11 +648,10 @@ class ClassDynSpecMS(object):
             
         if not self.DicoMSInfos[iMS]["Readable"]: 
             print("Skipping [%i/%i]: %s"%(iMS+1, self.nMS, self.ListMSName[iMS]), file=log)
-            self.iCurrentMS+=1
             return "NotRead"
         print("Reading [%i/%i]: %s"%(iMS+1, self.nMS, self.ListMSName[iMS]), file=log)
 
-        MSName=self.ListMSName[self.iCurrentMS]
+        MSName=self.ListMSName[iMS]
         
         t = table(MSName, ack=False)
 
@@ -773,7 +772,7 @@ class ClassDynSpecMS(object):
             }
         print("Reading Jones matrices solution file:", file=log)
 
-        ms=ClassMS.ClassMS(self.DicoMSInfos[self.iCurrentMS]["MSName"],GD=GD,DoReadData=False,)
+        ms=ClassMS.ClassMS(self.DicoMSInfos[iMS]["MSName"],GD=GD,DoReadData=False,)
         JonesMachine = ClassJones.ClassJones(GD, ms, CacheMode=False)
         JonesMachine.InitDDESols(DicoDATA)
         #JJ=JonesMachine.MergeJones(self.DicoDATA["killMS"]["Jones"],self.DicoDATA["Beam"]["Jones"])
