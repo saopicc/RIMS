@@ -20,7 +20,7 @@ from astropy import constants as const
 import os
 from killMS.Other import reformat
 from DDFacet.Other import AsyncProcessPool
-from dynspecms_version import version
+from .dynspecms_version import version
 import glob
 from astropy.io import fits
 from astropy.wcs import WCS
@@ -69,6 +69,8 @@ class ClassDynSpecMS(object):
                  SourceCatOff_dFluxMean=None):
         if BeamModel=="None":
             BeamModel=None
+        if SolsName=="None":
+            SolsName=None
         self.DFacet=None
         self.SourceCatOff_FluxMean=SourceCatOff_FluxMean
         self.SourceCatOff_dFluxMean=SourceCatOff_dFluxMean
@@ -753,7 +755,7 @@ class ClassDynSpecMS(object):
         DicoJones_Beam=shared_dict.create("DicoJones_Beam_%i"%iJob)
 
         SolsName=self.SolsName
-        if "[" in SolsName:
+        if SolsName is not None and "[" in SolsName:
             SolsName=SolsName.replace("[","")
             SolsName=SolsName.replace("]","")
             SolsName=SolsName.split(",")
@@ -813,7 +815,7 @@ class ClassDynSpecMS(object):
             DicoJones_Beam['FreqDomains']=JonesSols['FreqDomains']
             DicoJones_Beam['FreqDomains_mean']=np.mean(JonesSols['FreqDomains'],axis=1)
 
-        
+
         # from DDFacet.Data import ClassLOFARBeam
         # GD,D={},{}
         # D["LOFARBeamMode"]="A"
@@ -981,10 +983,10 @@ class ClassDynSpecMS(object):
         ich0 = int( (ChanFreqs - f0)/self.ChanWidth )
         OneMinusF=(1-f).copy()
         
-        W=np.zeros((nRowOut,nch,npol),d.dtype)
+        W=np.zeros((nRowOut,nch,npol),np.float32)
         for ipol in range(npol):
             W[:,:,ipol]=weights[:,:,0]
-            
+        W[f]=0
         
         # weights=weights*np.ones((1,1,npol))
         # W=weights
@@ -1021,7 +1023,7 @@ class ClassDynSpecMS(object):
             #_,nch,_=DicoDATA["data"].shape
     
             dcorr[:]=d[:]
-            wdcorr=np.zeros(dcorr.shape,np.float64)
+            wdcorr=np.ones(dcorr.shape,np.float64)
             #kk=kk*np.ones((1,1,npol))
             
             
@@ -1055,7 +1057,7 @@ class ClassDynSpecMS(object):
                     J0 = J0.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
                     J1 = J1.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
                     dcorr[:,indCh,:] = J0.conj() * dcorr[:,indCh,:] * J1
-                    wdcorr[:,indCh,:] += (np.abs(J0) * np.abs(J1))**2
+                    wdcorr[:,indCh,:] *= (np.abs(J0) * np.abs(J1))**2
                     #print(iDir,iFJones,np.count_nonzero(J0==0),np.count_nonzero(J1==0))
                     #dcorr[:,indCh,:] = 1./J0 * dcorr[:,indCh,:] * 1./J1.conj()
 
@@ -1086,7 +1088,7 @@ class ClassDynSpecMS(object):
                     J0 = J0.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
                     J1 = J1.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
                     dcorr[:,indCh,:] = J0.conj() * dcorr[:,indCh,:] * J1
-                    wdcorr[:,indCh,:] += (np.abs(J0) * np.abs(J1))**2
+                    wdcorr[:,indCh,:] *= (np.abs(J0) * np.abs(J1))**2
                     #dcorr[:,indCh,:] = 1./J0 * dcorr[:,indCh,:] * 1./J1.conj()
                     
     
@@ -1100,16 +1102,22 @@ class ClassDynSpecMS(object):
             #dcorr=dcorr*kk
             dcorr*=W
             ds = np.sum(dcorr, axis=0) # with Jones
+            
+            ws = np.sum(W, axis=0)
+            
+            wdcorr*=W
             dcorrs=np.sum(wdcorr, axis=0)
-    
-            ds/=dcorrs
-    
+            dcorrs/=ws
+            
             
             #print(iTimeGrid,iTime)
     
-            self.DicoGrids["GridLinPol"][iDir,ich0:ich0+nch, iTimeGrid, :] = ds
 
-            ws = np.sum(OneMinusF*weights, axis=0)
+            
+            #ds/=ws
+            ds/=dcorrs
+
+            self.DicoGrids["GridLinPol"][iDir,ich0:ich0+nch, iTimeGrid, :] = ds
             self.DicoGrids["GridWeight"][iDir,ich0:ich0+nch, iTimeGrid, :] = np.float32(ws)
             
         T.timeit("rest")
