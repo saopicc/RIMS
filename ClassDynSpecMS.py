@@ -1108,15 +1108,11 @@ class ClassDynSpecMS(object):
             
             wdcorr*=W
             dcorrs=np.sum(wdcorr, axis=0)
-            dcorrs/=ws
-            
-            
-            #print(iTimeGrid,iTime)
-    
 
-            
-            #ds/=ws
-            ds/=dcorrs
+            ind=np.where(ws!=0)
+            dcorrs[ind]/=ws[ind]
+            ind=np.where(dcorrs!=0)
+            ds[ind]/=dcorrs[ind]
 
             self.DicoGrids["GridLinPol"][iDir,ich0:ich0+nch, iTimeGrid, :] = ds
             self.DicoGrids["GridWeight"][iDir,ich0:ich0+nch, iTimeGrid, :] = np.float32(ws)
