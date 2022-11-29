@@ -69,6 +69,8 @@ class ClassDynSpecMS(object):
                  SourceCatOff_dFluxMean=None):
         if BeamModel=="None":
             BeamModel=None
+        if SolsName=="None":
+            SolsName=None
         self.DFacet=None
         self.SourceCatOff_FluxMean=SourceCatOff_FluxMean
         self.SourceCatOff_dFluxMean=SourceCatOff_dFluxMean
@@ -727,7 +729,7 @@ class ClassDynSpecMS(object):
         from DDFacet.Data import ClassMS
 
         SolsName=self.SolsName
-        if "[" in SolsName:
+        if SolsName is not None and "[" in SolsName:
             SolsName=SolsName.replace("[","")
             SolsName=SolsName.replace("]","")
             SolsName=SolsName.split(",")
@@ -787,7 +789,7 @@ class ClassDynSpecMS(object):
             self.DicoJones_Beam['FreqDomains']=JonesSols['FreqDomains']
             self.DicoJones_Beam['FreqDomains_mean']=np.mean(JonesSols['FreqDomains'],axis=1)
 
-        
+
         # from DDFacet.Data import ClassLOFARBeam
         # GD,D={},{}
         # D["LOFARBeamMode"]="A"
