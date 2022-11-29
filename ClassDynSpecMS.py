@@ -976,7 +976,7 @@ class ClassDynSpecMS(object):
             #_,nch,_=self.DicoDATA["data"].shape
     
             dcorr[:]=d[:]
-            wdcorr=np.zeros(dcorr.shape,np.float64)
+            wdcorr=np.ones(dcorr.shape,np.float64)
             #kk=kk*np.ones((1,1,npol))
             
             
@@ -1009,7 +1009,7 @@ class ClassDynSpecMS(object):
                     J0 = J0.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
                     J1 = J1.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
                     dcorr[:,indCh,:] = J0.conj() * dcorr[:,indCh,:] * J1
-                    wdcorr[:,indCh,:] += (np.abs(J0) * np.abs(J1))**2
+                    wdcorr[:,indCh,:] *= (np.abs(J0) * np.abs(J1))**2
                     #print(iDir,iFJones,np.count_nonzero(J0==0),np.count_nonzero(J1==0))
                     #dcorr[:,indCh,:] = 1./J0 * dcorr[:,indCh,:] * 1./J1.conj()
 
@@ -1039,7 +1039,7 @@ class ClassDynSpecMS(object):
                     J0 = J0.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
                     J1 = J1.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
                     dcorr[:,indCh,:] = J0.conj() * dcorr[:,indCh,:] * J1
-                    wdcorr[:,indCh,:] += (np.abs(J0) * np.abs(J1))**2
+                    wdcorr[:,indCh,:] *= (np.abs(J0) * np.abs(J1))**2
                     #dcorr[:,indCh,:] = 1./J0 * dcorr[:,indCh,:] * 1./J1.conj()
                     
     
