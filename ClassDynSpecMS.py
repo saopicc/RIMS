@@ -20,7 +20,7 @@ from astropy import constants as const
 import os
 from killMS.Other import reformat
 from DDFacet.Other import AsyncProcessPool
-from dynspecms_version import version
+from .dynspecms_version import version
 import glob
 from astropy.io import fits
 from astropy.wcs import WCS
@@ -914,7 +914,6 @@ class ClassDynSpecMS(object):
         
         indArr=nch*np.int64(indR)+np.int64(indCh)
         weights   = np.array((self.DicoDATA["weights"].flat[indArr.flat[:]]).reshape((nRowOut,nch,1))).copy()
-        
         A0s = self.DicoDATA["A0"][indRow].copy()
         A1s = self.DicoDATA["A1"][indRow].copy()
         u0  = self.DicoDATA["u"][indRow].reshape((-1,1,1)).copy()
@@ -936,10 +935,10 @@ class ClassDynSpecMS(object):
         ich0 = int( (ChanFreqs - f0)/self.ChanWidth )
         OneMinusF=(1-f).copy()
         
-        W=np.zeros((nRowOut,nch,npol),d.dtype)
+        W=np.zeros((nRowOut,nch,npol),np.float32)
         for ipol in range(npol):
             W[:,:,ipol]=weights[:,:,0]
-            
+        W[f]=0
         
         # weights=weights*np.ones((1,1,npol))
         # W=weights
@@ -1053,16 +1052,22 @@ class ClassDynSpecMS(object):
             #dcorr=dcorr*kk
             dcorr*=W
             ds = np.sum(dcorr, axis=0) # with Jones
+            
+            ws = np.sum(W, axis=0)
+            
+            wdcorr*=W
             dcorrs=np.sum(wdcorr, axis=0)
-    
-            ds/=dcorrs
-    
+            dcorrs/=ws
+            
             
             #print(iTimeGrid,iTime)
     
-            self.DicoGrids["GridLinPol"][iDir,ich0:ich0+nch, iTimeGrid, :] = ds
 
-            ws = np.sum(OneMinusF*weights, axis=0)
+            
+            #ds/=ws
+            ds/=dcorrs
+
+            self.DicoGrids["GridLinPol"][iDir,ich0:ich0+nch, iTimeGrid, :] = ds
             self.DicoGrids["GridWeight"][iDir,ich0:ich0+nch, iTimeGrid, :] = np.float32(ws)
             
         T.timeit("rest")

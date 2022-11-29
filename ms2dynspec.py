@@ -5,7 +5,7 @@ from __future__ import absolute_import
 from past.builtins import cmp
 __author__ = "Cyril Tasse, and Alan Loh"
 __credits__ = ["Cyril Tasse", "Alan Loh"]
-from dynspecms_version import version
+from DynSpecMS.dynspecms_version import version
 __version__ = version()
 SaveFile = "last_dynspec.obj"
 
@@ -48,10 +48,10 @@ import numpy as np
 import glob, os
 import pylab
 from DDFacet.Other import MyPickle
-import logo
+from DynSpecMS import logo
 logo.PrintLogo(__version__)
-from ClassDynSpecMS import ClassDynSpecMS
-import ClassSaveResults
+from DynSpecMS.ClassDynSpecMS import ClassDynSpecMS
+from DynSpecMS import ClassSaveResults
 from DDFacet.Data.ClassMS import expandMSList
 from DDFacet.Other import ModColor
 from DDFacet.Other import progressbar

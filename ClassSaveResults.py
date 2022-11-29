@@ -20,7 +20,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 import matplotlib.pyplot as pylab
 from DDFacet.Other.progressbar import ProgressBar
 from pyrap.images import image
-from dynspecms_version import version
+from .dynspecms_version import version
 import DDFacet.Other.MyPickle
 
 def GiveMAD(X):
