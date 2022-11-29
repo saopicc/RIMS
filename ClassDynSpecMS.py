@@ -750,6 +750,8 @@ class ClassDynSpecMS(object):
         from DDFacet.Data import ClassJones
         from DDFacet.Data import ClassMS
         iJob=DicoDATA["iJob"]
+        iMS,iChunk=self.LJob[iJob]
+        T0,T1=self.T0s[iChunk],self.T1s[iChunk]
         DicoJones_kMS=shared_dict.create("DicoJones_kMS_%i"%iJob)
         DicoJones_Beam=shared_dict.create("DicoJones_Beam_%i"%iJob)
 
