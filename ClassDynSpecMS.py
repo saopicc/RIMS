@@ -66,7 +66,9 @@ class ClassDynSpecMS(object):
                  BaseDirSpecs=None,BeamModel=None,BeamNBand=1,
                  SourceCatOff=None,
                  SourceCatOff_FluxMean=None,
-                 SourceCatOff_dFluxMean=None):
+                 SourceCatOff_dFluxMean=None,
+                 options=None):
+        self.options=options
         if BeamModel=="None":
             BeamModel=None
         if SolsName=="None":
@@ -428,7 +430,7 @@ class ClassDynSpecMS(object):
 
                 return np.array(Lx),np.array(Ly)
 
-            NPerTessel=np.max([3,self.NOff//len(DicoPolyTessel)])
+            NPerTessel=np.max([self.options.nMinOffPerFacetself,self.NOff//len(DicoPolyTessel)])
             NDone=0
 
             NOff=NPerTessel*len(DicoPolyTessel)
