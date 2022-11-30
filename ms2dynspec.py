@@ -106,7 +106,8 @@ def main(args=None, messages=[]):
                        BeamNBand=args.BeamNBand,
                        SourceCatOff_FluxMean=args.SourceCatOff_FluxMean,
                        SourceCatOff_dFluxMean=args.SourceCatOff_dFluxMean,
-                       SourceCatOff=args.SourceCatOff)
+                       SourceCatOff=args.SourceCatOff,
+                       options=args)
 
     if D.NDirSelected==0:
         return

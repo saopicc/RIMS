@@ -430,7 +430,7 @@ class ClassDynSpecMS(object):
 
                 return np.array(Lx),np.array(Ly)
 
-            NPerTessel=np.max([self.options.nMinOffPerFacetself,self.NOff//len(DicoPolyTessel)])
+            NPerTessel=np.max([self.options.nMinOffPerFacet,self.NOff//len(DicoPolyTessel)])
             NDone=0
 
             NOff=NPerTessel*len(DicoPolyTessel)
