@@ -801,6 +801,17 @@ class ClassDynSpecMS(object):
             G=DicoJones_kMS["G"]
             nt,nch,na,nDir,_,_=G.shape
             
+            # ind_t, ind_ch,ind_ant,ind_dir,_,_=np.where((G>2)|(G<0.2))
+            # ind_ant=np.zeros_like(ind_t)
+            # for iAnt in range(na):
+            #     ind_ant.fill(iAnt)
+            #     stop
+            #     G[ind_t,ind_ch,ind_ant,ind_dir]=0
+            # if np.count_nonzero(G>2)>0:
+            #     stop
+
+            G[G>2]=0
+            G[G<0.1]=0
             DicoJones_kMS['tm']=(JonesSols["t0"]+JonesSols["t1"])/2.
             DicoJones_kMS['ra']=JonesMachine.ClusterCat['ra']
             DicoJones_kMS['dec']=JonesMachine.ClusterCat['dec']
@@ -880,7 +891,7 @@ class ClassDynSpecMS(object):
                        self.LoadMS,
                        args=(iJob,),
                        io=0)#,serial=True)
-            
+
         if iJob!=len(self.LJob)-1:
             APP.runJob("LoadMS_%i"%(iJob+1), 
                        self.LoadMS,
@@ -1068,10 +1079,11 @@ class ClassDynSpecMS(object):
 
                     J0 = J0.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
                     J1 = J1.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
-                    dcorr[:,indCh,:] = J0.conj() * dcorr[:,indCh,:] * J1
-                    wdcorr[:,indCh,:] *= (np.abs(J0) * np.abs(J1))**2
+                    #dcorr[:,indCh,:] = J0.conj() * dcorr[:,indCh,:] * J1
+                    #wdcorr[:,indCh,:] *= (np.abs(J0) * np.abs(J1))**2
                     #print(iDir,iFJones,np.count_nonzero(J0==0),np.count_nonzero(J1==0))
                     #dcorr[:,indCh,:] = 1./J0 * dcorr[:,indCh,:] * 1./J1.conj()
+                    W[:,indCh,:]*=(np.abs(J0) * np.abs(J1))**2
 
                 # iFJones=np.argmin(np.abs(chfreq_mean-self.DicoJones_kMS['FreqDomains_mean']))
                 # # construct corrected visibilities
@@ -1099,8 +1111,9 @@ class ClassDynSpecMS(object):
                     J1 = DicoJones_Beam['G'][iTJones, iFJones, A1s, iDJones, 0, 0]
                     J0 = J0.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
                     J1 = J1.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
-                    dcorr[:,indCh,:] = J0.conj() * dcorr[:,indCh,:] * J1
-                    wdcorr[:,indCh,:] *= (np.abs(J0) * np.abs(J1))**2
+                    #dcorr[:,indCh,:] = J0.conj() * dcorr[:,indCh,:] * J1
+                    #wdcorr[:,indCh,:] *= (np.abs(J0) * np.abs(J1))**2
+                    W[:,indCh,:]*=(np.abs(J0) * np.abs(J1))**2
                     #dcorr[:,indCh,:] = 1./J0 * dcorr[:,indCh,:] * 1./J1.conj()
                     
     
@@ -1117,13 +1130,12 @@ class ClassDynSpecMS(object):
             
             ws = np.sum(W, axis=0)
             
-            wdcorr*=W
-            dcorrs=np.sum(wdcorr, axis=0)
-
-            ind=np.where(ws!=0)
-            dcorrs[ind]/=ws[ind]
-            ind=np.where(dcorrs!=0)
-            ds[ind]/=dcorrs[ind]
+            # wdcorr*=W
+            # dcorrs=np.sum(wdcorr, axis=0)
+            # ind=np.where(ws!=0)
+            # dcorrs[ind]/=ws[ind]
+            # ind=np.where(dcorrs!=0)
+            # ds[ind]/=dcorrs[ind]
 
             self.DicoGrids["GridLinPol"][iDir,ich0:ich0+nch, iTimeGrid, :] = ds
             self.DicoGrids["GridWeight"][iDir,ich0:ich0+nch, iTimeGrid, :] = np.float32(ws)
