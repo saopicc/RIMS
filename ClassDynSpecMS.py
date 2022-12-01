@@ -798,6 +798,9 @@ class ClassDynSpecMS(object):
         if self.DoJonesCorr_kMS:
             JonesSols=DicoDATA["killMS"]["Jones"]
             DicoJones_kMS["G"]=np.swapaxes(JonesSols["Jones"],1,3) # Normalize Jones matrices
+            G=DicoJones_kMS["G"]
+            nt,nch,na,nDir,_,_=G.shape
+            
             DicoJones_kMS['tm']=(JonesSols["t0"]+JonesSols["t1"])/2.
             DicoJones_kMS['ra']=JonesMachine.ClusterCat['ra']
             DicoJones_kMS['dec']=JonesMachine.ClusterCat['dec']
@@ -810,11 +813,17 @@ class ClassDynSpecMS(object):
                 DicoJones_kMS['IDJones'][iDir]=np.argmin(AngDist(ra,DicoJones_kMS['ra'],dec,DicoJones_kMS['dec']))
 
         if self.DoJonesCorr_Beam:
-            JonesSols = JonesMachine.GiveBeam(np.unique(DicoDATA["times"]), quiet=True,RaDec=(self.PosArray.ra,self.PosArray.dec))
+            # if not self.DoJonesCorr_kMS:
+            #     RA,DEC=self.PosArray.ra,self.PosArray.dec
+            # else:
+            #     RA=DicoJones_kMS['ra']
+            #     DEC=DicoJones_kMS['dec']
+            RA,DEC=self.PosArray.ra,self.PosArray.dec
+            JonesSols = JonesMachine.GiveBeam(np.unique(DicoDATA["times"]), quiet=True,RaDec=(RA,DEC))
+            DicoJones_Beam['ra']=RA
+            DicoJones_Beam['dec']=DEC
             DicoJones_Beam["G"]=np.swapaxes(JonesSols["Jones"],1,3) # Normalize Jones matrices
             DicoJones_Beam['tm']=(JonesSols["t0"]+JonesSols["t1"])/2.
-            DicoJones_Beam['ra']=self.PosArray.ra
-            DicoJones_Beam['dec']=self.PosArray.dec
             DicoJones_Beam['FreqDomains']=JonesSols['FreqDomains']
             DicoJones_Beam['FreqDomains_mean']=np.mean(JonesSols['FreqDomains'],axis=1)
 
@@ -870,7 +879,7 @@ class ClassDynSpecMS(object):
             APP.runJob("LoadMS_%i"%(iJob), 
                        self.LoadMS,
                        args=(iJob,),
-                       io=0)
+                       io=0)#,serial=True)
             
         if iJob!=len(self.LJob)-1:
             APP.runJob("LoadMS_%i"%(iJob+1), 
