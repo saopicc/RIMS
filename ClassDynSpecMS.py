@@ -810,8 +810,8 @@ class ClassDynSpecMS(object):
             # if np.count_nonzero(G>2)>0:
             #     stop
 
-            G[G>2]=0
-            G[G<0.1]=0
+            # G[G>2]=0
+            # G[G<0.1]=0
             DicoJones_kMS['tm']=(JonesSols["t0"]+JonesSols["t1"])/2.
             DicoJones_kMS['ra']=JonesMachine.ClusterCat['ra']
             DicoJones_kMS['dec']=JonesMachine.ClusterCat['dec']
@@ -1079,11 +1079,11 @@ class ClassDynSpecMS(object):
 
                     J0 = J0.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
                     J1 = J1.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
-                    #dcorr[:,indCh,:] = J0.conj() * dcorr[:,indCh,:] * J1
-                    #wdcorr[:,indCh,:] *= (np.abs(J0) * np.abs(J1))**2
+                    dcorr[:,indCh,:] = J0.conj() * dcorr[:,indCh,:] * J1
+                    wdcorr[:,indCh,:] *= (np.abs(J0) * np.abs(J1))**2
                     #print(iDir,iFJones,np.count_nonzero(J0==0),np.count_nonzero(J1==0))
                     #dcorr[:,indCh,:] = 1./J0 * dcorr[:,indCh,:] * 1./J1.conj()
-                    W[:,indCh,:]*=(np.abs(J0) * np.abs(J1))**2
+                    #W[:,indCh,:]*=(np.abs(J0) * np.abs(J1))**2
 
                 # iFJones=np.argmin(np.abs(chfreq_mean-self.DicoJones_kMS['FreqDomains_mean']))
                 # # construct corrected visibilities
@@ -1111,9 +1111,9 @@ class ClassDynSpecMS(object):
                     J1 = DicoJones_Beam['G'][iTJones, iFJones, A1s, iDJones, 0, 0]
                     J0 = J0.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
                     J1 = J1.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
-                    #dcorr[:,indCh,:] = J0.conj() * dcorr[:,indCh,:] * J1
-                    #wdcorr[:,indCh,:] *= (np.abs(J0) * np.abs(J1))**2
-                    W[:,indCh,:]*=(np.abs(J0) * np.abs(J1))**2
+                    dcorr[:,indCh,:] = J0.conj() * dcorr[:,indCh,:] * J1
+                    wdcorr[:,indCh,:] *= (np.abs(J0) * np.abs(J1))**2
+                    #W[:,indCh,:]*=(np.abs(J0) * np.abs(J1))**2
                     #dcorr[:,indCh,:] = 1./J0 * dcorr[:,indCh,:] * 1./J1.conj()
                     
     
@@ -1127,7 +1127,7 @@ class ClassDynSpecMS(object):
             #dcorr=dcorr*kk
             dcorr*=W
             ds = np.sum(dcorr, axis=0) # with Jones
-            
+            W*=wdcorr
             ws = np.sum(W, axis=0)
             
             # wdcorr*=W
