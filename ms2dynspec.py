@@ -149,8 +149,10 @@ if __name__ == "__main__":
     parser.add_argument("--imageI", type=str, default=None, help="Survey image to plot", required=False)
     parser.add_argument("--imageV", type=str, default=None, help="Survey image to plot", required=False)
     parser.add_argument("--BaseDirSpecs", type=str, default=None, help="Path to the precomputed specs", required=False)
-    parser.add_argument("--uv", type=list, default=[1., 1000.], help="UV range in km [UVmin, UVmax]", required=False)
+    parser.add_argument("--uv", type=str, default=[1., 1000.], help="UV range in km [UVmin, UVmax]", required=False)
     parser.add_argument("--SolsDir", type=str, default="", help="Base directory for the DDE solutions", required=False)
+    parser.add_argument("--CutGainsMinMax", type=str, default="None", help="Base directory for the DDE solutions", required=False)
+
     parser.add_argument("--NCPU", type=int, default=0, help="NCPU", required=False)
     parser.add_argument("--BeamModel", type=str, default=None, help="Beam Model to be used", required=False)
     parser.add_argument("--BeamNBand", type=int, default=1, help="Number of channels in the Beam Jones matrix", required=False)

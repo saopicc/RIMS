@@ -46,6 +46,18 @@ def AngDist(ra0,ra1,dec0,dec1):
         if D<-1.: D=-1.
     return AC(D)
 
+def StrToList(s):
+    if isinstance(s,list): return s
+    if isinstance(s,str):
+        s=s.strip()
+        if s=="None": return None
+        Ls=s.split(",")
+        Ls[0]=Ls[0].replace("[","")
+        Ls[-1]=Ls[-1].replace("]","")
+        for iss,ss in enumerate(Ls):
+            Ls[iss]=float(ss)
+    return Ls
+
 class ClassDynSpecMS(object):
     def __init__(self,
                  ListMSName=None,
@@ -69,6 +81,8 @@ class ClassDynSpecMS(object):
                  SourceCatOff_dFluxMean=None,
                  options=None):
         self.options=options
+        # CutGainsMinMax
+
         if BeamModel=="None":
             BeamModel=None
         if SolsName=="None":
@@ -717,7 +731,7 @@ class ClassDynSpecMS(object):
         u, v, w = t.getcol("UVW",ROW0,NROW).T
         t.close()
         d = np.sqrt(u**2 + v**2 + w**2)
-        uv0, uv1         = np.array(self.UVRange) * 1000
+        uv0, uv1         = np.array(StrToList(self.UVRange)) * 1000
         indUV = np.where( (d<uv0)|(d>uv1) )[0]
         flag[indUV, :, :] = 1 # flag according to UV selection
         data[flag] = 0 # put down to zeros flagged visibilities
@@ -810,8 +824,12 @@ class ClassDynSpecMS(object):
             # if np.count_nonzero(G>2)>0:
             #     stop
 
-            # G[G>2]=0
-            # G[G<0.1]=0
+            CutGainsMinMax=StrToList(self.options.CutGainsMinMax)
+            
+            if CutGainsMinMax:
+                c0,c1=CutGainsMinMax
+                G[G>c1]=0
+                G[G<c0]=0
             DicoJones_kMS['tm']=(JonesSols["t0"]+JonesSols["t1"])/2.
             DicoJones_kMS['ra']=JonesMachine.ClusterCat['ra']
             DicoJones_kMS['dec']=JonesMachine.ClusterCat['dec']
@@ -901,7 +919,10 @@ class ClassDynSpecMS(object):
         
         # print(rep)
         rep=APP.awaitJobResults("LoadMS_%i"%(iJob))
-        if rep=="NotRead": return
+        if rep=="NotRead": 
+            self.delShm(iJob)
+            return
+
         NTimes=self.NTimesGrid#self.DicoMSInfos[self.iCurrentMS]["times"].size
         iMS,iChunk=self.LJob[iJob]
         for iTime in range(NTimes):
@@ -911,8 +932,13 @@ class ClassDynSpecMS(object):
             
         APP.awaitJobResults("Stack_SingleTime:%i_*"%iJob, progress="Append MS %i"%iMS)
         
-        shared_dict.delDict("DicoDATA_%i"%(iJob))
+        self.delShm(iJob)
 
+    def delShm(self,iJob):
+        shared_dict.delDict("DATA_%i"%(iJob))
+        shared_dict.delDict("DicoJones_Beam_%i"%(iJob))
+        shared_dict.delDict("DicoJones_kMS_%i"%(iJob))
+        
         
         
     def killWorkers(self):
@@ -1010,7 +1036,7 @@ class ClassDynSpecMS(object):
         for ipol in range(npol):
             W[:,:,ipol]=weights[:,:,0]
         W[f]=0
-        
+        Wc=W.copy()
         # weights=weights*np.ones((1,1,npol))
         # W=weights
 
@@ -1046,6 +1072,8 @@ class ClassDynSpecMS(object):
             #_,nch,_=DicoDATA["data"].shape
     
             dcorr[:]=d[:]
+            W=Wc.copy()
+            dcorr*=W
             wdcorr=np.ones(dcorr.shape,np.float64)
             #kk=kk*np.ones((1,1,npol))
             
@@ -1080,10 +1108,10 @@ class ClassDynSpecMS(object):
                     J0 = J0.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
                     J1 = J1.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
                     dcorr[:,indCh,:] = J0.conj() * dcorr[:,indCh,:] * J1
-                    wdcorr[:,indCh,:] *= (np.abs(J0) * np.abs(J1))**2
+                    #wdcorr[:,indCh,:] *= (np.abs(J0) * np.abs(J1))**2
                     #print(iDir,iFJones,np.count_nonzero(J0==0),np.count_nonzero(J1==0))
                     #dcorr[:,indCh,:] = 1./J0 * dcorr[:,indCh,:] * 1./J1.conj()
-                    #W[:,indCh,:]*=(np.abs(J0) * np.abs(J1))**2
+                    W[:,indCh,:]*=(np.abs(J0) * np.abs(J1))**2
 
                 # iFJones=np.argmin(np.abs(chfreq_mean-self.DicoJones_kMS['FreqDomains_mean']))
                 # # construct corrected visibilities
@@ -1112,8 +1140,8 @@ class ClassDynSpecMS(object):
                     J0 = J0.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
                     J1 = J1.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
                     dcorr[:,indCh,:] = J0.conj() * dcorr[:,indCh,:] * J1
-                    wdcorr[:,indCh,:] *= (np.abs(J0) * np.abs(J1))**2
-                    #W[:,indCh,:]*=(np.abs(J0) * np.abs(J1))**2
+                    #wdcorr[:,indCh,:] *= (np.abs(J0) * np.abs(J1))**2
+                    W[:,indCh,:]*=(np.abs(J0) * np.abs(J1))**2
                     #dcorr[:,indCh,:] = 1./J0 * dcorr[:,indCh,:] * 1./J1.conj()
                     
     
@@ -1125,9 +1153,8 @@ class ClassDynSpecMS(object):
             #dcorr.flat[:]*=W.flat[:]
             dcorr*=kk
             #dcorr=dcorr*kk
-            dcorr*=W
             ds = np.sum(dcorr, axis=0) # with Jones
-            W*=wdcorr
+            #W*=wdcorr
             ws = np.sum(W, axis=0)
             
             # wdcorr*=W
