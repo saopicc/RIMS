@@ -842,12 +842,12 @@ class ClassDynSpecMS(object):
                 DicoJones_kMS['IDJones'][iDir]=np.argmin(AngDist(ra,DicoJones_kMS['ra'],dec,DicoJones_kMS['dec']))
 
         if self.DoJonesCorr_Beam:
-            # if not self.DoJonesCorr_kMS:
-            #     RA,DEC=self.PosArray.ra,self.PosArray.dec
-            # else:
-            #     RA=DicoJones_kMS['ra']
-            #     DEC=DicoJones_kMS['dec']
-            RA,DEC=self.PosArray.ra,self.PosArray.dec
+            if not self.DoJonesCorr_kMS:
+                RA,DEC=self.PosArray.ra,self.PosArray.dec
+            else:
+                RA=DicoJones_kMS['ra']
+                DEC=DicoJones_kMS['dec']
+            # RA,DEC=self.PosArray.ra,self.PosArray.dec
             JonesSols = JonesMachine.GiveBeam(np.unique(DicoDATA["times"]), quiet=True,RaDec=(RA,DEC))
             DicoJones_Beam['ra']=RA
             DicoJones_Beam['dec']=DEC
