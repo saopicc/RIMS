@@ -88,43 +88,60 @@ def main(args=None, messages=[]):
         MSList=expandMSList(args.ms)
         MSList=[mstuple[0] for mstuple in MSList]
 
-    D = ClassDynSpecMS(ListMSName=MSList, 
-                       ColName=args.data, ModelName=args.model, 
-                       SolsName=args.sols,
-                       TChunkHours=args.TChunkHours,
-                       ColWeights=args.WeightCol,
-                       UVRange=args.uv,
-                       FileCoords=args.srclist,
-                       Radius=args.rad,
-                       NOff=args.noff,
-                       DicoFacet=args.DicoFacet,
-                       ImageI=args.imageI,
-                       ImageV=args.imageV,
-                       SolsDir=args.SolsDir,NCPU=args.NCPU,
-                       BaseDirSpecs=args.BaseDirSpecs,
-                       BeamModel=args.BeamModel,
-                       BeamNBand=args.BeamNBand,
-                       SourceCatOff_FluxMean=args.SourceCatOff_FluxMean,
-                       SourceCatOff_dFluxMean=args.SourceCatOff_dFluxMean,
-                       SourceCatOff=args.SourceCatOff,
-                       options=args)
-
-    if D.NDirSelected==0:
-        return
-
-    if D.Mode=="Spec": D.StackAll()
-
-    SaveMachine=ClassSaveResults.ClassSaveResults(D,DIRNAME=args.OutDirName)
-    if D.Mode=="Spec":
-        SaveMachine.WriteFits()
-        if args.SavePDF:
-            SaveMachine.PlotSpec()
-        SaveMachine.SaveCatalog()
-        
-        SaveMachine.tarDirectory()
+    if args.SplitNonContiguous:
+        DT={}
+        for MSName in MSList:
+            t=table(MSName,ack=False)
+            Times=np.unique(t.getcol("TIME"))
+            T=(Times.min(),Times.max())
+            if T not in DT.keys():
+                DT[T]=[MSName]
+            else:
+                DT[T].append(MSName)
+            t.close()
+        if len(DT)>1:
+            print("FOUND %i time periods"%len(DT))
     else:
-        SaveMachine.SaveCatalog()
-        SaveMachine.PlotSpec(Prefix="_replot")
+        D={0:MSList}
+
+    for k in DT.keys():
+        MSList=DT[k]
+        D = ClassDynSpecMS(ListMSName=MSList, 
+                           ColName=args.data, ModelName=args.model, 
+                           SolsName=args.sols,
+                           TChunkHours=args.TChunkHours,
+                           ColWeights=args.WeightCol,
+                           UVRange=args.uv,
+                           FileCoords=args.srclist,
+                           Radius=args.rad,
+                           NOff=args.noff,
+                           DicoFacet=args.DicoFacet,
+                           ImageI=args.imageI,
+                           ImageV=args.imageV,
+                           SolsDir=args.SolsDir,NCPU=args.NCPU,
+                           BaseDirSpecs=args.BaseDirSpecs,
+                           BeamModel=args.BeamModel,
+                           BeamNBand=args.BeamNBand,
+                           SourceCatOff_FluxMean=args.SourceCatOff_FluxMean,
+                           SourceCatOff_dFluxMean=args.SourceCatOff_dFluxMean,
+                           SourceCatOff=args.SourceCatOff,
+                           options=args)
+
+        if D.NDirSelected==0:
+            return
+    
+        if D.Mode=="Spec": D.StackAll()
+    
+        SaveMachine=ClassSaveResults.ClassSaveResults(D,DIRNAME=args.OutDirName)
+        if D.Mode=="Spec":
+            SaveMachine.WriteFits()
+            if args.SavePDF:
+                SaveMachine.PlotSpec()
+            SaveMachine.SaveCatalog()
+            SaveMachine.tarDirectory()
+        else:
+            SaveMachine.SaveCatalog()
+            SaveMachine.PlotSpec(Prefix="_replot")
 
 
         
@@ -151,8 +168,9 @@ if __name__ == "__main__":
     parser.add_argument("--BaseDirSpecs", type=str, default=None, help="Path to the precomputed specs", required=False)
     parser.add_argument("--uv", type=str, default=[1., 1000.], help="UV range in km [UVmin, UVmax]", required=False)
     parser.add_argument("--SolsDir", type=str, default="", help="Base directory for the DDE solutions", required=False)
-    parser.add_argument("--CutGainsMinMax", type=str, default="None", help="Base directory for the DDE solutions", required=False)
-
+    parser.add_argument("--CutGainsMinMax", type=str, default="None", help="Cut Jones min,max", required=False)
+    parser.add_argument("--SplitNonContiguous", type=int, default=1, help="Split non time-contiguous MSs", required=False)
+    
     parser.add_argument("--NCPU", type=int, default=0, help="NCPU", required=False)
     parser.add_argument("--BeamModel", type=str, default=None, help="Beam Model to be used", required=False)
     parser.add_argument("--BeamNBand", type=int, default=1, help="Number of channels in the Beam Jones matrix", required=False)
