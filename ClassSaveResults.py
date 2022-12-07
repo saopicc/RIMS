@@ -136,8 +136,7 @@ class ClassSaveResults(object):
         fitsname = "%s/%s/%s_%s_%s.fits"%(self.DIRNAME,self.GiveSubDir(self.DynSpecMS.PosArray.Type[iDir]),self.DynSpecMS.OutName, strRA, strDEC)
         if Weight:
             fitsname = "%s/%s.fits"%(self.DIRNAME,"Weights")
-        print(iDir,self.DynSpecMS.PosArray.Type[iDir],fitsname)
-
+        print("#%i %s %s"%(iDir,self.DynSpecMS.PosArray.Type[iDir].decode("ascii"),fitsname),file=log)
         # Create the fits file
         prihdr  = fits.Header() 
         prihdr.set('CTYPE1', 'Time', 'Time')

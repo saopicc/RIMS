@@ -6,6 +6,9 @@ from past.builtins import cmp
 __author__ = "Cyril Tasse, and Alan Loh"
 __credits__ = ["Cyril Tasse", "Alan Loh"]
 from DynSpecMS.dynspecms_version import version
+from DDFacet.Other import logger
+log=logger.getLogger("ms2dynspec")
+from DDFacet.Other import ModColor
 __version__ = version()
 SaveFile = "last_dynspec.obj"
 
@@ -37,6 +40,7 @@ fontsize=12
 rc('font',**{'family':'serif','serif':['Times'],'size':fontsize})
 if find_executable("latex") is not None:
     rc('text', usetex=True)
+from DDFacet.Other import Multiprocessing
 
 from pyrap.tables import table
 from astropy.time import Time
@@ -100,7 +104,7 @@ def main(args=None, messages=[]):
                 DT[T].append(MSName)
             t.close()
         if len(DT)>1:
-            print("FOUND %i time periods"%len(DT))
+            log.print(ModColor.Str("FOUND %i time periods"%len(DT)))
     else:
         D={0:MSList}
 
@@ -142,8 +146,8 @@ def main(args=None, messages=[]):
         else:
             SaveMachine.SaveCatalog()
             SaveMachine.PlotSpec(Prefix="_replot")
-
-
+        D.killWorkers()
+    Multiprocessing.cleanupShm()
         
 
 # =========================================================================

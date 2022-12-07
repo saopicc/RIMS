@@ -9,7 +9,8 @@ import sys
 from DDFacet.Other import logger
 log=logger.getLogger("DynSpecMS")
 from DDFacet.Array import shared_dict
-from DDFacet.Other.AsyncProcessPool import APP, WorkerProcessError
+from DDFacet.Other import AsyncProcessPool
+    
 from DDFacet.Other import Multiprocessing
 from DDFacet.Other import ModColor
 from DDFacet.Other.progressbar import ProgressBar
@@ -319,11 +320,15 @@ class ClassDynSpecMS(object):
         if self.BeamModel:
             self.DoJonesCorr_Beam=True
 
-
-        APP.registerJobHandlers(self)
+        AsyncProcessPool.APP=None
         AsyncProcessPool.init(ncpu=self.NCPU,
+                              num_io_processes=1,
                               affinity="disable")
-        APP.startWorkers()
+        
+        self.APP=AsyncProcessPool.APP
+    
+        self.APP.registerJobHandlers(self)
+        self.APP.startWorkers()
 
         
         
@@ -905,20 +910,20 @@ class ClassDynSpecMS(object):
 
     def processJob(self,iJob):
         if iJob==0:
-            APP.runJob("LoadMS_%i"%(iJob), 
+            self.APP.runJob("LoadMS_%i"%(iJob), 
                        self.LoadMS,
                        args=(iJob,),
                        io=0)#,serial=True)
 
         if iJob!=len(self.LJob)-1:
-            APP.runJob("LoadMS_%i"%(iJob+1), 
+            self.APP.runJob("LoadMS_%i"%(iJob+1), 
                        self.LoadMS,
                        args=(iJob+1,),
                        io=0)
             
         
         # print(rep)
-        rep=APP.awaitJobResults("LoadMS_%i"%(iJob))
+        rep=self.APP.awaitJobResults("LoadMS_%i"%(iJob))
         if rep=="NotRead": 
             self.delShm(iJob)
             return
@@ -926,11 +931,11 @@ class ClassDynSpecMS(object):
         NTimes=self.NTimesGrid#self.DicoMSInfos[self.iCurrentMS]["times"].size
         iMS,iChunk=self.LJob[iJob]
         for iTime in range(NTimes):
-            APP.runJob("Stack_SingleTime:%i_%d"%(iJob,iTime), 
+            self.APP.runJob("Stack_SingleTime:%i_%d"%(iJob,iTime), 
                        self.Stack_SingleTimeAllDir,
                        args=(iJob,iTime,))#,serial=True)
             
-        APP.awaitJobResults("Stack_SingleTime:%i_*"%iJob, progress="Append MS %i"%iMS)
+        self.APP.awaitJobResults("Stack_SingleTime:%i_*"%iJob, progress="Append MS %i"%iMS)
         
         self.delShm(iJob)
 
@@ -940,17 +945,17 @@ class ClassDynSpecMS(object):
         shared_dict.delDict("DicoJones_kMS_%i"%(iJob))
         
         
-        
     def killWorkers(self):
         print("Killing workers", file=log)
-        APP.terminate()
-        APP.shutdown()
-        Multiprocessing.cleanupShm()
+        self.APP.terminate()
+        self.APP.shutdown()
+        del(self.DicoGrids)
+        shared_dict.delDict("Grids")
+        #Multiprocessing.cleanupShm()
 
 
 
     def Finalise(self):
-        self.killWorkers()
 
         G=self.DicoGrids["GridLinPol"]
         W=self.DicoGrids["GridWeight"].copy()
