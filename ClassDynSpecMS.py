@@ -922,7 +922,7 @@ class ClassDynSpecMS(object):
             self.APP.runJob("LoadMS_%i"%(iJob), 
                        self.LoadMS,
                        args=(iJob,),
-                       io=0,serial=True)
+                       io=0)#,serial=True)
 
         if iJob!=len(self.LJob)-1:
             self.APP.runJob("LoadMS_%i"%(iJob+1), 
