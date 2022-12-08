@@ -199,7 +199,7 @@ class ClassDynSpecMS(object):
         FileCoords=self.FileCoords
         dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')]
         # should we use the surveys DB?
-        if 'DDF_PIPELINE_DATABASE' in os.environ:
+        if 'DDF_PIPELINE_DATABASE' in os.environ or self.options.UseLoTSSDB:
             print("Using the surveys database", file=log)
             from surveys_db import SurveysDB
             with SurveysDB() as sdb:
@@ -999,7 +999,7 @@ class ClassDynSpecMS(object):
         #f   = DicoDATA["flag"][indRow, :, :]
         #d   = DicoDATA["data"][indRow, :, :]
 
-        T=ClassTimeIt.ClassTimeIt()
+        T=ClassTimeIt.ClassTimeIt("SingleTimeAllDir")
         T.disable()
         d   = np.array((DicoDATA["data"].flat[indArr.flat[:]]).reshape((nRowOut,nch,npol))).copy()
         f   = np.array((DicoDATA["flag"].flat[indArr.flat[:]]).reshape((nRowOut,nch,npol))).copy()
@@ -1047,6 +1047,7 @@ class ClassDynSpecMS(object):
 
         
         kk=np.zeros_like(d)
+        T.timeit("third")
         for iDir in range(self.NDir):
             ra=self.PosArray.ra[iDir]
             dec=self.PosArray.dec[iDir]
@@ -1055,10 +1056,13 @@ class ClassDynSpecMS(object):
             n  = np.sqrt(1. - l**2. - m**2.)
 
         
+            T.timeit("lmn")
             kkk  = np.exp(-2.*np.pi*1j* chfreq/const.c.value *(u0*l + v0*m + w0*(n-1)) ) # Phasing term
+            T.timeit("kkk")
 
             for ipol in range(npol):
                 kk[:,:,ipol]=kkk[:,:,0]
+            T.timeit("kkk copy")
             # #ind=np.where((A0s==0)&(A1s==10))[0]
             # ind=np.where((A0s!=1000))[0]
             # import pylab
@@ -1082,15 +1086,20 @@ class ClassDynSpecMS(object):
             wdcorr=np.ones(dcorr.shape,np.float64)
             #kk=kk*np.ones((1,1,npol))
             
+            T.timeit("corr")
             
             if self.DoJonesCorr_kMS:
+                T1=ClassTimeIt.ClassTimeIt("  DoJonesCorr_kMS")
+                T1.disable()
                 DicoJones_kMS=shared_dict.attach("DicoJones_kMS_%i"%iJob)
                 DicoJones_kMS.reload()
+                T1.timeit("Load")
                 tm = DicoJones_kMS['tm']
                 # Time slot for the solution
                 iTJones=np.argmin(np.abs(tm-self.timesGrid[iTime]))
                 iDJones=np.argmin(AngDist(ra,DicoJones_kMS['ra'],dec,DicoJones_kMS['dec']))
                 _,nchJones,_,_,_,_=DicoJones_kMS['G'].shape
+                T1.timeit("argmin")
                 
                 
 
@@ -1112,11 +1121,14 @@ class ClassDynSpecMS(object):
 
                     J0 = J0.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
                     J1 = J1.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
+                    T1.timeit("[%i] read J0J1"%iFJones)
                     dcorr[:,indCh,:] = J0.conj() * dcorr[:,indCh,:] * J1
                     #wdcorr[:,indCh,:] *= (np.abs(J0) * np.abs(J1))**2
                     #print(iDir,iFJones,np.count_nonzero(J0==0),np.count_nonzero(J1==0))
                     #dcorr[:,indCh,:] = 1./J0 * dcorr[:,indCh,:] * 1./J1.conj()
                     W[:,indCh,:]*=(np.abs(J0) * np.abs(J1))**2
+                    T1.timeit("[%i] apply "%iFJones)
+
 
                 # iFJones=np.argmin(np.abs(chfreq_mean-self.DicoJones_kMS['FreqDomains_mean']))
                 # # construct corrected visibilities
@@ -1126,6 +1138,7 @@ class ClassDynSpecMS(object):
                 # J1 = J1.reshape((-1, 1, 1))*np.ones((1, nch, 1))
                 # dcorr = J0.conj() * dcorr * J1
     
+            T.timeit("corr kMS")
             if self.DoJonesCorr_Beam:
                 DicoJones_Beam=shared_dict.attach("DicoJones_Beam_%i"%iJob)
                 DicoJones_Beam.reload()
@@ -1151,6 +1164,7 @@ class ClassDynSpecMS(object):
                     
     
                 
+            T.timeit("corr Beam")
             #ds=np.sum(d*kk, axis=0) # without Jones
             
             #ds = np.sum(dcorr * kk*weights, axis=0) # with Jones
@@ -1168,9 +1182,11 @@ class ClassDynSpecMS(object):
             # dcorrs[ind]/=ws[ind]
             # ind=np.where(dcorrs!=0)
             # ds[ind]/=dcorrs[ind]
+            T.timeit("Sum")
 
             self.DicoGrids["GridLinPol"][iDir,ich0:ich0+nch, iTimeGrid, :] = ds
             self.DicoGrids["GridWeight"][iDir,ich0:ich0+nch, iTimeGrid, :] = np.float32(ws)
+            T.timeit("Write")
             
         T.timeit("rest")
 

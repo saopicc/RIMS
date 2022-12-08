@@ -174,6 +174,7 @@ if __name__ == "__main__":
     parser.add_argument("--SolsDir", type=str, default="", help="Base directory for the DDE solutions", required=False)
     parser.add_argument("--CutGainsMinMax", type=str, default="None", help="Cut Jones min,max", required=False)
     parser.add_argument("--SplitNonContiguous", type=int, default=1, help="Split non time-contiguous MSs", required=False)
+    parser.add_argument("--UseLoTSSDB", type=int, default=0, help="Use LoTSS DB for target list", required=False)
     
     parser.add_argument("--NCPU", type=int, default=0, help="NCPU", required=False)
     parser.add_argument("--BeamModel", type=str, default=None, help="Beam Model to be used", required=False)
