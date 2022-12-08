@@ -183,7 +183,7 @@ class ClassSaveResults(object):
             
             
         if Weight:
-            Gn = self.DynSpecMS.DicoGrids["GridWeight"][iDir,:, :, :].real # dir, time, freq, pol
+            Gn = self.DynSpecMS.DicoGrids["GridWeight"][iDir,:, :, 0:1].real # dir, time, freq, pol
         else:
             Gn = self.DynSpecMS.GOut[iDir,:, :, :].real
 

@@ -800,7 +800,11 @@ class ClassDynSpecMS(object):
         JonesMachine = ClassJones.ClassJones(GD, ms, CacheMode=False)
         JonesMachine.InitDDESols(DicoDATA)
 
-
+        # import DDFacet.Other.ClassJonesDomains
+        # DomainMachine=DDFacet.Other.ClassJonesDomains.ClassJonesDomains()
+        # JonesSols=DomainMachine.MergeJones(DicoDATA["killMS"], DicoDATA["Beam"])
+        
+        # stop
 
         if self.DoJonesCorr_kMS:
             JonesSols=DicoDATA["killMS"]["Jones"]
@@ -849,9 +853,6 @@ class ClassDynSpecMS(object):
             DicoJones_Beam['FreqDomains']=JonesSols['FreqDomains']
             DicoJones_Beam['FreqDomains_mean']=np.mean(JonesSols['FreqDomains'],axis=1)
 
-        # self.DomainsMachine=ClassJonesDomains.ClassJonesDomains()
-        
-        # self.DomainsMachine.AddFreqDomains(DicoBeam,ChanFreqs,ChanWidth)
 
         
         #JJ=JonesMachine.MergeJones(self.DicoDATA["killMS"]["Jones"],self.DicoDATA["Beam"]["Jones"])
@@ -917,11 +918,12 @@ class ClassDynSpecMS(object):
         self.Finalise()
 
     def processJob(self,iJob):
+        #SERIAL=True
         if iJob==0:
             self.APP.runJob("LoadMS_%i"%(iJob), 
                        self.LoadMS,
                        args=(iJob,),
-                       io=0)#,serial=True)
+                       io=0,serial=True)
 
         if iJob!=len(self.LJob)-1:
             self.APP.runJob("LoadMS_%i"%(iJob+1), 
