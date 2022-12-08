@@ -34,7 +34,7 @@ from Polygon.Utils import convexHull
 #import DynSpecMS.testLibBeam
 #from killMS.Data import ClassJonesDomains
 import DDFacet.Other.ClassJonesDomains
-
+import psutil
 
 def AngDist(ra0,ra1,dec0,dec1):
     AC=np.arccos
@@ -323,10 +323,10 @@ class ClassDynSpecMS(object):
             self.DoJonesCorr_Beam=True
 
         AsyncProcessPool.APP=None
-        AsyncProcessPool.init(ncpu=self.NCPU,
-                              num_io_processes=1,
-                              affinity="disable")
-        
+        # AsyncProcessPool.init(ncpu=self.NCPU,
+        #                       num_io_processes=1,
+        #                       affinity="disable")
+        AsyncProcessPool.init((self.NCPU or psutil.cpu_count()-1), affinity=0, num_io_processes=1, verbose=0)
         self.APP=AsyncProcessPool.APP
     
         self.APP.registerJobHandlers(self)
