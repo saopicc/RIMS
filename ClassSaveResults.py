@@ -74,8 +74,7 @@ class ClassSaveResults(object):
 
         for iDir in range(self.DynSpecMS.NDir):
             self.WriteFitsThisDir(iDir)
-
-        self.WriteFitsThisDir(0,Weight=True)
+            self.WriteFitsThisDir(iDir,Weight=True)
 
     def SaveCatalog(self):
         FileName = "%s/%s.npy"%(self.DIRNAME,"Catalog")
@@ -135,7 +134,7 @@ class ClassSaveResults(object):
         
         fitsname = "%s/%s/%s_%s_%s.fits"%(self.DIRNAME,self.GiveSubDir(self.DynSpecMS.PosArray.Type[iDir]),self.DynSpecMS.OutName, strRA, strDEC)
         if Weight:
-            fitsname = "%s/%s.fits"%(self.DIRNAME,"Weights")
+            fitsname = "%s/%s/%s_%s_%s.W.fits"%(self.DIRNAME,self.GiveSubDir(self.DynSpecMS.PosArray.Type[iDir]),self.DynSpecMS.OutName, strRA, strDEC)
         print("#%i %s %s"%(iDir,self.DynSpecMS.PosArray.Type[iDir].decode("ascii"),fitsname),file=log)
         # Create the fits file
         prihdr  = fits.Header() 
@@ -169,6 +168,12 @@ class ClassSaveResults(object):
             # it must be a byte string, this must be Python 3, act accordingly
             name=name.decode('utf-8')
         prihdr.set('NAME', name, 'Name of the source in the source list')
+
+        ThisType=self.DynSpecMS.PosArray.Type[iDir].decode("ascii")
+        if Weight:
+            ThisType+="_Weight"
+        prihdr.set('SRC-TYPE', ThisType, 'Type of the source in the source list')
+        
         prihdr.set('ORIGIN', 'DynSpecMS '+version(),'Created by')
         if "iFacet" in self.DynSpecMS.PosArray.dtype.fields.keys():
             iFacet=self.DynSpecMS.PosArray.iFacet[iDir]

@@ -32,6 +32,7 @@ import DDFacet.Other.MyPickle
 import Polygon
 from Polygon.Utils import convexHull
 #import DynSpecMS.testLibBeam
+from killMS.Data import ClassJonesDomains
 
 
 def AngDist(ra0,ra1,dec0,dec1):
@@ -798,21 +799,8 @@ class ClassDynSpecMS(object):
         ms=ClassMS.ClassMS(self.DicoMSInfos[iMS]["MSName"],GD=GD,DoReadData=False,)
         JonesMachine = ClassJones.ClassJones(GD, ms, CacheMode=False)
         JonesMachine.InitDDESols(DicoDATA)
-        #JJ=JonesMachine.MergeJones(self.DicoDATA["killMS"]["Jones"],self.DicoDATA["Beam"]["Jones"])
-        # import killMS.Data.ClassJonesDomains
-        # DomainMachine=killMS.Data.ClassJonesDomains.ClassJonesDomains()
-        # if "killMS" in self.DicoDATA.keys():
-        #     self.DicoDATA["killMS"]["Jones"]["FreqDomain"]=self.DicoDATA["killMS"]["Jones"]["FreqDomains"]
-        # if "Beam" in self.DicoDATA.keys():
-        #     self.DicoDATA["Beam"]["Jones"]["FreqDomain"]=self.DicoDATA["Beam"]["Jones"]["FreqDomains"]
-        # if "killMS" in self.DicoDATA.keys() and "Beam" in self.DicoDATA.keys():
-        #     JonesSols=DomainMachine.MergeJones(self.DicoDATA["killMS"]["Jones"],self.DicoDATA["Beam"]["Jones"])
-        # elif "killMS" in self.DicoDATA.keys() and not ("Beam" in self.DicoDATA.keys()):
-        #     JonesSols=self.DicoDATA["killMS"]["Jones"]
-        # elif not("killMS" in self.DicoDATA.keys()) and "Beam" in self.DicoDATA.keys():
-        #     JonesSols=self.DicoDATA["Beam"]["Jones"]
 
-        #self.DicoJones["G"]=np.swapaxes(self.NormJones(JonesSols["Jones"]),1,3) # Normalize Jones matrices
+
 
         if self.DoJonesCorr_kMS:
             JonesSols=DicoDATA["killMS"]["Jones"]
@@ -861,6 +849,26 @@ class ClassDynSpecMS(object):
             DicoJones_Beam['FreqDomains']=JonesSols['FreqDomains']
             DicoJones_Beam['FreqDomains_mean']=np.mean(JonesSols['FreqDomains'],axis=1)
 
+        # self.DomainsMachine=ClassJonesDomains.ClassJonesDomains()
+        
+        # self.DomainsMachine.AddFreqDomains(DicoBeam,ChanFreqs,ChanWidth)
+
+        
+        #JJ=JonesMachine.MergeJones(self.DicoDATA["killMS"]["Jones"],self.DicoDATA["Beam"]["Jones"])
+        # import killMS.Data.ClassJonesDomains
+        # DomainMachine=killMS.Data.ClassJonesDomains.ClassJonesDomains()
+        # if "killMS" in self.DicoDATA.keys():
+        #     self.DicoDATA["killMS"]["Jones"]["FreqDomain"]=self.DicoDATA["killMS"]["Jones"]["FreqDomains"]
+        # if "Beam" in self.DicoDATA.keys():
+        #     self.DicoDATA["Beam"]["Jones"]["FreqDomain"]=self.DicoDATA["Beam"]["Jones"]["FreqDomains"]
+        # if "killMS" in self.DicoDATA.keys() and "Beam" in self.DicoDATA.keys():
+        #     JonesSols=DomainMachine.MergeJones(self.DicoDATA["killMS"]["Jones"],self.DicoDATA["Beam"]["Jones"])
+        # elif "killMS" in self.DicoDATA.keys() and not ("Beam" in self.DicoDATA.keys()):
+        #     JonesSols=self.DicoDATA["killMS"]["Jones"]
+        # elif not("killMS" in self.DicoDATA.keys()) and "Beam" in self.DicoDATA.keys():
+        #     JonesSols=self.DicoDATA["Beam"]["Jones"]
+
+        #self.DicoJones["G"]=np.swapaxes(self.NormJones(JonesSols["Jones"]),1,3) # Normalize Jones matrices
 
         # from DDFacet.Data import ClassLOFARBeam
         # GD,D={},{}
