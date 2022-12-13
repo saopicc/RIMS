@@ -52,7 +52,7 @@ class ClassSaveResults(object):
             self.ImageVData=np.random.randn(*self.ImageVData.shape)
             self.ImageV=self.ImageI
 
-        self.CatFlux=np.zeros((self.DynSpecMS.NDir,),dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200'),
+        self.CatFlux=np.zeros((self.DynSpecMS.NDir,),dtype=[('Name','S200'),('FileName','S300'),("ra",np.float64),("dec",np.float64),('Type','S200'),
                                                             ("IDTessel",np.int32),("IDFacet",np.int32),
                                                             ("FluxI",np.float32),("FluxV",np.float32),("sigFluxI",np.float32),("sigFluxV",np.float32)])
         self.CatFlux=self.CatFlux.view(np.recarray)
@@ -144,6 +144,7 @@ class ClassSaveResults(object):
             fitsname = "%s/%s/%s_%s_%s.W.fits"%(self.DIRNAME,self.GiveSubDir(self.DynSpecMS.PosArray.Type[iDir]),self.DynSpecMS.OutName, strRA, strDEC)
         print("#%i %s %s"%(iDir,self.DynSpecMS.PosArray.Type[iDir].decode("ascii"),fitsname),file=log)
         # Create the fits file
+        self.CatFlux.FileName[iDir]=fitsname
         prihdr  = fits.Header() 
         prihdr.set('CTYPE1', 'Time', 'Time')
         prihdr.set('CRPIX1', 1., 'Reference')
@@ -506,6 +507,8 @@ class ClassSaveResults(object):
             self.CatFlux.Type[iDir]=self.DynSpecMS.PosArray.Type[iDir]
             self.CatFlux.ra[iDir]=self.DynSpecMS.PosArray.ra[iDir]
             self.CatFlux.dec[iDir]=self.DynSpecMS.PosArray.dec[iDir]
+
+            
             
             newra_cen, newdec_cen = wcs.wcs_pix2world( (x1+x0)/2., (y1+y0)/2., 1)
             wcs.wcs.crpix  = [ DataBoxed.shape[1]/2., DataBoxed.shape[0]/2. ] # update the WCS object
