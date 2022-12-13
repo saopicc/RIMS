@@ -326,7 +326,10 @@ class ClassDynSpecMS(object):
         # AsyncProcessPool.init(ncpu=self.NCPU,
         #                       num_io_processes=1,
         #                       affinity="disable")
-        AsyncProcessPool.init((self.NCPU or psutil.cpu_count()-1), affinity=0, num_io_processes=1, verbose=0)
+        AsyncProcessPool.init((self.NCPU or psutil.cpu_count()-2),
+                              affinity=0,
+                              num_io_processes=1,
+                              verbose=0)
         self.APP=AsyncProcessPool.APP
     
         self.APP.registerJobHandlers(self)

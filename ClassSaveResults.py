@@ -52,7 +52,8 @@ class ClassSaveResults(object):
             self.ImageVData=np.random.randn(*self.ImageVData.shape)
             self.ImageV=self.ImageI
 
-        self.CatFlux=np.zeros((self.DynSpecMS.NDir,),dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200'),("IDFacet",np.int32),
+        self.CatFlux=np.zeros((self.DynSpecMS.NDir,),dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200'),
+                                                            ("IDTessel",np.int32),("IDFacet",np.int32),
                                                             ("FluxI",np.float32),("FluxV",np.float32),("sigFluxI",np.float32),("sigFluxV",np.float32)])
         self.CatFlux=self.CatFlux.view(np.recarray)
         
@@ -69,9 +70,15 @@ class ClassSaveResults(object):
 
 
     def WriteFits(self):
-        # if self.DynSpecMS.DoJonesCorr_kMS:
-        #     self.CatFlux.IDFacet[:]=self.DynSpecMS.DicoJones_kMS['IDJones'][:]
-
+        self.CatFlux.Name[:]=self.DynSpecMS.PosArray.Name[:]
+        self.CatFlux.Type[:]=self.DynSpecMS.PosArray.Type[:]
+        self.CatFlux.ra[:]=self.DynSpecMS.PosArray.ra[:]
+        self.CatFlux.dec[:]=self.DynSpecMS.PosArray.dec[:]
+        if self.DynSpecMS.DoJonesCorr_kMS:
+            self.CatFlux.IDFacet[:]=self.DynSpecMS.PosArray.iFacet[:]
+            self.CatFlux.IDTessel[:]=self.DynSpecMS.PosArray.iTessel[:]
+            
+            
         for iDir in range(self.DynSpecMS.NDir):
             self.WriteFitsThisDir(iDir)
             self.WriteFitsThisDir(iDir,Weight=True)
