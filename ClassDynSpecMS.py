@@ -129,7 +129,7 @@ class ClassDynSpecMS(object):
             self.OutName    = self.ListMSName[0].split("/")[-1].split("_")[0]
             self.ReadMSInfos()
             self.InitFromCatalog()
-
+            
         elif self.Mode=="Plot":
             self.OutName    = self.BaseDirSpecs.split("_")[-1]
             self.InitFromSpecs()
@@ -200,6 +200,7 @@ class ClassDynSpecMS(object):
         FileCoords=self.FileCoords
         dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')]
         # should we use the surveys DB?
+        DoProperMotionCorr=False
         if 'DDF_PIPELINE_DATABASE' in os.environ or self.options.UseLoTSSDB:
             print("Using the surveys database", file=log)
             from surveys_db import SurveysDB
@@ -222,6 +223,19 @@ class ClassDynSpecMS(object):
             #         l.append(tuple(r))
             self.PosArray=np.asarray(l,dtype=dtype)
             print("Created an array with %i records" % len(result), file=log)
+        elif self.options.FitsCatalog:
+            print("Using the fits catalog: %s"%self.options.FitsCatalog, file=log)
+            F=fits.open(self.options.FitsCatalog)
+            d=F[1].data
+            l=[]
+            dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),
+                   ("pmra",np.float64),("pmdec",np.float64),("ref_epoch",np.float64),("parallax",np.float64),
+                   ('Type','S200')]
+            for r in d:
+                l.append((r['DESIGNATION'],r['ra'],r['dec'],r['pmra'],r['pmdec'],r['ref_epoch'],r['parallax'],r['Type']))
+            self.PosArray=np.asarray(l,dtype=dtype)
+            log.print("Created an array with %i records" % len(l))
+            DoProperMotionCorr=True
         else:
             
             #FileCoords="Transient_LOTTS.csv"
@@ -247,6 +261,28 @@ class ClassDynSpecMS(object):
         Dist=AngDist(self.ra0,self.PosArray.ra,self.dec0,self.PosArray.dec)
         ind=np.where(Dist<(Radius*np.pi/180))[0]
         self.PosArray=self.PosArray[ind]
+
+        if DoProperMotionCorr:
+            Lra,Ldec=[],[]
+            log.print("Do proper motion corrrection")
+            for iPCat,PCat in enumerate(self.PosArray):
+                #print(iPCat,len(self.PosArray))
+                ra,dec=PCat["ra"],PCat["dec"]
+                
+                ra1,dec1=ProperMotionCorrection(PCat["ra"],PCat["dec"],
+                                                PCat["pmra"],PCat["pmdec"],PCat["ref_epoch"],PCat["parallax"],self.tmin)
+                if np.isnan(ra1) or np.isnan(dec1):
+                    ra1,dec1=ra,dec
+                    log.print(PCat["ra"],PCat["dec"],PCat["pmra"],PCat["pmdec"],PCat["ref_epoch"],PCat["parallax"],ra1,dec1)
+                    
+                Lra.append(ra1-ra)
+                Ldec.append(dec1-dec)
+                self.PosArray["ra"][iPCat]=ra1
+                self.PosArray["dec"][iPCat]=dec1
+
+            print(np.array(Lra)*3600.*180/np.pi,np.array(Ldec)*3600.*180/np.pi)
+
+        
         self.NDirSelected=self.PosArray.shape[0]
 
         print("Selected %i target [out of the %i in the original list]"%(self.NDirSelected,NOrig), file=log)
@@ -783,7 +819,8 @@ class ClassDynSpecMS(object):
             SolsName=SolsName.replace("]","")
             SolsName=SolsName.split(",")
         GD={"Beam":{"Model":self.BeamModel,
-                    "LOFARBeamMode":"A",
+                    "PhasedArrayMode":"A",
+                    "At":"facet",
                     "DtBeamMin":5.,
                     "NBand":self.BeamNBand,
                     "CenterNorm":1},
@@ -873,7 +910,7 @@ class ClassDynSpecMS(object):
 
         # from DDFacet.Data import ClassLOFARBeam
         # GD,D={},{}
-        # D["LOFARBeamMode"]="A"
+        # D["PhasedArrayMode"]="A"
         # D["DtBeamMin"]=5
         # D["NBand"]=1
         # GD["Beam"]=D
@@ -1216,3 +1253,53 @@ class ClassDynSpecMS(object):
         return l, m
 # =========================================================================
 # =========================================================================
+
+
+
+# Proper motion correction
+
+from astropy.io import fits
+from astropy.coordinates import SkyCoord, Distance
+from astropy.time import Time
+import astropy.units as u
+
+
+# Assuming two things, you have read in the table and made the vairables ra, dec, pmra etc, and you the date of the observation (date_obs) in YYYY-MM-DD format.
+
+# In terms of a pipeline I would have an if statement here that if pmra is a real value, then do the following, 
+# otherwise just extract at the reported ra,dec position
+def ProperMotionCorrection(ra,dec,pmra,pmdec,ref_epoch,parallax,time70):
+    #log.print('Performing proper motion corrections...')
+    
+    if np.isnan(pmra):
+        return ra,dec
+    
+    date_obs = Time(time70/(24*3600.), format='mjd', scale='utc').iso
+    if not np.isnan(parallax):
+        c = SkyCoord(ra=ra * u.rad,
+                     dec=dec * u.rad,
+                     distance=Distance(parallax=parallax * u.mas,allow_negative=True),
+                     pm_ra_cosdec=pmra * u.mas/u.yr,
+                     pm_dec=pmdec * u.mas/u.yr,
+                     obstime=Time(ref_epoch, format='decimalyear'))
+    else:
+        c = SkyCoord(ra=ra * u.rad,
+                     dec=dec * u.rad,
+                     #distance=Distance(parallax=parallax * u.mas,allow_negative=True),
+                     pm_ra_cosdec=pmra * u.mas/u.yr,
+                     pm_dec=pmdec * u.mas/u.yr,
+                     obstime=Time(ref_epoch, format='decimalyear'))
+
+        
+    # c_lotss = SkyCoord(ra=ra_lotss * u.deg,
+    #                    dec=dec_lotss * u.deg,
+    #                    obstime=Time(date_obs, format='iso'))
+
+    epoch_lotss = Time(date_obs, format='iso')
+
+    c_gaia_to_lotss_epoch = c.apply_space_motion(epoch_lotss)
+    ra1,dec1=c_gaia_to_lotss_epoch.ra.rad, c_gaia_to_lotss_epoch.dec.rad
+    
+    return ra1,dec1
+
+    # Then to extract the correct ra and dec just do it at  c_gaia_to_lotss_epoch.ra and c_gaia_to_lotss_epoch.dec```
