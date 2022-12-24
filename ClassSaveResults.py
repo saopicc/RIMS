@@ -140,11 +140,11 @@ class ClassSaveResults(object):
         strDEC=rad2hmsdms(dec,Type="dec").replace(" ",":")
         
         fitsname = "%s/%s/%s_%s_%s.fits"%(self.DIRNAME,self.GiveSubDir(self.DynSpecMS.PosArray.Type[iDir]),self.DynSpecMS.OutName, strRA, strDEC)
+        self.CatFlux.FileName[iDir]=fitsname
         if Weight:
             fitsname = "%s/%s/%s_%s_%s.W.fits"%(self.DIRNAME,self.GiveSubDir(self.DynSpecMS.PosArray.Type[iDir]),self.DynSpecMS.OutName, strRA, strDEC)
         print("#%i %s %s"%(iDir,self.DynSpecMS.PosArray.Type[iDir].decode("ascii"),fitsname),file=log)
         # Create the fits file
-        self.CatFlux.FileName[iDir]=fitsname
         prihdr  = fits.Header() 
         prihdr.set('CTYPE1', 'Time', 'Time')
         prihdr.set('CRPIX1', 1., 'Reference')

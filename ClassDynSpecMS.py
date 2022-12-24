@@ -254,8 +254,6 @@ class ClassDynSpecMS(object):
         self.PosArray=self.PosArray.view(np.recarray)
         self.PosArray.ra*=np.pi/180.
         self.PosArray.dec*=np.pi/180.
-
-        
         
         Radius=self.Radius
         NOrig=self.PosArray.Name.shape[0]
