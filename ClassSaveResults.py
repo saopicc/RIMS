@@ -60,6 +60,8 @@ class ClassSaveResults(object):
         os.system("rm -rf %s"%self.DIRNAME)
         os.system("mkdir -p %s/TARGET"%self.DIRNAME)
         os.system("mkdir -p %s/OFF"%self.DIRNAME)
+        os.system("mkdir -p %s/TARGET_W"%self.DIRNAME)
+        os.system("mkdir -p %s/OFF_W"%self.DIRNAME)
         #os.system("mkdir -p %s/PNG"%self.DIRNAME)
 
     def tarDirectory(self):
@@ -91,11 +93,12 @@ class ClassSaveResults(object):
             DDFacet.Other.MyPickle.Save(self.DynSpecMS.DFacet,"%s/%s.npy"%(self.DIRNAME,"DDF.DicoFacet"))
         self.radecToReg()
         
-    def GiveSubDir(self,Type):
+    def GiveSubDir(self,Type,Weight=False):
         SubDir="OFF"
         if Type!=b"Off":
             SubDir="TARGET"
-            
+        if Weight:
+            SubDir+="_W"
         return SubDir
 
     def radecToReg(self):
@@ -139,10 +142,10 @@ class ClassSaveResults(object):
         strRA=rad2hmsdms(ra,Type="ra").replace(" ",":")
         strDEC=rad2hmsdms(dec,Type="dec").replace(" ",":")
         
-        fitsname = "%s/%s/%s_%s_%s.fits"%(self.DIRNAME,self.GiveSubDir(self.DynSpecMS.PosArray.Type[iDir]),self.DynSpecMS.OutName, strRA, strDEC)
+        fitsname = "%s/%s/%s_%s_%s.fits"%(self.DIRNAME,self.GiveSubDir(self.DynSpecMS.PosArray.Type[iDir],Weight=Weight),self.DynSpecMS.OutName, strRA, strDEC)
         self.CatFlux.FileName[iDir]=fitsname
         if Weight:
-            fitsname = "%s/%s/%s_%s_%s.W.fits"%(self.DIRNAME,self.GiveSubDir(self.DynSpecMS.PosArray.Type[iDir]),self.DynSpecMS.OutName, strRA, strDEC)
+            fitsname = "%s/%s/%s_%s_%s.W.fits"%(self.DIRNAME,self.GiveSubDir(self.DynSpecMS.PosArray.Type[iDir],Weight=Weight),self.DynSpecMS.OutName, strRA, strDEC)
         print("#%i %s %s"%(iDir,self.DynSpecMS.PosArray.Type[iDir].decode("ascii"),fitsname),file=log)
         # Create the fits file
         prihdr  = fits.Header() 
