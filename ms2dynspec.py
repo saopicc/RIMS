@@ -2,6 +2,8 @@
 
 from __future__ import division
 from __future__ import absolute_import
+import matplotlib
+matplotlib.use('Agg')
 from past.builtins import cmp
 __author__ = "Cyril Tasse, and Alan Loh"
 __credits__ = ["Cyril Tasse", "Alan Loh"]
@@ -33,8 +35,6 @@ import sys
 import os
 import argparse
 from distutils.spawn import find_executable
-import matplotlib
-#matplotlib.use('Agg')
 from matplotlib import rc
 fontsize=12
 rc('font',**{'family':'serif','serif':['Times'],'size':fontsize})
