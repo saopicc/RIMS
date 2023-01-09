@@ -202,7 +202,7 @@ class ClassDynSpecMS(object):
         dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')]
         # should we use the surveys DB?
         DoProperMotionCorr=False
-        if 'DDF_PIPELINE_DATABASE' in os.environ or self.options.UseLoTSSDB:
+        if self.options.UseLoTSSDB:
             print("Using the surveys database", file=log)
             from surveys_db import SurveysDB
             with SurveysDB() as sdb:
@@ -235,6 +235,24 @@ class ClassDynSpecMS(object):
                    ('Type','S200')]
             for r in d:
                 l.append((r['DESIGNATION'],r['ra'],r['dec'],r['pmra'],r['pmdec'],r['ref_epoch'],r['parallax'],r['Type']))
+
+            if FileCoords is not None and FileCoords!="":
+                print('Adding data from file '+FileCoords, file=log)
+                dtype0=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')]
+                additional=np.genfromtxt(FileCoords,dtype=dtype0,delimiter=",")[()]
+                if len(additional.shape)==0: additional=additional.reshape((1,))
+                if not additional.shape:
+                    # deal with a one-line input file
+                    additional=np.array([additional],dtype=dtype0)
+                additional1=np.zeros((additional.shape[0],),dtype=dtype)
+                additional1["Name"][:]=additional["Name"][:]
+                additional1["ra"][:]=additional["ra"][:]
+                additional1["dec"][:]=additional["dec"][:]
+                additional1["Type"][:]=additional["Type"][:]
+                for r in additional1:
+                    l.append(tuple(r))
+
+            
             self.PosArray=np.asarray(l,dtype=dtype)
             log.print("Created an array with %i records" % len(l))
             DoProperMotionCorr=True
