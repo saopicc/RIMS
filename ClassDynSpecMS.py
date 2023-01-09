@@ -402,7 +402,7 @@ class ClassDynSpecMS(object):
                 CatOff.ra[iS]=Fd.RA[iSel]*np.pi/180
                 CatOff.dec[iS]=Fd.DEC[iSel]*np.pi/180
                 CatOff.Name[iS]="Off%4.4i"%iS
-        elif self.DicoFacet is not None:
+        elif self.DicoFacet is not None and self.DicoFacet!="":
             self.DFacet=DFacet=DDFacet.Other.MyPickle.Load(self.DicoFacet)
             DicoDir={}
             # for iFacet in list(DFacet.keys()):
