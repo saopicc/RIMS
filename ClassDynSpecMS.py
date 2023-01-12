@@ -299,7 +299,7 @@ class ClassDynSpecMS(object):
                 self.PosArray["ra"][iPCat]=ra1
                 self.PosArray["dec"][iPCat]=dec1
 
-            log.print((np.array(Lra)*3600.*180/np.pi,np.array(Ldec)*3600.*180/np.pi))
+            print(np.array(Lra)*3600.*180/np.pi,np.array(Ldec)*3600.*180/np.pi)
 
         
         self.NDirSelected=self.PosArray.shape[0]
