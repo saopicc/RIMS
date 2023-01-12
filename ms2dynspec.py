@@ -161,7 +161,7 @@ if __name__ == "__main__":
     parser.add_argument("--WeightCol", type=str, default=None, help="Name of weights column to be taken into account", required=False)
     parser.add_argument("--model", type=str, help="Name of MODEL column",default="")#, required=True)
     parser.add_argument("--sols", type=str, help="Jones solutions",default="")
-    parser.add_argument("--srclist", type=str, default="Transient_LOTTS.csv", help="List of targets --> 'source_name ra dec'")
+    parser.add_argument("--srclist", type=str, default="", help="List of targets --> 'source_name ra dec'")
     parser.add_argument("--FitsCatalog", type=str, default="FITS catalog", help="List of targets --> Name,ra,dec,pmra,pmdec,ref_epoch,parallax,Type")
     parser.add_argument("--rad", type=float, default=3., help="Radius of the field", required=False)
     parser.add_argument("--noff", type=int, default=-1, help="Number of off sources. -1 means twice as much as there are sources in the catalog", required=False)
