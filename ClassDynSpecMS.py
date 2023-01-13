@@ -292,7 +292,7 @@ class ClassDynSpecMS(object):
                                                 PCat["pmra"],PCat["pmdec"],PCat["ref_epoch"],PCat["parallax"],self.tmin)
                 if np.isnan(ra1) or np.isnan(dec1):
                     ra1,dec1=ra,dec
-                    log.print((PCat["ra"],PCat["dec"],PCat["pmra"],PCat["pmdec"],PCat["ref_epoch"],PCat["parallax"],ra1,dec1))
+                    #log.print((PCat["ra"],PCat["dec"],PCat["pmra"],PCat["pmdec"],PCat["ref_epoch"],PCat["parallax"],ra1,dec1))
                     
                 Lra.append(ra1-ra)
                 Ldec.append(dec1-dec)
