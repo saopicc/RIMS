@@ -899,7 +899,13 @@ class ClassDynSpecMS(object):
         for iDir in range(self.NDir):
             ra=self.PosArray.ra[iDir]
             dec=self.PosArray.dec[iDir]
-            DicoJones['IDJones'][iDir]=np.argmin(AngDist(ra,DicoJones['ra'],dec,DicoJones['dec']))
+
+            #DicoJones['IDJones'][iDir]=np.argmin(AngDist(ra,DicoJones['ra'],dec,DicoJones['dec']))
+            lTarget, mTarget = self.CoordMachine.radec2lm(np.array([ra]), np.array([dec]))
+            lJones, mJones = self.CoordMachine.radec2lm(DicoJones['ra'], DicoJones['dec'])
+            DicoJones['IDJones'][iDir]=np.argmin(np.sqrt((lTarget-lJones)**2+(mTarget-mJones)**2))
+            
+            
 
         # if self.DoJonesCorr_Beam:
         #     if not self.DoJonesCorr_kMS:
@@ -1169,7 +1175,12 @@ class ClassDynSpecMS(object):
                 tm = DicoJones['tm']
                 # Time slot for the solution
                 iTJones=np.argmin(np.abs(tm-self.timesGrid[iTime]))
-                iDJones=np.argmin(AngDist(ra,DicoJones['ra'],dec,DicoJones['dec']))
+
+                #iDJones=np.argmin(AngDist(ra,DicoJones['ra'],dec,DicoJones['dec']))
+                lJones, mJones = self.CoordMachine.radec2lm(DicoJones['ra'], DicoJones['dec'])
+                iDJones=np.argmin(np.sqrt((l-lJones)**2+(m-mJones)**2))
+
+                
                 _,nchJones,_,_,_,_=DicoJones['G'].shape
                 T1.timeit("argmin")
                 
