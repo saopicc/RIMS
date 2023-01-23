@@ -329,11 +329,15 @@ class ClassDynSpecMS(object):
             def give_iFacet_iTessel(l,m):
                 #Plm=Polygon.Polygon(np.array([[l,m]]))
                 Plm=Polygon.Polygon(np.array([xC0+l,yC0+m]).T)
+                iFacetMax=-1
+                ArrMax=-1
                 for iFacet in self.DFacet.keys():
                     P=Polygon.Polygon(self.DFacet[iFacet]["Polygon"])
                     Arr=(P&Plm).area()
-                    if Arr>0: #P.covers(Plm):
-                        return iFacet,self.DFacet[iFacet]["iSol"]
+                    if Arr>ArrMax: #P.covers(Plm):
+                        ArrMax=Arr
+                        iFacetMax=iFacet
+                return iFacetMax,self.DFacet[iFacetMax]["iSol"]
                     
             self.PosArray=RecArrayOps.AppendField(self.PosArray,'iFacet',int)
             self.PosArray=RecArrayOps.AppendField(self.PosArray,'iTessel',int)
@@ -473,7 +477,8 @@ class ClassDynSpecMS(object):
                 # xxx,yyy=np.array(P).T
                 # pylab.plot(xxx,yyy)
 
-                Rrad0=1/3600*np.pi/180
+                Rrad0=10/3600*np.pi/180 # the off source will be chosen to be further than 10" from the edge of the domain
+                ArrRrad0=np.pi*Rrad0**2
                 theta=np.linspace(0,2*np.pi,10)
                 xC0=np.cos(theta)*Rrad0
                 yC0=np.sin(theta)*Rrad0
@@ -488,7 +493,7 @@ class ClassDynSpecMS(object):
                         #P1=Polygon.Polygon(np.array([[xx,yy]],np.float64))
                         Pc0=ClosePolygon(Polygon.Polygon(np.array([xC0+xx,yC0+yy]).T)[0])
                         Arr=(P&Pc0).area()
-                        if Arr>0:#.covers(P1):
+                        if Arr/(Pc0.area())>0.95:#.covers(P1):
                             # xxc,yyc=np.array(Pc0).T
                             # pylab.plot(xxc,yyc,color="blue")
                             # pylab.draw()
