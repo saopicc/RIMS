@@ -367,6 +367,7 @@ class ClassDynSpecMS(object):
 
         self.DicoGrids["GridLinPol"] = np.zeros((self.NDir,self.NChan, self.NTimesGrid, 4), np.complex128)
         self.DicoGrids["GridWeight"] = np.zeros((self.NDir,self.NChan, self.NTimesGrid, 4), np.complex128)
+        self.DicoGrids["GridWeight2"] = np.zeros((self.NDir,self.NChan, self.NTimesGrid, 4), np.complex128)
 
 
         
@@ -1258,6 +1259,7 @@ class ClassDynSpecMS(object):
             ds = np.sum(dcorr, axis=0) # with Jones
             #W*=wdcorr
             ws = np.sum(W, axis=0)
+            w2s = np.sum(W**2, axis=0)
             
             # wdcorr*=W
             # dcorrs=np.sum(wdcorr, axis=0)
@@ -1269,6 +1271,7 @@ class ClassDynSpecMS(object):
 
             self.DicoGrids["GridLinPol"][iDir,ich0:ich0+nch, iTimeGrid, :] = ds
             self.DicoGrids["GridWeight"][iDir,ich0:ich0+nch, iTimeGrid, :] = np.float32(ws)
+            self.DicoGrids["GridWeight2"][iDir,ich0:ich0+nch, iTimeGrid, :] = np.float32(w2s)
             T.timeit("Write")
             
         T.timeit("rest")

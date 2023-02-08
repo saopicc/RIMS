@@ -83,7 +83,8 @@ class ClassSaveResults(object):
             
         for iDir in range(self.DynSpecMS.NDir):
             self.WriteFitsThisDir(iDir)
-            self.WriteFitsThisDir(iDir,Weight=True)
+            self.WriteFitsThisDir(iDir,Weight="Weight")
+            self.WriteFitsThisDir(iDir,Weight="Std")
 
     def SaveCatalog(self):
         FileName = "%s/%s.npy"%(self.DIRNAME,"Catalog")
@@ -97,8 +98,9 @@ class ClassSaveResults(object):
         SubDir="OFF"
         if Type!=b"Off":
             SubDir="TARGET"
-        if Weight:
+        if Weight=="Weight" or Weight=="Std":
             SubDir+="_W"
+            
         return SubDir
 
     def radecToReg(self):
@@ -144,8 +146,11 @@ class ClassSaveResults(object):
         
         fitsname = "%s/%s/%s_%s_%s.fits"%(self.DIRNAME,self.GiveSubDir(self.DynSpecMS.PosArray.Type[iDir],Weight=Weight),self.DynSpecMS.OutName, strRA, strDEC)
         self.CatFlux.FileName[iDir]=fitsname
-        if Weight:
+        if Weight=="Weight":
             fitsname = "%s/%s/%s_%s_%s.W.fits"%(self.DIRNAME,self.GiveSubDir(self.DynSpecMS.PosArray.Type[iDir],Weight=Weight),self.DynSpecMS.OutName, strRA, strDEC)
+        elif Weight=="Std":
+            fitsname = "%s/%s/%s_%s_%s.Std.fits"%(self.DIRNAME,self.GiveSubDir(self.DynSpecMS.PosArray.Type[iDir],Weight=Weight),self.DynSpecMS.OutName, strRA, strDEC)
+            
         print("#%i %s %s"%(iDir,self.DynSpecMS.PosArray.Type[iDir].decode("ascii"),fitsname),file=log)
         # Create the fits file
         prihdr  = fits.Header() 
@@ -182,7 +187,7 @@ class ClassSaveResults(object):
 
         ThisType=self.DynSpecMS.PosArray.Type[iDir].decode("ascii")
         if Weight:
-            ThisType+="_Weight"
+            ThisType+="_%s"%Weight
         prihdr.set('SRC-TYPE', ThisType, 'Type of the source in the source list')
         
         prihdr.set('ORIGIN', 'DynSpecMS '+version(),'Created by')
@@ -193,8 +198,14 @@ class ClassSaveResults(object):
             prihdr.set('TESSEL', iTessel, 'ID of the Tessel')
             
             
-        if Weight:
+        if Weight=="Weight":
             Gn = self.DynSpecMS.DicoGrids["GridWeight"][iDir,:, :, 0:1].real # dir, time, freq, pol
+        elif Weight=="Std":
+            Gn0 = self.DynSpecMS.DicoGrids["GridWeight2"][iDir,:, :, 0:1].real # dir, time, freq, pol
+            Gn1 = self.DynSpecMS.DicoGrids["GridWeight"][iDir,:, :, 0:1].real.copy() # dir, time, freq, pol
+            Gn1[Gn1==0]=1
+            Gn=np.sqrt(Gn0)/Gn1
+            Gn[Gn0==0]=0
         else:
             Gn = self.DynSpecMS.GOut[iDir,:, :, :].real
 
