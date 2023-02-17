@@ -63,7 +63,7 @@ def runAllDir(Patern="/data/cyril.tasse/DataDynSpec_May21/*/DynSpecs_*",SaveDir=
         SaveDir="%s/PNG_%s"%(os.getcwd(),Patern)
         
     L=glob.glob(Patern)
-    
+    print(L)
     if UseLoTSSDB:
         with SurveysDB() as sdb:
             sdb.cur.execute('UNLOCK TABLES')

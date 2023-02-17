@@ -162,7 +162,7 @@ if __name__ == "__main__":
     parser.add_argument("--model", type=str, help="Name of MODEL column",default="")#, required=True)
     parser.add_argument("--sols", type=str, help="Jones solutions",default="")
     parser.add_argument("--srclist", type=str, default="", help="List of targets --> 'source_name ra dec'")
-    parser.add_argument("--FitsCatalog", type=str, default="FITS catalog", help="List of targets --> Name,ra,dec,pmra,pmdec,ref_epoch,parallax,Type")
+    parser.add_argument("--FitsCatalog", type=str, default="", help="FITS catalog. List of targets --> Name,ra,dec,pmra,pmdec,ref_epoch,parallax,Type")
     parser.add_argument("--rad", type=float, default=3., help="Radius of the field", required=False)
     parser.add_argument("--noff", type=int, default=-1, help="Number of off sources. -1 means twice as much as there are sources in the catalog", required=False)
     parser.add_argument("--nMinOffPerFacet", type=int, default=5, help="Minimum of off sources per facet if DicoFacet is specified.", required=False)
