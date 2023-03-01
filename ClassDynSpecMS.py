@@ -1008,8 +1008,10 @@ class ClassDynSpecMS(object):
             self.delShm(iJob)
             return
 
-        NTimes=self.NTimesGrid#self.DicoMSInfos[self.iCurrentMS]["times"].size
+        # NTimes=self.NTimesGrid
         iMS,iChunk=self.LJob[iJob]
+        NTimes=self.DicoMSInfos[iMS]["times"].size
+        
         for iTime in range(NTimes):
             self.APP.runJob("Stack_SingleTime:%i_%d"%(iJob,iTime), 
                        self.Stack_SingleTimeAllDir,

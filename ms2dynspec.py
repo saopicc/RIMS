@@ -106,7 +106,7 @@ def main(args=None, messages=[]):
         if len(DT)>1:
             log.print(ModColor.Str("FOUND %i time periods"%len(DT)))
     else:
-        D={0:MSList}
+        DT={0:MSList}
 
     for k in DT.keys():
         MSList=DT[k]
