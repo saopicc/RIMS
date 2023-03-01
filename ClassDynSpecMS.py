@@ -1064,7 +1064,6 @@ class ClassDynSpecMS(object):
         iMS,iChunk=self.LJob[iJob]
         DicoDATA=shared_dict.attach("DATA_%i"%(iJob))
         
-        
         iMS  = DicoDATA["iMS"]
         indRow = np.where(DicoDATA["times"]==self.DicoMSInfos[iMS]["times"][iTime])[0]
         if indRow.size==0: return
