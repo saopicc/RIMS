@@ -738,7 +738,7 @@ class ClassDynSpecMS(object):
         if not self.DicoMSInfos[iMS]["Readable"]: 
             print("Skipping [%i/%i]: %s"%(iMS+1, self.nMS, self.ListMSName[iMS]), file=log)
             return "NotRead"
-        print("Reading [%i/%i]: %s"%(iMS+1, self.nMS, self.ListMSName[iMS]), file=log)
+        print("Reading [%i/%i] %s:%s"%(iMS+1, self.nMS, self.ListMSName[iMS],self.ColName), file=log)
 
         MSName=self.ListMSName[iMS]
         
@@ -755,7 +755,7 @@ class ClassDynSpecMS(object):
         ROW0=ind[0]
 
         if ROW0!=0 or NROW!=t.nrows():
-            print("   reading chunk in %.3f -> %.3f h"%(T0/3600,T1/3600), file=log)
+            print("  Reading chunk in %.3f -> %.3f h"%(T0/3600,T1/3600), file=log)
         
         nch  = self.DicoMSInfos[iMS]["ChanFreq"].size
         npol  = self.DicoMSInfos[iMS]["npol"]
@@ -780,8 +780,16 @@ class ClassDynSpecMS(object):
         
         if self.ColWeights:
             print("  Reading weight column %s"%(self.ColWeights), file=log)
-            weights=np.zeros((NROW,nch),np.float32)
-            t.getcolnp(self.ColWeights,weights,ROW0,NROW)
+            sW=t.getcol(self.ColWeights,0,1).shape
+            if len(sW)==3:
+                weights=np.zeros((NROW,nch,sW[-1]),np.float32)
+                t.getcolnp(self.ColWeights,weights,ROW0,NROW)
+                weights=np.mean(weights,axis=-1)
+            else:
+                weights=np.zeros((NROW,nch),np.float32)
+                t.getcolnp(self.ColWeights,weights,ROW0,NROW)
+            
+            
             if RevertChans: weights=weights[:,::-1]
         else:
             nrow,nch,_=data.shape

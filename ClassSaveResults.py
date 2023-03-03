@@ -32,7 +32,10 @@ class ClassSaveResults(object):
         self.DIRNAME=DIRNAME
         if self.DIRNAME is None or self.DIRNAME=="MSName":
             self.DIRNAME="DynSpecs_%s"%self.DynSpecMS.OutName
-        
+        else:
+            self.DIRNAME="%s_DynSpecs_%s"%(self.DIRNAME,self.DynSpecMS.OutName)
+            
+            
         #image  = self.DynSpecMS.Image
         #self.ImageData=np.squeeze(fits.getdata(image, ext=0))
 
