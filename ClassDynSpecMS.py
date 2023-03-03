@@ -1075,7 +1075,8 @@ class ClassDynSpecMS(object):
         iMS  = DicoDATA["iMS"]
         indRow = np.where(DicoDATA["times"]==self.DicoMSInfos[iMS]["times"][iTime])[0]
         if indRow.size==0: return
-
+        ThisTime=self.DicoMSInfos[iMS]["times"][iTime]
+        
         nrow,nch,npol=DicoDATA["data"].shape
         indCh=np.int64(np.arange(nch)).reshape((1,nch,1))
         indPol=np.int64(np.arange(npol)).reshape((1,1,npol))
@@ -1184,8 +1185,8 @@ class ClassDynSpecMS(object):
                 T1.timeit("Load")
                 tm = DicoJones['tm']
                 # Time slot for the solution
-                iTJones=np.argmin(np.abs(tm-self.timesGrid[iTime]))
-
+                iTJones=np.argmin(np.abs(tm-ThisTime))#self.timesGrid[iTime]))
+                
                 #iDJones=np.argmin(AngDist(ra,DicoJones['ra'],dec,DicoJones['dec']))
                 lJones, mJones = self.CoordMachine.radec2lm(DicoJones['ra'], DicoJones['dec'])
                 iDJones=np.argmin(np.sqrt((l-lJones)**2+(m-mJones)**2))
