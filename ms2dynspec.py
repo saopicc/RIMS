@@ -142,7 +142,7 @@ def main(args=None, messages=[]):
             if args.SavePDF:
                 SaveMachine.PlotSpec()
             SaveMachine.SaveCatalog()
-            SaveMachine.tarDirectory()
+            if args.DoTar: SaveMachine.tarDirectory()
         else:
             SaveMachine.SaveCatalog()
             SaveMachine.PlotSpec(Prefix="_replot")
@@ -177,6 +177,7 @@ if __name__ == "__main__":
     parser.add_argument("--SplitNonContiguous", type=int, default=1, help="Split non time-contiguous MSs", required=False)
     parser.add_argument("--UseLoTSSDB", type=int, default=0, help="Use LoTSS DB for target list", required=False)
     parser.add_argument("--UseGaiaDB", type=str, default=None, help="Use Gaia DB for target list", required=False)
+    parser.add_argument("--DoTar", type=int, default=1, help="Tar final products", required=False)
     
     parser.add_argument("--NCPU", type=int, default=0, help="NCPU", required=False)
     parser.add_argument("--BeamModel", type=str, default=None, help="Beam Model to be used", required=False)

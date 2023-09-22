@@ -239,7 +239,8 @@ class ClassDynSpecMS(object):
 	    POINT('ICRS',gaiadr3.gaia_source.ra,gaiadr3.gaia_source.dec),
 	    CIRCLE('ICRS',{rac_deg},{decc_deg},{Radius_deg})
             )=1  AND  (gaiadr3.gaia_source.parallax>={Parallax_min})"""
-            log.print(f"Sending du Gaia server: {query}")
+            log.print(f"Sending du Gaia server")
+            print(f"{query}")
             job = Gaia.launch_job(query)
             result = job.get_results()
 
