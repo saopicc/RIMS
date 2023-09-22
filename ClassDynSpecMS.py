@@ -232,7 +232,8 @@ class ClassDynSpecMS(object):
             Dmax,NMax=self.options.UseGaiaDB.split(",")
             Dmax,NMax=float(Dmax),int(NMax)
             Parallax_min=1./(Dmax*1e-3)
-            query=f"""SELECT TOP 10000 gaia_source.designation,gaia_source.source_id,gaia_source.ref_epoch,gaia_source.ra,gaia_source.dec,gaia_source.parallax,gaia_source.pmra,gaia_source.pmdec
+            query=f"""SELECT TOP 10000 gaia_source.designation,gaia_source.source_id,gaia_source.ref_epoch,gaia_source.ra,gaia_source.dec,gaia_source.parallax,
+            gaia_source.pmra,gaia_source.pmdec,gaia_source.phot_g_mean_mag,gaia_source.bp_rp
             FROM gaiadr3.gaia_source 
             WHERE 
             CONTAINS(
@@ -250,12 +251,58 @@ class ClassDynSpecMS(object):
             
             l=[]
             dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),
-                   ("pmra",np.float64),("pmdec",np.float64),("ref_epoch",np.float64),("parallax",np.float64),
+                   ("pmra",np.float64),("pmdec",np.float64),("ref_epoch",np.float64),
+                   ("parallax",np.float64),("GaiaDistance",np.float64),
+                   ("g",np.float64),("G",np.float64),("b_r",np.float64),
                    ('Type','S200')]
             for r in result:
-                l.append((r['DESIGNATION'],r['ra'],r['dec'],r['pmra'],r['pmdec'],r['ref_epoch'],r['parallax'],b"Gaia DR3"))
+                parallax=r['parallax']
+                g=r['g']
+                D=1./(parallax*1e-3)
+                G=g+5*np.log10(parallax)-10
+                l.append((r['DESIGNATION'],r['ra'],r['dec'],r['pmra'],r['pmdec'],r['ref_epoch'],
+                          r['parallax'],D,
+                          g,G,r['b_r'],
+                          b"Gaia DR3"))
             self.PosArray=np.asarray(l,dtype=dtype)
 
+            
+            CGGS=ClassGiveGaiaSample((rac_deg,decc_deg,Radius_deg),self.PosArray,RefCat="/data/cyril.tasse/Analyse_DataDynSpec_Jan23_TestRM/MergedCat.npz.MergeGaia.npz")
+            indExo,indGaia=CGGS.buildRandGaiaSample()
+            stop
+            # ##################################
+            F=fits.open(self.options.FitsCatalog)
+            d=F[1].data
+            l=[]
+            dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),
+                   ("pmra",np.float64),("pmdec",np.float64),("ref_epoch",np.float64),("parallax",np.float64),
+                   ('Type','S200')]
+            for r in d:
+                l.append((r['DESIGNATION'],r['ra'],r['dec'],r['pmra'],r['pmdec'],r['ref_epoch'],r['parallax'],r['Type']))
+
+            if FileCoords is not None and FileCoords!="":
+                print('Adding data from file '+FileCoords, file=log)
+                dtype0=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')]
+                additional=np.genfromtxt(FileCoords,dtype=dtype0,delimiter=",")[()]
+                if len(additional.shape)==0: additional=additional.reshape((1,))
+                if not additional.shape:
+                    # deal with a one-line input file
+                    additional=np.array([additional],dtype=dtype0)
+                additional1=np.zeros((additional.shape[0],),dtype=dtype)
+                additional1["Name"][:]=additional["Name"][:]
+                additional1["ra"][:]=additional["ra"][:]
+                additional1["dec"][:]=additional["dec"][:]
+                additional1["Type"][:]=additional["Type"][:]
+                
+                for r in additional1:
+                    l.append(tuple(r))
+
+            
+            self.PosArray=np.asarray(l,dtype=dtype)
+            log.print("Created an array with %i records" % len(l))
+            DoProperMotionCorr=True
+
+            
             # import pylab
             # pylab.clf()
             # pylab.subplot(1,2,1)
