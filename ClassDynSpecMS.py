@@ -35,6 +35,7 @@ from Polygon.Utils import convexHull
 #from killMS.Data import ClassJonesDomains
 import DDFacet.Other.ClassJonesDomains
 import psutil
+from . import ClassGiveCatalog
 
 def AngDist(ra0,ra1,dec0,dec1):
     AC=np.arccos
@@ -201,134 +202,14 @@ class ClassDynSpecMS(object):
         FileCoords=self.FileCoords
         dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')]
         # should we use the surveys DB?
-        DoProperMotionCorr=False
-        if self.options.UseLoTSSDB:
-            print("Using the surveys database", file=log)
-            from surveys_db import SurveysDB
-            with SurveysDB() as sdb:
-                sdb.cur.execute('select * from transients')
-                result=sdb.cur.fetchall()
-            # convert to a list, then to ndarray, then to recarray
-            l=[]
-            for r in result:
-                l.append((r['id'],r['ra'],r['decl'],r['type']))
 
-            if FileCoords is not None and FileCoords!="":
-                print('Adding data from file '+FileCoords, file=log)
-                additional=np.genfromtxt(FileCoords,dtype=dtype,delimiter=",")[()]
-                if len(additional.shape)==0: additional=additional.reshape((1,))
-                if not additional.shape:
-                    # deal with a one-line input file
-                    additional=np.array([additional],dtype=dtype)
-                for r in additional:
-                    l.append(tuple(r))
-                    
-            self.PosArray=np.asarray(l,dtype=dtype)
-            print("Created an array with %i records" % len(result), file=log)
-        elif self.options.UseGaiaDB is not None:
-            from astroquery.gaia import Gaia
-            rac_deg,decc_deg=self.ra0*180/np.pi, self.dec0*180/np.pi
-            Radius_deg=self.Radius
-            Dmax,NMax=self.options.UseGaiaDB.split(",")
-            Dmax,NMax=float(Dmax),int(NMax)
-            Parallax_min=1./(Dmax*1e-3)
-            query=f"""SELECT TOP 10000 gaia_source.designation,gaia_source.source_id,gaia_source.ref_epoch,gaia_source.ra,gaia_source.dec,gaia_source.parallax,gaia_source.pmra,gaia_source.pmdec
-            FROM gaiadr3.gaia_source 
-            WHERE 
-            CONTAINS(
-	    POINT('ICRS',gaiadr3.gaia_source.ra,gaiadr3.gaia_source.dec),
-	    CIRCLE('ICRS',{rac_deg},{decc_deg},{Radius_deg})
-            )=1  AND  (gaiadr3.gaia_source.parallax>={Parallax_min})"""
-            log.print(f"Sending du Gaia server")
-            print(f"{query}")
-            job = Gaia.launch_job(query)
-            result = job.get_results()
-
-            log.print(f"Query has returned {len(result)}")
-            
-            
-            
-            l=[]
-            dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),
-                   ("pmra",np.float64),("pmdec",np.float64),("ref_epoch",np.float64),("parallax",np.float64),
-                   ('Type','S200')]
-            for r in result:
-                l.append((r['DESIGNATION'],r['ra'],r['dec'],r['pmra'],r['pmdec'],r['ref_epoch'],r['parallax'],b"Gaia DR3"))
-            self.PosArray=np.asarray(l,dtype=dtype)
-
-            # import pylab
-            # pylab.clf()
-            # pylab.subplot(1,2,1)
-            # pylab.scatter(self.PosArray["ra"],self.PosArray["dec"])
-            # pylab.scatter([rac_deg],[decc_deg])
-            # pylab.subplot(1,2,2)
-            # D=1./(self.PosArray["parallax"]*1e-3)
-            # pylab.hist(D,bins=100)
-            # pylab.draw()
-            # pylab.show()
-
-            DoProperMotionCorr=True
-            if self.PosArray.size>NMax:
-                ind=np.int64(np.random.rand(NMax)*self.PosArray.size)
-                self.PosArray=self.PosArray[ind]
-                
-            log.print("Created an array with %i records" % self.PosArray.size)
-            
-        elif self.options.FitsCatalog:
-            print("Using the fits catalog: %s"%self.options.FitsCatalog, file=log)
-            F=fits.open(self.options.FitsCatalog)
-            d=F[1].data
-            l=[]
-            dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),
-                   ("pmra",np.float64),("pmdec",np.float64),("ref_epoch",np.float64),("parallax",np.float64),
-                   ('Type','S200')]
-            for r in d:
-                l.append((r['DESIGNATION'],r['ra'],r['dec'],r['pmra'],r['pmdec'],r['ref_epoch'],r['parallax'],r['Type']))
-
-            if FileCoords is not None and FileCoords!="":
-                print('Adding data from file '+FileCoords, file=log)
-                dtype0=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')]
-                additional=np.genfromtxt(FileCoords,dtype=dtype0,delimiter=",")[()]
-                if len(additional.shape)==0: additional=additional.reshape((1,))
-                if not additional.shape:
-                    # deal with a one-line input file
-                    additional=np.array([additional],dtype=dtype0)
-                additional1=np.zeros((additional.shape[0],),dtype=dtype)
-                additional1["Name"][:]=additional["Name"][:]
-                additional1["ra"][:]=additional["ra"][:]
-                additional1["dec"][:]=additional["dec"][:]
-                additional1["Type"][:]=additional["Type"][:]
-                
-                for r in additional1:
-                    l.append(tuple(r))
-
-            
-            self.PosArray=np.asarray(l,dtype=dtype)
-            log.print("Created an array with %i records" % len(l))
-            DoProperMotionCorr=True
-        else:
-            
-            #FileCoords="Transient_LOTTS.csv"
-            if FileCoords is None:
-                if not os.path.isfile(FileCoords):
-                    ssExec="wget -q --user=anonymous ftp://ftp.strw.leidenuniv.nl/pub/tasse/%s -O %s"%(FileCoords,FileCoords)
-                    print("Downloading %s"%FileCoords, file=log)
-                    print("   Executing: %s"%ssExec, file=log)
-                    os.system(ssExec)
-            log.print("Reading cvs file: %s"%FileCoords)
-            #self.PosArray=np.genfromtxt(FileCoords,dtype=dtype,delimiter=",")[()]
-            self.PosArray=np.genfromtxt(FileCoords,dtype=dtype,delimiter=",")
-            if len(self.PosArray.shape)==0: self.PosArray=self.PosArray.reshape((1,))
-            
-        self.PosArray=self.PosArray.view(np.recarray)
-        self.PosArray.ra*=np.pi/180.
-        self.PosArray.dec*=np.pi/180.
-        
-        Radius=self.Radius
-        NOrig=self.PosArray.Name.shape[0]
-        Dist=AngDist(self.ra0,self.PosArray.ra,self.dec0,self.PosArray.dec)
-        ind=np.where(Dist<(Radius*np.pi/180))[0]
-        self.PosArray=self.PosArray[ind]
+        CGC=ClassGiveCatalog.ClassGiveCatalog(self.options,
+                                              self.ra0,self.dec0,
+                                              self.Radius,
+                                              self.FileCoords)
+        self.PosArray=CGC.giveCat()
+        DoProperMotionCorr=CGC.DoProperMotionCorr
+        stop
 
         if DoProperMotionCorr:
             Lra,Ldec=[],[]
@@ -348,7 +229,7 @@ class ClassDynSpecMS(object):
                 self.PosArray["ra"][iPCat]=ra1
                 self.PosArray["dec"][iPCat]=dec1
 
-            print(np.array(Lra)*3600.*180/np.pi,np.array(Ldec)*3600.*180/np.pi)
+            # print(np.array(Lra)*3600.*180/np.pi,np.array(Ldec)*3600.*180/np.pi)
 
         
         self.NDirSelected=self.PosArray.shape[0]
@@ -906,7 +787,7 @@ class ClassDynSpecMS(object):
             SolsName=SolsName.split(",")
         GD={"Beam":{"Model":self.BeamModel,
                     "PhasedArrayMode":"A",
-                    "At":"facet",
+                    "At":"tessel",
                     "DtBeamMin":5.,
                     "NBand":self.BeamNBand,
                     "CenterNorm":1},
@@ -918,13 +799,30 @@ class ClassDynSpecMS(object):
             "Cache":{"Dir":""}
             }
         print("Reading Jones matrices solution file:", file=log)
+        
+        RADEC_ForcedBeamDirs=None
+        if not self.DoJonesCorr_kMS and self.DoJonesCorr_Beam:
+            RADEC_ForcedBeamDirs=(self.PosArray.ra,self.PosArray.dec)
 
+        
         ms=ClassMS.ClassMS(self.DicoMSInfos[iMS]["MSName"],GD=GD,DoReadData=False,)
         JonesMachine = ClassJones.ClassJones(GD, ms, CacheMode=False)
-        JonesMachine.InitDDESols(DicoDATA)
+        JonesMachine.InitDDESols(DicoDATA,RADEC_ForcedBeamDirs=RADEC_ForcedBeamDirs)
 
 
-
+        # print("================")
+        # RAJoneskillMS=DicoDATA["killMS"]["Dirs"]["ra"]
+        # DECJoneskillMS=DicoDATA["killMS"]["Dirs"]["dec"]
+        # for ThisRA,ThisDEC in zip(RAJoneskillMS,DECJoneskillMS):
+        #     print(rad2hmsdms(ThisRA,Type="ra").replace(" ",":"),rad2hmsdms(ThisDEC,Type="dec").replace(" ",":"))
+        # print("================")
+        # RAJonesBeam=DicoDATA["Beam"]["Dirs"]["ra"]
+        # DECJonesBeam=DicoDATA["Beam"]["Dirs"]["dec"]
+        # for ThisRA,ThisDEC in zip(RAJonesBeam,DECJonesBeam):
+        #     print(rad2hmsdms(ThisRA,Type="ra").replace(" ",":"),rad2hmsdms(ThisDEC,Type="dec").replace(" ",":"))
+        # print("================")
+        
+        
         CutGainsMinMax=StrToList(self.options.CutGainsMinMax)
         if self.DoJonesCorr_kMS and CutGainsMinMax:
             JonesSols=DicoDATA["killMS"]["Jones"]
@@ -937,31 +835,40 @@ class ClassDynSpecMS(object):
         if self.DoJonesCorr_kMS and self.DoJonesCorr_Beam:
             DomainMachine=DDFacet.Other.ClassJonesDomains.ClassJonesDomains()
             JonesSols=DomainMachine.MergeJones(DicoDATA["killMS"]["Jones"], DicoDATA["Beam"]["Jones"])
+            RAJones=JonesMachine.ClusterCat['ra']
+            DECJones=JonesMachine.ClusterCat['dec']
         elif self.DoJonesCorr_kMS:
             JonesSols=DicoDATA["killMS"]["Jones"]
+            RAJones=DicoDATA["killMS"]["Dirs"]["ra"]
+            DECJones=DicoDATA["killMS"]["Dirs"]["dec"]
         elif self.DoJonesCorr_Beam:
             JonesSols=DicoDATA["Beam"]["Jones"]
+            RAJones=DicoDATA["Beam"]["Dirs"]["ra"]
+            DECJones=DicoDATA["Beam"]["Dirs"]["dec"]
         else:
             stop
+
+
             
         DicoJones=shared_dict.create("DicoJones_%i"%iJob)
         DicoJones["G"]=np.swapaxes(JonesSols["Jones"],1,3) # Normalize Jones matrices
         G=DicoJones["G"]
         nt,nch,na,nDir,_,_=G.shape
         DicoJones['tm']=(JonesSols["t0"]+JonesSols["t1"])/2.
-        DicoJones['ra']=JonesMachine.ClusterCat['ra']
-        DicoJones['dec']=JonesMachine.ClusterCat['dec']
+        DicoJones['ra']=RAJones
+        DicoJones['dec']=DECJones
         DicoJones['FreqDomains']=JonesSols['FreqDomains']
         DicoJones['FreqDomains_mean']=np.mean(JonesSols['FreqDomains'],axis=1)
         DicoJones['IDJones']=np.zeros((self.NDir,),np.int32)
+        lJones, mJones = self.CoordMachine.radec2lm(DicoJones['ra'], DicoJones['dec'])
         for iDir in range(self.NDir):
             ra=self.PosArray.ra[iDir]
             dec=self.PosArray.dec[iDir]
 
             #DicoJones['IDJones'][iDir]=np.argmin(AngDist(ra,DicoJones['ra'],dec,DicoJones['dec']))
             lTarget, mTarget = self.CoordMachine.radec2lm(np.array([ra]), np.array([dec]))
-            lJones, mJones = self.CoordMachine.radec2lm(DicoJones['ra'], DicoJones['dec'])
             DicoJones['IDJones'][iDir]=np.argmin(np.sqrt((lTarget-lJones)**2+(mTarget-mJones)**2))
+        # print(DicoJones['IDJones'])
             
             
 

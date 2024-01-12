@@ -12,6 +12,7 @@ from DDFacet.Other import logger
 log=logger.getLogger("ms2dynspec")
 from DDFacet.Other import ModColor
 __version__ = version()
+import numpy as np
 SaveFile = "last_dynspec.obj"
 
 """
@@ -86,7 +87,9 @@ def angSep(ra1, dec1, ra2, dec2):
 def main(args=None, messages=[]):
     if args is None:
         args = MyPickle.Load(SaveFile)
-
+    if args.UseRandomSeed!=0:
+        np.random.seed(args.UseRandomSeed)
+        
     MSList=None
     if args.ms:
         MSList=expandMSList(args.ms)
@@ -178,6 +181,7 @@ if __name__ == "__main__":
     parser.add_argument("--UseLoTSSDB", type=int, default=0, help="Use LoTSS DB for target list", required=False)
     parser.add_argument("--UseGaiaDB", type=str, default=None, help="Use Gaia DB for target list", required=False)
     parser.add_argument("--DoTar", type=int, default=1, help="Tar final products", required=False)
+    parser.add_argument("--UseRandomSeed", type=int, default=0, help="Use random seed", required=False)
     
     parser.add_argument("--NCPU", type=int, default=0, help="NCPU", required=False)
     parser.add_argument("--BeamModel", type=str, default=None, help="Beam Model to be used", required=False)

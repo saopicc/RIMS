@@ -83,12 +83,18 @@ class ClassSaveResults(object):
             self.CatFlux.IDFacet[:]=self.DynSpecMS.PosArray.iFacet[:]
             self.CatFlux.IDTessel[:]=self.DynSpecMS.PosArray.iTessel[:]
             
-            
+        pBAR = ProgressBar(Title="Saving fits")        
+        NJobs=self.DynSpecMS.NDir #Selected
+        iDone=0
+        pBAR.render(0, NJobs)
+        
         for iDir in range(self.DynSpecMS.NDir):
             self.WriteFitsThisDir(iDir)
             self.WriteFitsThisDir(iDir,Weight="Weight")
             self.WriteFitsThisDir(iDir,Weight="W2")
-
+            iDone+=1
+            pBAR.render(iDone, NJobs)
+            
     def SaveCatalog(self):
         FileName = "%s/%s.npy"%(self.DIRNAME,"Catalog")
         print("Saving flux catalogs in %s"%FileName, file=log)
@@ -154,7 +160,7 @@ class ClassSaveResults(object):
         elif Weight=="W2":
             fitsname = "%s/%s/%s_%s_%s.W2.fits"%(self.DIRNAME,self.GiveSubDir(self.DynSpecMS.PosArray.Type[iDir],Weight=Weight),self.DynSpecMS.OutName, strRA, strDEC)
             
-        print("#%i %s %s"%(iDir,self.DynSpecMS.PosArray.Type[iDir].decode("ascii"),fitsname),file=log)
+        #print("#%i %s %s"%(iDir,self.DynSpecMS.PosArray.Type[iDir].decode("ascii"),fitsname),file=log)
         # Create the fits file
         prihdr  = fits.Header() 
         prihdr.set('CTYPE1', 'Time', 'Time')
