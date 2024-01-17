@@ -14,6 +14,7 @@ from DDFacet.Other import ModColor
 __version__ = version()
 import numpy as np
 SaveFile = "last_dynspec.obj"
+from DynSpecMS import ClassGiveCatalog
 
 """
 =========================================================================
@@ -106,50 +107,86 @@ def main(args=None, messages=[]):
             else:
                 DT[T].append(MSName)
             t.close()
+
         if len(DT)>1:
             log.print(ModColor.Str("FOUND %i time periods"%len(DT)))
     else:
         DT={0:MSList}
 
-    for k in DT.keys():
-        MSList=DT[k]
-        D = ClassDynSpecMS(ListMSName=MSList, 
-                           ColName=args.data, ModelName=args.model, 
-                           SolsName=args.sols,
-                           TChunkHours=args.TChunkHours,
-                           ColWeights=args.WeightCol,
-                           UVRange=args.uv,
-                           FileCoords=args.srclist,
-                           Radius=args.rad,
-                           NOff=args.noff,
-                           DicoFacet=args.DicoFacet,
-                           ImageI=args.imageI,
-                           ImageV=args.imageV,
-                           SolsDir=args.SolsDir,NCPU=args.NCPU,
-                           BaseDirSpecs=args.BaseDirSpecs,
-                           BeamModel=args.BeamModel,
-                           BeamNBand=args.BeamNBand,
-                           SourceCatOff_FluxMean=args.SourceCatOff_FluxMean,
-                           SourceCatOff_dFluxMean=args.SourceCatOff_dFluxMean,
-                           SourceCatOff=args.SourceCatOff,
-                           options=args)
+    L_radec=[]
+    for MSName in MSList:
+        tField = table("%s::FIELD"%MSName, ack=False)
+        ra0, dec0 = tField.getcol("PHASE_DIR").ravel()
+        if ra0<0.: ra0+=2.*np.pi
+        L_radec.append((ra0,dec0))            
+        tField.close()
+    L_radec=list(set(L_radec))
+    if len(L_radec)>1: stop
+    ra0,dec0=L_radec[0]
 
-        if D.NDirSelected==0:
-            return
+    NChunk=1
+    if args.NMaxTargets!=0:
+        CGC=ClassGiveCatalog.ClassGiveCatalog(args,
+                                              ra0,dec0,
+                                              args.rad,
+                                              args.srclist)
+        PosArray=CGC.giveCat()
+        NChunk=PosArray.size//args.NMaxTargets+1
+        log.print(ModColor.Str("Will process the catalog in %i chunks"%NChunk,col="green"))
+        
+        
+    SubSet=None
+    for iChunk in range(NChunk):
+        log.print("====================================================================")
+        if NChunk>1:
+            SubSet=(iChunk,NChunk)
+        for ik,k in enumerate(sorted(list(DT.keys()))):
+            MSList=DT[k]
+            DIRNAME="%s"%(args.OutDirName)
+            if len(DT)>1:
+                DIRNAME+="_T%i"%ik
+            if NChunk>1:
+                DIRNAME+="_RandChunk%i"%iChunk
+
+                
+            D = ClassDynSpecMS(ListMSName=MSList, 
+                               ColName=args.data, ModelName=args.model, 
+                               SolsName=args.sols,
+                               TChunkHours=args.TChunkHours,
+                               ColWeights=args.WeightCol,
+                               UVRange=args.uv,
+                               FileCoords=args.srclist,
+                               Radius=args.rad,
+                               NOff=args.noff,
+                               DicoFacet=args.DicoFacet,
+                               ImageI=args.imageI,
+                               ImageV=args.imageV,
+                               SolsDir=args.SolsDir,NCPU=args.NCPU,
+                               BaseDirSpecs=args.BaseDirSpecs,
+                               BeamModel=args.BeamModel,
+                               BeamNBand=args.BeamNBand,
+                               SourceCatOff_FluxMean=args.SourceCatOff_FluxMean,
+                               SourceCatOff_dFluxMean=args.SourceCatOff_dFluxMean,
+                               SourceCatOff=args.SourceCatOff,
+                               options=args,
+                               SubSet=SubSet)
     
-        if D.Mode=="Spec": D.StackAll()
-    
-        SaveMachine=ClassSaveResults.ClassSaveResults(D,DIRNAME=args.OutDirName)
-        if D.Mode=="Spec":
-            SaveMachine.WriteFits()
-            if args.SavePDF:
-                SaveMachine.PlotSpec()
-            SaveMachine.SaveCatalog()
-            if args.DoTar: SaveMachine.tarDirectory()
-        else:
-            SaveMachine.SaveCatalog()
-            SaveMachine.PlotSpec(Prefix="_replot")
-        D.killWorkers()
+            if D.NDirSelected==0:
+                return
+        
+            if D.Mode=="Spec": D.StackAll()
+        
+            SaveMachine=ClassSaveResults.ClassSaveResults(D,DIRNAME=DIRNAME)
+            if D.Mode=="Spec":
+                SaveMachine.WriteFits()
+                if args.SavePDF:
+                    SaveMachine.PlotSpec()
+                SaveMachine.SaveCatalog()
+                if args.DoTar: SaveMachine.tarDirectory()
+            else:
+                SaveMachine.SaveCatalog()
+                SaveMachine.PlotSpec(Prefix="_replot")
+            D.killWorkers()
     Multiprocessing.cleanupShm()
         
 
@@ -191,6 +228,7 @@ if __name__ == "__main__":
     parser.add_argument("--SourceCatOff", type=str, default="", help="Read the code", required=False)
     parser.add_argument("--SourceCatOff_FluxMean", type=float, default=0, help="Read the code", required=False)
     parser.add_argument("--SourceCatOff_dFluxMean", type=float, default=0, help="Read the code", required=False)
+    parser.add_argument("--NMaxTargets", type=int, default=0, help="Read the code", required=False)
 
     args = parser.parse_args()
 

@@ -83,8 +83,11 @@ class ClassDynSpecMS(object):
                  SourceCatOff=None,
                  SourceCatOff_FluxMean=None,
                  SourceCatOff_dFluxMean=None,
-                 options=None):
+                 options=None,SubSet=None):
+
         self.options=options
+        self.SubSet=SubSet
+
         # CutGainsMinMax
 
         if BeamModel=="None":
@@ -207,9 +210,8 @@ class ClassDynSpecMS(object):
                                               self.ra0,self.dec0,
                                               self.Radius,
                                               self.FileCoords)
-        self.PosArray=CGC.giveCat()
+        self.PosArray=CGC.giveCat(SubSet=self.SubSet)
         DoProperMotionCorr=CGC.DoProperMotionCorr
-        stop
 
         if DoProperMotionCorr:
             Lra,Ldec=[],[]
@@ -234,7 +236,7 @@ class ClassDynSpecMS(object):
         
         self.NDirSelected=self.PosArray.shape[0]
 
-        print("Selected %i target [out of the %i in the original list]"%(self.NDirSelected,NOrig), file=log)
+        print("Selected %i target [out of the %i in the original list]"%(self.NDirSelected,CGC.NOrig), file=log)
         if self.NDirSelected==0:
             print(ModColor.Str("   Have found no sources - returning"), file=log)
             self.killWorkers()

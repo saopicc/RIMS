@@ -3,6 +3,7 @@ from DDFacet.Other import logger
 log=logger.getLogger("DynSpecMS")
 from astropy.io import fits
 from astropy.wcs import WCS
+import random
 
 def AngDist(ra0,ra1,dec0,dec1):
     AC=np.arccos
@@ -24,8 +25,9 @@ class ClassGiveCatalog():
         self.dec0=dec0
         self.Radius=Radius
         self.FileCoords=FileCoords
+
         
-    def giveCat(self):
+    def giveCat(self,SubSet=None):
         FileCoords=self.FileCoords
         
         self.DoProperMotionCorr=False
@@ -149,11 +151,20 @@ class ClassGiveCatalog():
         self.PosArray.dec*=np.pi/180.
         
         Radius=self.Radius
-        NOrig=self.PosArray.Name.shape[0]
+        self.NOrig=self.PosArray.Name.shape[0]
         Dist=AngDist(self.ra0,self.PosArray.ra,self.dec0,self.PosArray.dec)
         ind=np.where(Dist<(Radius*np.pi/180))[0]
         self.PosArray=self.PosArray[ind]
         
         print("Created an array with %i records" % self.PosArray.size, file=log)
-        
+
+        if SubSet is not None:
+            random.seed(42)
+            i,n=SubSet
+            ind=random.sample(range(0, self.PosArray.size), self.PosArray.size)
+            ii=np.int64(np.linspace(0,self.PosArray.size+1,n+1))
+            L=np.sort(ind[ii[i]:ii[i+1]])
+            self.PosArray=self.PosArray[L]
+            print("Selected %i objects for subset %i/%i" % (self.PosArray.size,i+1,n), file=log)
+            
         return self.PosArray
