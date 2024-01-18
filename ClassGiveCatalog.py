@@ -29,6 +29,7 @@ class ClassGiveCatalog():
         
     def giveCat(self,SubSet=None):
         FileCoords=self.FileCoords
+        dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')]
         
         self.DoProperMotionCorr=False
         if self.options.UseLoTSSDB:

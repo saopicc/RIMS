@@ -203,7 +203,6 @@ class ClassDynSpecMS(object):
     def InitFromCatalog(self):
 
         FileCoords=self.FileCoords
-        dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')]
         # should we use the surveys DB?
 
         CGC=ClassGiveCatalog.ClassGiveCatalog(self.options,
