@@ -1128,6 +1128,7 @@ class ClassDynSpecMS(object):
     
             dcorr[:]=d[:]
             W=Wc.copy()
+            #W2=Wc.copy()
             dcorr*=W
             wdcorr=np.ones(dcorr.shape,np.float64)
             #kk=kk*np.ones((1,1,npol))
@@ -1177,6 +1178,7 @@ class ClassDynSpecMS(object):
                     #wdcorr[:,indCh,:] *= (np.abs(J0) * np.abs(J1))**2
                     #print(iDir,iFJones,np.count_nonzero(J0==0),np.count_nonzero(J1==0))
                     #dcorr[:,indCh,:] = 1./J0 * dcorr[:,indCh,:] * 1./J1.conj()
+                    #W[:,indCh,:]*=(np.abs(J0) * np.abs(J1))
                     W[:,indCh,:]*=(np.abs(J0) * np.abs(J1))**2
                     T1.timeit("[%i] apply "%iFJones)
 
