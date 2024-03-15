@@ -1,5 +1,6 @@
 import numpy as np
 from DDFacet.Other import logger
+from SkyModel.Sky import ModRegFile
 log=logger.getLogger("DynSpecMS")
 from astropy.io import fits
 from astropy.wcs import WCS
@@ -142,10 +143,18 @@ class ClassGiveCatalog():
                     print("Downloading %s"%FileCoords, file=log)
                     print("   Executing: %s"%ssExec, file=log)
                     os.system(ssExec)
-            log.print("Reading cvs file: %s"%FileCoords)
-            #self.PosArray=np.genfromtxt(FileCoords,dtype=dtype,delimiter=",")[()]
-            self.PosArray=np.genfromtxt(FileCoords,dtype=dtype,delimiter=",")
-            if len(self.PosArray.shape)==0: self.PosArray=self.PosArray.reshape((1,))
+            if FileCoords.endswith(".txt"):
+                log.print("Reading cvs file: %s"%FileCoords)
+                #self.PosArray=np.genfromtxt(FileCoords,dtype=dtype,delimiter=",")[()]
+                self.PosArray=np.genfromtxt(FileCoords,dtype=dtype,delimiter=",")
+                if len(self.PosArray.shape)==0: self.PosArray=self.PosArray.reshape((1,))
+            elif FileCoords.endswith(".reg"):
+                MRF=ModRegFile.RegToNp(FileCoords)
+                MRF.Read()
+                Cat=MRF.CatSel
+                self.PosArray=np.zeros((Cat.size,),dtype=dtype)
+                self.PosArray["ra"]=Cat.ra*180/np.pi
+                self.PosArray["dec"]=Cat.dec*180/np.pi
 
         self.PosArray=self.PosArray.view(np.recarray)
         self.PosArray.ra*=np.pi/180.
@@ -155,8 +164,8 @@ class ClassGiveCatalog():
         self.NOrig=self.PosArray.Name.shape[0]
         Dist=AngDist(self.ra0,self.PosArray.ra,self.dec0,self.PosArray.dec)
         ind=np.where(Dist<(Radius*np.pi/180))[0]
-        self.PosArray=self.PosArray[ind]
         
+        self.PosArray=self.PosArray[ind]
         print("Created an array with %i records" % self.PosArray.size, file=log)
 
         if SubSet is not None:

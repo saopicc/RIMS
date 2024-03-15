@@ -87,11 +87,16 @@ class ClassSaveResults(object):
         NJobs=self.DynSpecMS.NDir #Selected
         iDone=0
         pBAR.render(0, NJobs)
-        
+
+        This_iAnt=None
         for iDir in range(self.DynSpecMS.NDir):
-            self.WriteFitsThisDir(iDir)
-            self.WriteFitsThisDir(iDir,Weight="Weight")
-            self.WriteFitsThisDir(iDir,Weight="W2")
+            for iAnt in range(self.DynSpecMS.NAnt):
+                if self.DynSpecMS.SplitAnt:
+                    This_iAnt=iAnt
+                    
+                self.WriteFitsThisDir(iDir,iAnt=This_iAnt)
+                self.WriteFitsThisDir(iDir,Weight="Weight",iAnt=This_iAnt)
+                self.WriteFitsThisDir(iDir,Weight="W2",iAnt=This_iAnt)
             iDone+=1
             pBAR.render(iDone, NJobs)
             
@@ -145,20 +150,23 @@ class ClassSaveResults(object):
         f.close()
 
     
-    def WriteFitsThisDir(self,iDir,Weight=False):
+    def WriteFitsThisDir(self,iDir,Weight=False,iAnt=None):
         """ Store the dynamic spectrum in a FITS file
         """
         ra,dec=self.DynSpecMS.PosArray.ra[iDir],self.DynSpecMS.PosArray.dec[iDir]
         
         strRA=rad2hmsdms(ra,Type="ra").replace(" ",":")
         strDEC=rad2hmsdms(dec,Type="dec").replace(" ",":")
+        strAnt=""
+        if iAnt is not None:
+            strAnt="_Ant%i"%iAnt
         
-        fitsname = "%s/%s/%s_%s_%s.fits"%(self.DIRNAME,self.GiveSubDir(self.DynSpecMS.PosArray.Type[iDir],Weight=Weight),self.DynSpecMS.OutName, strRA, strDEC)
+        fitsname = "%s/%s/%s_%s_%s%s.fits"%(self.DIRNAME,self.GiveSubDir(self.DynSpecMS.PosArray.Type[iDir],Weight=Weight),self.DynSpecMS.OutName, strRA, strDEC,strAnt)
         self.CatFlux.FileName[iDir]=fitsname
         if Weight=="Weight":
-            fitsname = "%s/%s/%s_%s_%s.W.fits"%(self.DIRNAME,self.GiveSubDir(self.DynSpecMS.PosArray.Type[iDir],Weight=Weight),self.DynSpecMS.OutName, strRA, strDEC)
+            fitsname = "%s/%s/%s_%s_%s%s.W.fits"%(self.DIRNAME,self.GiveSubDir(self.DynSpecMS.PosArray.Type[iDir],Weight=Weight),self.DynSpecMS.OutName, strRA, strDEC,strAnt)
         elif Weight=="W2":
-            fitsname = "%s/%s/%s_%s_%s.W2.fits"%(self.DIRNAME,self.GiveSubDir(self.DynSpecMS.PosArray.Type[iDir],Weight=Weight),self.DynSpecMS.OutName, strRA, strDEC)
+            fitsname = "%s/%s/%s_%s_%s%s.W2.fits"%(self.DIRNAME,self.GiveSubDir(self.DynSpecMS.PosArray.Type[iDir],Weight=Weight),self.DynSpecMS.OutName, strRA, strDEC,strAnt)
             
         #print("#%i %s %s"%(iDir,self.DynSpecMS.PosArray.Type[iDir].decode("ascii"),fitsname),file=log)
         # Create the fits file
@@ -206,17 +214,20 @@ class ClassSaveResults(object):
             prihdr.set('FACET', iFacet, 'ID of the facet')
             prihdr.set('TESSEL', iTessel, 'ID of the Tessel')
             
-            
+        if iAnt is None:
+            This_iAnt=0
+        else:
+            This_iAnt=iAnt
         if Weight=="Weight":
-            Gn = self.DynSpecMS.DicoGrids["GridWeight"][iDir,:, :, 0:1].real # dir, time, freq, pol
+            Gn = self.DynSpecMS.DicoGrids["GridWeight"][iDir,This_iAnt,:, :, 0:1].real # dir, time, freq, pol
         elif Weight=="W2":
-            Gn = Gn0 = self.DynSpecMS.DicoGrids["GridWeight2"][iDir,:, :, 0:1].real # dir, time, freq, pol
+            Gn = Gn0 = self.DynSpecMS.DicoGrids["GridWeight2"][iDir,This_iAnt,:, :, 0:1].real # dir, time, freq, pol
             # Gn1 = self.DynSpecMS.DicoGrids["GridWeight"][iDir,:, :, 0:1].real.copy() # dir, time, freq, pol
             # Gn1[Gn1==0]=1
             # Gn=np.sqrt(Gn0)/Gn1
             # Gn[Gn0==0]=0
         else:
-            Gn = self.DynSpecMS.GOut[iDir,:, :, :].real
+            Gn = self.DynSpecMS.GOut[iDir,This_iAnt,:, :, :].real
 
         hdu = fits.PrimaryHDU(np.rollaxis(Gn, 2), header=prihdr)
 

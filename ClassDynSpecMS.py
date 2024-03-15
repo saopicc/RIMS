@@ -117,7 +117,7 @@ class ClassDynSpecMS(object):
             print(ModColor.Str("WORKING IN REPLOT MODE"), file=log)
             self.Mode="Plot"
             
-            
+        self.SplitAnt=True
         self.Radius=Radius
         self.ImageI = ImageI
         self.ImageV = ImageV
@@ -234,7 +234,7 @@ class ClassDynSpecMS(object):
 
         
         self.NDirSelected=self.PosArray.shape[0]
-
+        
         print("Selected %i target [out of the %i in the original list]"%(self.NDirSelected,CGC.NOrig), file=log)
         if self.NDirSelected==0:
             print(ModColor.Str("   Have found no sources - returning"), file=log)
@@ -296,9 +296,15 @@ class ClassDynSpecMS(object):
         #self.DicoDATA = shared_dict.create("DATA")
         self.DicoGrids = shared_dict.create("Grids")
 
-        self.DicoGrids["GridLinPol"] = np.zeros((self.NDir,self.NChan, self.NTimesGrid, 4), np.complex128)
-        self.DicoGrids["GridWeight"] = np.zeros((self.NDir,self.NChan, self.NTimesGrid, 4), np.complex128)
-        self.DicoGrids["GridWeight2"] = np.zeros((self.NDir,self.NChan, self.NTimesGrid, 4), np.complex128)
+        if self.SplitAnt:
+            NAnt = self.NAnt
+        else:
+            NAnt = 1
+        self.LAnt=np.arange(NAnt)
+            
+        self.DicoGrids["GridLinPol"] = np.zeros((self.NDir,NAnt,self.NChan, self.NTimesGrid, 4), np.complex128)
+        self.DicoGrids["GridWeight"] = np.zeros((self.NDir,NAnt,self.NChan, self.NTimesGrid, 4), np.complex128)
+        self.DicoGrids["GridWeight2"] = np.zeros((self.NDir,NAnt,self.NChan, self.NTimesGrid, 4), np.complex128)
 
 
         
@@ -518,6 +524,7 @@ class ClassDynSpecMS(object):
         #for iMS, MSName in enumerate(sorted(self.ListMSName)):
         tmin,tmax=None,None
         for iMS, MSName in enumerate(self.ListMSName):
+
             try:
                 t = table(MSName, ack=False)
             except Exception as e:
@@ -545,6 +552,10 @@ class ClassDynSpecMS(object):
                                     "Exception": "Missing Model colname %s"%self.ModelName}
                 pBAR.render(iMS+1, self.nMS)
                 continue
+
+            tAnt = table("%s::ANTENNA"%MSName, ack=False)
+            na=tAnt.getcol("POSITION").shape[0]
+            tAnt.close()
             
             tField = table("%s::FIELD"%MSName, ack=False)
             ThisRA0,ThisDEC0 = tField.getcol("PHASE_DIR").ravel() # radians!
@@ -560,7 +571,7 @@ class ClassDynSpecMS(object):
             dtBin_=np.unique(t.getcol("INTERVAL"))
             if dtBin_.size>1: stop
             dtBin = dtBin_.flat[0]
-            
+
             
             # if not np.allclose(ThisTimes, self.times):
             #     raise ValueError("should have the same times")
@@ -568,14 +579,17 @@ class ClassDynSpecMS(object):
 
             tp = table("%s::POLARIZATION"%MSName, ack=False)
             npol=tp.getcol("NUM_CORR").flat[0]
-            CorrType=tp.getcol("CORR_TYPE").ravel().tolist()
-            if CorrType!=[9,10,11,12]:
-                raise ValueError("Pols should be XX, XY, YX, YY")
+            self.CorrType=tp.getcol("CORR_TYPE").ravel().tolist()
+            PolSlice=slice(None)
+            if self.CorrType!=[9,10,11,12]:
+                #raise ValueError("Pols should be XX, XY, YX, YY")
+                print("Pols are not be XX, XY, YX, YY")
+                PolSlice=slice(0,4,3)
             tp.close()
 
             chFreq=tf.getcol("CHAN_FREQ").ravel()
             if chFreq[-1]<chFreq[0]:
-                #log.print(ModColor.Str("Channels are reversed, ok I can deal with that..."))
+                # log.print(ModColor.Str("Channels are reversed, ok I can deal with that..."))
                 chSlice=slice(None,None,-1)
                 RevertChans=True
             else:
@@ -597,11 +611,13 @@ class ClassDynSpecMS(object):
                                 "times":      ThisTimes,
                                 "dtBin":      dtBin,
                                 "npol":       npol,
+                                "na": na,
                                 "startTime":  Time(ThisTimes[0]/(24*3600.), format='mjd', scale='utc').isot,
                                 "stopTime":   Time(ThisTimes[-1]/(24*3600.), format='mjd', scale='utc').isot,
                                 "deltaTime":  (ThisTimes[-1] - ThisTimes[0])/3600., # h
                                 "RevertChans": RevertChans,
-                                "Readable":   True}
+                                "Readable":   True,
+                                "PolSlice": PolSlice}
                                 
             if DicoMSInfos[iMS]["ChanWidth"][0] != self.ChanWidth:
                 raise ValueError("should have the same chan width")
@@ -617,12 +633,13 @@ class ClassDynSpecMS(object):
                 print(ModColor.Str("Problem reading %s"%MSName), file=log)
                 print(ModColor.Str("   %s"%DicoMSInfos[iMS]["Exception"]), file=log)
                 
-
+                
         t.close()
         tf.close()
         self.DicoMSInfos = DicoMSInfos
         self.FreqsAll    = np.array([DicoMSInfos[iMS]["ChanFreq"] for iMS in list(DicoMSInfos.keys()) if DicoMSInfos[iMS]["Readable"]])
         self.Freq_minmax = np.min(self.FreqsAll), np.max(self.FreqsAll)
+        self.NAnt=np.max([DicoMSInfos[iMS]["na"] for iMS in list(DicoMSInfos.keys()) if DicoMSInfos[iMS]["Readable"]])
         #self.NTimes      = self.times.size
         #dtArr=self.times[1:]-self.times[:-1]
         #if np.unique(dtArr).size>1:
@@ -689,10 +706,11 @@ class ClassDynSpecMS(object):
             print("  Reading chunk in %.3f -> %.3f h"%(T0/3600,T1/3600), file=log)
         
         nch  = self.DicoMSInfos[iMS]["ChanFreq"].size
-        npol  = self.DicoMSInfos[iMS]["npol"]
+        npol = self.DicoMSInfos[iMS]["npol"]
 
         #chSlice=self.DicoMSInfos[iMS]["chSlice"]
         RevertChans=self.DicoMSInfos[iMS]["RevertChans"]
+        
         
         data = np.zeros((NROW,nch,npol),np.complex64)
         t.getcolnp(self.ColName,data,ROW0,NROW)
@@ -754,6 +772,17 @@ class ClassDynSpecMS(object):
         u0 = u.reshape( (-1, 1, 1) )
         v0 = v.reshape( (-1, 1, 1) )
         w0 = w.reshape( (-1, 1, 1) )
+
+        if len(self.CorrType)!=4:
+            nrow,nch,_=data.shape
+            data1=np.zeros((nrow,nch,4),dtype=data.dtype)
+            flag1=np.zeros((nrow,nch,4),dtype=bool)
+            PolSlice=self.DicoMSInfos[iMS]["PolSlice"]
+            data1[:,:,PolSlice]=data[:,:,:]
+            flag1[:,:,PolSlice]=flag[:,:,:]
+            data=data1
+            flag=flag1
+        
         DicoDATA = shared_dict.create("DATA_%i"%(iJob))
         DicoDATA["iMS"]=iMS
         DicoDATA["iChunk"]=iChunk
@@ -978,9 +1007,10 @@ class ClassDynSpecMS(object):
         NTimes=self.DicoMSInfos[iMS]["times"].size
         
         for iTime in range(NTimes):
-            self.APP.runJob("Stack_SingleTime:%i_%d"%(iJob,iTime), 
-                       self.Stack_SingleTimeAllDir,
-                       args=(iJob,iTime,))#,serial=True)
+            for iAnt in range(self.NAnt):
+                self.APP.runJob("Stack_SingleTime:%i_%d_%d"%(iJob,iTime,iAnt), 
+                                self.Stack_SingleTimeAllDir,
+                                args=(iJob,iTime,iAnt,))#,serial=True)
             
         self.APP.awaitJobResults("Stack_SingleTime:%i_*"%iJob, progress="Append MS %i"%iMS)
         
@@ -1025,12 +1055,18 @@ class ClassDynSpecMS(object):
         
     #     self.Stack_SingleTimeDir(iTime)
         
-    def Stack_SingleTimeAllDir(self,iJob,iTime):
+    def Stack_SingleTimeAllDir(self,iJob,iTime,iAnt):
         iMS,iChunk=self.LJob[iJob]
         DicoDATA=shared_dict.attach("DATA_%i"%(iJob))
         
         iMS  = DicoDATA["iMS"]
-        indRow = np.where(DicoDATA["times"]==self.DicoMSInfos[iMS]["times"][iTime])[0]
+        CC=CTime=(DicoDATA["times"]==self.DicoMSInfos[iMS]["times"][iTime])
+        if self.SplitAnt:
+            CA0 = (DicoDATA["A0"]==iAnt)
+            CA1 = (DicoDATA["A1"]==iAnt)
+            CA  = (CA0|CA1)
+            CC  = (CA & CTime)
+        indRow = np.where(CC)[0]
         if indRow.size==0: return
         ThisTime=self.DicoMSInfos[iMS]["times"][iTime]
         
@@ -1238,9 +1274,9 @@ class ClassDynSpecMS(object):
             # ds[ind]/=dcorrs[ind]
             T.timeit("Sum")
 
-            self.DicoGrids["GridLinPol"][iDir,ich0:ich0+nch, iTimeGrid, :] = ds
-            self.DicoGrids["GridWeight"][iDir,ich0:ich0+nch, iTimeGrid, :] = np.float32(ws)
-            self.DicoGrids["GridWeight2"][iDir,ich0:ich0+nch, iTimeGrid, :] = np.float32(w2s)
+            self.DicoGrids["GridLinPol"][iDir,iAnt,ich0:ich0+nch, iTimeGrid, :] = ds
+            self.DicoGrids["GridWeight"][iDir,iAnt,ich0:ich0+nch, iTimeGrid, :] = np.float32(ws)
+            self.DicoGrids["GridWeight2"][iDir,iAnt,ich0:ich0+nch, iTimeGrid, :] = np.float32(w2s)
             T.timeit("Write")
             
         T.timeit("rest")
