@@ -2,3 +2,7 @@
 *.pyc
 *.o
 *.so
+venv
+*.txt
+*.csv
+*.obj

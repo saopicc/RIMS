@@ -7,7 +7,7 @@ matplotlib.use('Agg')
 from past.builtins import cmp
 __author__ = "Cyril Tasse, and Alan Loh"
 __credits__ = ["Cyril Tasse", "Alan Loh"]
-from DynSpecMS.dynspecms_version import version
+from dynspecms_version import version
 from DDFacet.Other import logger
 log=logger.getLogger("ms2dynspec")
 from DDFacet.Other import ModColor
@@ -18,8 +18,8 @@ SaveFile = "last_dynspec.obj"
 =========================================================================
                                 DESCRIPTION
     Blablabla
-    Modif 
-    
+    Modif
+
     Example:
     python ms2dynspec.py --msfile /usr/data/ --data CORRECTED --model PREDICT --sols killms.npz --srclist SRCPOS.txt --rad 10
 
@@ -52,10 +52,10 @@ import numpy as np
 import glob, os
 import pylab
 from DDFacet.Other import MyPickle
-from DynSpecMS import logo
-logo.PrintLogo(__version__)
-from DynSpecMS.ClassDynSpecMS import ClassDynSpecMS
-from DynSpecMS import ClassSaveResults
+#from ClassDynSpecMS import logo
+#logo.PrintLogo(__version__)
+from ClassDynSpecMS import ClassDynSpecMS
+from ClassSaveResults import ClassSaveResults
 from DDFacet.Data.ClassMS import expandMSList
 from DDFacet.Other import ModColor
 from DDFacet.Other import progressbar
@@ -110,8 +110,8 @@ def main(args=None, messages=[]):
 
     for k in DT.keys():
         MSList=DT[k]
-        D = ClassDynSpecMS(ListMSName=MSList, 
-                           ColName=args.data, ModelName=args.model, 
+        D = ClassDynSpecMS(ListMSName=MSList,
+                           ColName=args.data, ModelName=args.model,
                            SolsName=args.sols,
                            TChunkHours=args.TChunkHours,
                            ColWeights=args.WeightCol,
@@ -133,9 +133,9 @@ def main(args=None, messages=[]):
 
         if D.NDirSelected==0:
             return
-    
+
         if D.Mode=="Spec": D.StackAll()
-    
+
         SaveMachine=ClassSaveResults.ClassSaveResults(D,DIRNAME=args.OutDirName)
         if D.Mode=="Spec":
             SaveMachine.WriteFits()
@@ -148,7 +148,7 @@ def main(args=None, messages=[]):
             SaveMachine.PlotSpec(Prefix="_replot")
         D.killWorkers()
     Multiprocessing.cleanupShm()
-        
+
 
 # =========================================================================
 # =========================================================================
@@ -157,7 +157,7 @@ if __name__ == "__main__":
     parser.add_argument("--ms", type=str, help="Name of MS file / directory", required=False)
     parser.add_argument("--data", type=str, default="CORRECTED", help="Name of DATA column", required=False)
     parser.add_argument("--TChunkHours", type=float, default=0., help="Chunk size in hours", required=False)
-    
+
     parser.add_argument("--WeightCol", type=str, default=None, help="Name of weights column to be taken into account", required=False)
     parser.add_argument("--model", type=str, help="Name of MODEL column",default="")#, required=True)
     parser.add_argument("--sols", type=str, help="Jones solutions",default="")
@@ -178,7 +178,7 @@ if __name__ == "__main__":
     parser.add_argument("--UseLoTSSDB", type=int, default=0, help="Use LoTSS DB for target list", required=False)
     parser.add_argument("--UseGaiaDB", type=str, default=None, help="Use Gaia DB for target list", required=False)
     parser.add_argument("--DoTar", type=int, default=1, help="Tar final products", required=False)
-    
+
     parser.add_argument("--NCPU", type=int, default=0, help="NCPU", required=False)
     parser.add_argument("--BeamModel", type=str, default=None, help="Beam Model to be used", required=False)
     parser.add_argument("--BeamNBand", type=int, default=1, help="Number of channels in the Beam Jones matrix", required=False)
