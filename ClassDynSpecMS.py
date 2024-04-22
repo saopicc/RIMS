@@ -21,7 +21,6 @@ from astropy import constants as const
 import os
 from killMS.Other import reformat
 from DDFacet.Other import AsyncProcessPool
-#from .dynspecms_version import version
 from dynspecms_version import version
 import glob
 from astropy.io import fits
@@ -36,6 +35,7 @@ from Polygon.Utils import convexHull
 #from killMS.Data import ClassJonesDomains
 import DDFacet.Other.ClassJonesDomains
 import psutil
+import ClassGiveCatalog
 
 def AngDist(ra0,ra1,dec0,dec1):
     AC=np.arccos
@@ -83,8 +83,11 @@ class ClassDynSpecMS(object):
                  SourceCatOff=None,
                  SourceCatOff_FluxMean=None,
                  SourceCatOff_dFluxMean=None,
-                 options=None):
+                 options=None,SubSet=None):
+
         self.options=options
+        self.SubSet=SubSet
+
         # CutGainsMinMax
 
         if BeamModel=="None":
@@ -200,183 +203,14 @@ class ClassDynSpecMS(object):
     def InitFromCatalog(self):
 
         FileCoords=self.FileCoords
-        dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')]
         # should we use the surveys DB?
-        DoProperMotionCorr=False
-        if self.options.UseLoTSSDB:
-            print("Using the surveys database", file=log)
-            from surveys_db import SurveysDB
-            with SurveysDB() as sdb:
-                sdb.cur.execute('select * from transients')
-                result=sdb.cur.fetchall()
-            # convert to a list, then to ndarray, then to recarray
-            l=[]
-            for r in result:
-                l.append((r['id'],r['ra'],r['decl'],r['type']))
 
-            if FileCoords is not None and FileCoords!="":
-                print('Adding data from file '+FileCoords, file=log)
-                additional=np.genfromtxt(FileCoords,dtype=dtype,delimiter=",")[()]
-                if len(additional.shape)==0: additional=additional.reshape((1,))
-                if not additional.shape:
-                    # deal with a one-line input file
-                    additional=np.array([additional],dtype=dtype)
-                for r in additional:
-                    l.append(tuple(r))
-
-            self.PosArray=np.asarray(l,dtype=dtype)
-            print("Created an array with %i records" % len(result), file=log)
-        elif self.options.UseGaiaDB is not None:
-            from astroquery.gaia import Gaia
-            rac_deg,decc_deg=self.ra0*180/np.pi, self.dec0*180/np.pi
-            Radius_deg=self.Radius
-            Dmax,NMax=self.options.UseGaiaDB.split(",")
-            Dmax,NMax=float(Dmax),int(NMax)
-            Parallax_min=1./(Dmax*1e-3)
-            query=f"""SELECT TOP 10000 gaia_source.designation,gaia_source.source_id,gaia_source.ref_epoch,gaia_source.ra,gaia_source.dec,gaia_source.parallax,
-            gaia_source.pmra,gaia_source.pmdec,gaia_source.phot_g_mean_mag,gaia_source.bp_rp
-            FROM gaiadr3.gaia_source
-            WHERE
-            CONTAINS(
-	    POINT('ICRS',gaiadr3.gaia_source.ra,gaiadr3.gaia_source.dec),
-	    CIRCLE('ICRS',{rac_deg},{decc_deg},{Radius_deg})
-            )=1  AND  (gaiadr3.gaia_source.parallax>={Parallax_min})"""
-            log.print(f"Sending du Gaia server")
-            print(f"{query}")
-            job = Gaia.launch_job(query)
-            result = job.get_results()
-
-            log.print(f"Query has returned {len(result)}")
-
-
-
-            l=[]
-            dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),
-                   ("pmra",np.float64),("pmdec",np.float64),("ref_epoch",np.float64),
-                   ("parallax",np.float64),("GaiaDistance",np.float64),
-                   ("g",np.float64),("G",np.float64),("b_r",np.float64),
-                   ('Type','S200')]
-            for r in result:
-                parallax=r['parallax']
-                g=r['g']
-                D=1./(parallax*1e-3)
-                G=g+5*np.log10(parallax)-10
-                l.append((r['DESIGNATION'],r['ra'],r['dec'],r['pmra'],r['pmdec'],r['ref_epoch'],
-                          r['parallax'],D,
-                          g,G,r['b_r'],
-                          b"Gaia DR3"))
-            self.PosArray=np.asarray(l,dtype=dtype)
-
-
-            CGGS=ClassGiveGaiaSample((rac_deg,decc_deg,Radius_deg),self.PosArray,RefCat="/data/cyril.tasse/Analyse_DataDynSpec_Jan23_TestRM/MergedCat.npz.MergeGaia.npz")
-            indExo,indGaia=CGGS.buildRandGaiaSample()
-            stop
-            # ##################################
-            F=fits.open(self.options.FitsCatalog)
-            d=F[1].data
-            l=[]
-            dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),
-                   ("pmra",np.float64),("pmdec",np.float64),("ref_epoch",np.float64),("parallax",np.float64),
-                   ('Type','S200')]
-            for r in d:
-                l.append((r['DESIGNATION'],r['ra'],r['dec'],r['pmra'],r['pmdec'],r['ref_epoch'],r['parallax'],r['Type']))
-
-            if FileCoords is not None and FileCoords!="":
-                print('Adding data from file '+FileCoords, file=log)
-                dtype0=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')]
-                additional=np.genfromtxt(FileCoords,dtype=dtype0,delimiter=",")[()]
-                if len(additional.shape)==0: additional=additional.reshape((1,))
-                if not additional.shape:
-                    # deal with a one-line input file
-                    additional=np.array([additional],dtype=dtype0)
-                additional1=np.zeros((additional.shape[0],),dtype=dtype)
-                additional1["Name"][:]=additional["Name"][:]
-                additional1["ra"][:]=additional["ra"][:]
-                additional1["dec"][:]=additional["dec"][:]
-                additional1["Type"][:]=additional["Type"][:]
-
-                for r in additional1:
-                    l.append(tuple(r))
-
-
-            self.PosArray=np.asarray(l,dtype=dtype)
-            log.print("Created an array with %i records" % len(l))
-            DoProperMotionCorr=True
-
-
-            # import pylab
-            # pylab.clf()
-            # pylab.subplot(1,2,1)
-            # pylab.scatter(self.PosArray["ra"],self.PosArray["dec"])
-            # pylab.scatter([rac_deg],[decc_deg])
-            # pylab.subplot(1,2,2)
-            # D=1./(self.PosArray["parallax"]*1e-3)
-            # pylab.hist(D,bins=100)
-            # pylab.draw()
-            # pylab.show()
-
-            DoProperMotionCorr=True
-            if self.PosArray.size>NMax:
-                ind=np.int64(np.random.rand(NMax)*self.PosArray.size)
-                self.PosArray=self.PosArray[ind]
-
-            log.print("Created an array with %i records" % self.PosArray.size)
-
-        elif self.options.FitsCatalog:
-            print("Using the fits catalog: %s"%self.options.FitsCatalog, file=log)
-            F=fits.open(self.options.FitsCatalog)
-            d=F[1].data
-            l=[]
-            dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),
-                   ("pmra",np.float64),("pmdec",np.float64),("ref_epoch",np.float64),("parallax",np.float64),
-                   ('Type','S200')]
-            for r in d:
-                l.append((r['DESIGNATION'],r['ra'],r['dec'],r['pmra'],r['pmdec'],r['ref_epoch'],r['parallax'],r['Type']))
-
-            if FileCoords is not None and FileCoords!="":
-                print('Adding data from file '+FileCoords, file=log)
-                dtype0=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')]
-                additional=np.genfromtxt(FileCoords,dtype=dtype0,delimiter=",")[()]
-                if len(additional.shape)==0: additional=additional.reshape((1,))
-                if not additional.shape:
-                    # deal with a one-line input file
-                    additional=np.array([additional],dtype=dtype0)
-                additional1=np.zeros((additional.shape[0],),dtype=dtype)
-                additional1["Name"][:]=additional["Name"][:]
-                additional1["ra"][:]=additional["ra"][:]
-                additional1["dec"][:]=additional["dec"][:]
-                additional1["Type"][:]=additional["Type"][:]
-
-                for r in additional1:
-                    l.append(tuple(r))
-
-
-            self.PosArray=np.asarray(l,dtype=dtype)
-            log.print("Created an array with %i records" % len(l))
-            DoProperMotionCorr=True
-        else:
-
-            #FileCoords="Transient_LOTTS.csv"
-            if FileCoords is None:
-                if not os.path.isfile(FileCoords):
-                    ssExec="wget -q --user=anonymous ftp://ftp.strw.leidenuniv.nl/pub/tasse/%s -O %s"%(FileCoords,FileCoords)
-                    print("Downloading %s"%FileCoords, file=log)
-                    print("   Executing: %s"%ssExec, file=log)
-                    os.system(ssExec)
-            log.print("Reading cvs file: %s"%FileCoords)
-            #self.PosArray=np.genfromtxt(FileCoords,dtype=dtype,delimiter=",")[()]
-            self.PosArray=np.genfromtxt(FileCoords,dtype=dtype,delimiter=",")
-            if len(self.PosArray.shape)==0: self.PosArray=self.PosArray.reshape((1,))
-
-        self.PosArray=self.PosArray.view(np.recarray)
-        self.PosArray.ra*=np.pi/180.
-        self.PosArray.dec*=np.pi/180.
-
-        Radius=self.Radius
-        NOrig=self.PosArray.Name.shape[0]
-        Dist=AngDist(self.ra0,self.PosArray.ra,self.dec0,self.PosArray.dec)
-        ind=np.where(Dist<(Radius*np.pi/180))[0]
-        self.PosArray=self.PosArray[ind]
+        CGC=ClassGiveCatalog.ClassGiveCatalog(self.options,
+                                              self.ra0,self.dec0,
+                                              self.Radius,
+                                              self.FileCoords)
+        self.PosArray=CGC.giveCat(SubSet=self.SubSet)
+        DoProperMotionCorr=CGC.DoProperMotionCorr
 
         if DoProperMotionCorr:
             Lra,Ldec=[],[]
@@ -396,12 +230,12 @@ class ClassDynSpecMS(object):
                 self.PosArray["ra"][iPCat]=ra1
                 self.PosArray["dec"][iPCat]=dec1
 
-            print(np.array(Lra)*3600.*180/np.pi,np.array(Ldec)*3600.*180/np.pi)
+            # print(np.array(Lra)*3600.*180/np.pi,np.array(Ldec)*3600.*180/np.pi)
 
 
         self.NDirSelected=self.PosArray.shape[0]
 
-        print("Selected %i target [out of the %i in the original list]"%(self.NDirSelected,NOrig), file=log)
+        print("Selected %i target [out of the %i in the original list]"%(self.NDirSelected,CGC.NOrig), file=log)
         if self.NDirSelected==0:
             print(ModColor.Str("   Have found no sources - returning"), file=log)
             self.killWorkers()
@@ -478,7 +312,7 @@ class ClassDynSpecMS(object):
         if self.BeamModel:
             self.DoJonesCorr_Beam=True
 
-        AsyncProcessPool.APP=None
+        #AsyncProcessPool.APP=None
         # AsyncProcessPool.init(ncpu=self.NCPU,
         #                       num_io_processes=1,
         #                       affinity="disable")
@@ -724,7 +558,7 @@ class ClassDynSpecMS(object):
             tf = table("%s::SPECTRAL_WINDOW"%MSName, ack=False)
             ThisTimes = np.unique(t.getcol("TIME"))
             dtBin_=np.unique(t.getcol("INTERVAL"))
-            if dtBin_.size>1: stop
+            #if dtBin_.size>1: stop
             dtBin = dtBin_.flat[0]
 
 
@@ -954,7 +788,7 @@ class ClassDynSpecMS(object):
             SolsName=SolsName.split(",")
         GD={"Beam":{"Model":self.BeamModel,
                     "PhasedArrayMode":"A",
-                    "At":"facet",
+                    "At":"tessel",
                     "DtBeamMin":5.,
                     "NBand":self.BeamNBand,
                     "CenterNorm":1},
@@ -967,10 +801,27 @@ class ClassDynSpecMS(object):
             }
         print("Reading Jones matrices solution file:", file=log)
 
+        RADEC_ForcedBeamDirs=None
+        if not self.DoJonesCorr_kMS and self.DoJonesCorr_Beam:
+            RADEC_ForcedBeamDirs=(self.PosArray.ra,self.PosArray.dec)
+
+
         ms=ClassMS.ClassMS(self.DicoMSInfos[iMS]["MSName"],GD=GD,DoReadData=False,)
         JonesMachine = ClassJones.ClassJones(GD, ms, CacheMode=False)
-        JonesMachine.InitDDESols(DicoDATA)
+        JonesMachine.InitDDESols(DicoDATA,RADEC_ForcedBeamDirs=RADEC_ForcedBeamDirs)
 
+
+        # print("================")
+        # RAJoneskillMS=DicoDATA["killMS"]["Dirs"]["ra"]
+        # DECJoneskillMS=DicoDATA["killMS"]["Dirs"]["dec"]
+        # for ThisRA,ThisDEC in zip(RAJoneskillMS,DECJoneskillMS):
+        #     print(rad2hmsdms(ThisRA,Type="ra").replace(" ",":"),rad2hmsdms(ThisDEC,Type="dec").replace(" ",":"))
+        # print("================")
+        # RAJonesBeam=DicoDATA["Beam"]["Dirs"]["ra"]
+        # DECJonesBeam=DicoDATA["Beam"]["Dirs"]["dec"]
+        # for ThisRA,ThisDEC in zip(RAJonesBeam,DECJonesBeam):
+        #     print(rad2hmsdms(ThisRA,Type="ra").replace(" ",":"),rad2hmsdms(ThisDEC,Type="dec").replace(" ",":"))
+        # print("================")
 
 
         CutGainsMinMax=StrToList(self.options.CutGainsMinMax)
@@ -985,31 +836,40 @@ class ClassDynSpecMS(object):
         if self.DoJonesCorr_kMS and self.DoJonesCorr_Beam:
             DomainMachine=DDFacet.Other.ClassJonesDomains.ClassJonesDomains()
             JonesSols=DomainMachine.MergeJones(DicoDATA["killMS"]["Jones"], DicoDATA["Beam"]["Jones"])
+            RAJones=JonesMachine.ClusterCat['ra']
+            DECJones=JonesMachine.ClusterCat['dec']
         elif self.DoJonesCorr_kMS:
             JonesSols=DicoDATA["killMS"]["Jones"]
+            RAJones=DicoDATA["killMS"]["Dirs"]["ra"]
+            DECJones=DicoDATA["killMS"]["Dirs"]["dec"]
         elif self.DoJonesCorr_Beam:
             JonesSols=DicoDATA["Beam"]["Jones"]
+            RAJones=DicoDATA["Beam"]["Dirs"]["ra"]
+            DECJones=DicoDATA["Beam"]["Dirs"]["dec"]
         else:
             stop
+
+
 
         DicoJones=shared_dict.create("DicoJones_%i"%iJob)
         DicoJones["G"]=np.swapaxes(JonesSols["Jones"],1,3) # Normalize Jones matrices
         G=DicoJones["G"]
         nt,nch,na,nDir,_,_=G.shape
         DicoJones['tm']=(JonesSols["t0"]+JonesSols["t1"])/2.
-        DicoJones['ra']=JonesMachine.ClusterCat['ra']
-        DicoJones['dec']=JonesMachine.ClusterCat['dec']
+        DicoJones['ra']=RAJones
+        DicoJones['dec']=DECJones
         DicoJones['FreqDomains']=JonesSols['FreqDomains']
         DicoJones['FreqDomains_mean']=np.mean(JonesSols['FreqDomains'],axis=1)
         DicoJones['IDJones']=np.zeros((self.NDir,),np.int32)
+        lJones, mJones = self.CoordMachine.radec2lm(DicoJones['ra'], DicoJones['dec'])
         for iDir in range(self.NDir):
             ra=self.PosArray.ra[iDir]
             dec=self.PosArray.dec[iDir]
 
             #DicoJones['IDJones'][iDir]=np.argmin(AngDist(ra,DicoJones['ra'],dec,DicoJones['dec']))
             lTarget, mTarget = self.CoordMachine.radec2lm(np.array([ra]), np.array([dec]))
-            lJones, mJones = self.CoordMachine.radec2lm(DicoJones['ra'], DicoJones['dec'])
             DicoJones['IDJones'][iDir]=np.argmin(np.sqrt((lTarget-lJones)**2+(mTarget-mJones)**2))
+        # print(DicoJones['IDJones'])
 
 
 
@@ -1127,8 +987,10 @@ class ClassDynSpecMS(object):
         self.delShm(iJob)
 
     def delShm(self,iJob):
-        shared_dict.delDict("DATA_%i"%(iJob))
-        shared_dict.delDict("DicoJones_%i"%(iJob))
+        shared_dict.SharedDict.delete_item("DATA_%i"%(iJob))
+        shared_dict.SharedDict.delete_item("DicoJones_%i"%(iJob))
+        #shared_dict.delDict("DATA_%i"%(iJob))
+        #shared_dict.delDict("DicoJones_%i"%(iJob))
 
 
     def killWorkers(self):
@@ -1136,7 +998,8 @@ class ClassDynSpecMS(object):
         self.APP.terminate()
         self.APP.shutdown()
         del(self.DicoGrids)
-        shared_dict.delDict("Grids")
+        #shared_dict.delDict("Grids")
+        shared_dict.SharedDict.delete("Grids")
         #Multiprocessing.cleanupShm()
 
 
@@ -1268,6 +1131,7 @@ class ClassDynSpecMS(object):
 
             dcorr[:]=d[:]
             W=Wc.copy()
+            #W2=Wc.copy()
             dcorr*=W
             wdcorr=np.ones(dcorr.shape,np.float64)
             #kk=kk*np.ones((1,1,npol))
@@ -1317,6 +1181,7 @@ class ClassDynSpecMS(object):
                     #wdcorr[:,indCh,:] *= (np.abs(J0) * np.abs(J1))**2
                     #print(iDir,iFJones,np.count_nonzero(J0==0),np.count_nonzero(J1==0))
                     #dcorr[:,indCh,:] = 1./J0 * dcorr[:,indCh,:] * 1./J1.conj()
+                    #W[:,indCh,:]*=(np.abs(J0) * np.abs(J1))
                     W[:,indCh,:]*=(np.abs(J0) * np.abs(J1))**2
                     T1.timeit("[%i] apply "%iFJones)
 
