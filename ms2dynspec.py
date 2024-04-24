@@ -176,7 +176,7 @@ def main(args=None, messages=[]):
 
             if D.Mode=="Spec": D.StackAll()
 
-            SaveMachine=ClassSaveResults.ClassSaveResults(D,DIRNAME=DIRNAME)
+            SaveMachine=ClassSaveResults(D,DIRNAME=DIRNAME)
             if D.Mode=="Spec":
                 SaveMachine.WriteFits()
                 if args.SavePDF:

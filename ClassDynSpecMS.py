@@ -969,9 +969,9 @@ class ClassDynSpecMS(object):
 
         # print(rep)
         rep=self.APP.awaitJobResults("LoadMS_%i"%(iJob))
-        if rep=="NotRead":
-            self.delShm(iJob)
-            return
+        #if rep=="NotRead":
+        #    self.delShm(iJob)
+        #    return
 
         # NTimes=self.NTimesGrid
         iMS,iChunk=self.LJob[iJob]
@@ -984,14 +984,15 @@ class ClassDynSpecMS(object):
 
         self.APP.awaitJobResults("Stack_SingleTime:%i_*"%iJob, progress="Append MS %i"%iMS)
 
-        self.delShm(iJob)
+        #self.delShm(iJob)
 
     def delShm(self,iJob):
-        shared_dict.SharedDict.delete_item("DATA_%i"%(iJob))
-        shared_dict.SharedDict.delete_item("DicoJones_%i"%(iJob))
-        #shared_dict.delDict("DATA_%i"%(iJob))
-        #shared_dict.delDict("DicoJones_%i"%(iJob))
+        shared_dict.delDict("DATA_%i"%(iJob))
+        shared_dict.delDict("DicoJones_%i"%(iJob))
 
+    #def delShm(self, iJob):
+    #    shared_dict.SharedDict.delete("DATA_%i"%(iJob))
+    #    shared_dict.SharedDict.delete("DicoJones_%i"%(iJob))
 
     def killWorkers(self):
         print("Killing workers", file=log)
