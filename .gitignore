@@ -6,3 +6,7 @@ venv
 *.txt
 *.csv
 *.obj
+__pycache__
+.ipynb_checkpoints/
+.radiopadre
+.radiopadre-session
