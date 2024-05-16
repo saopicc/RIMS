@@ -342,6 +342,7 @@ class ClassDynSpecMS(object):
         # AsyncProcessPool.init(ncpu=self.NCPU,
         #                       num_io_processes=1,
         #                       affinity="disable")
+        AsyncProcessPool._init_default()
         AsyncProcessPool.init((self.NCPU or psutil.cpu_count(logical=False)-2),
                               affinity=0,
                               num_io_processes=1,
@@ -1013,8 +1014,10 @@ class ClassDynSpecMS(object):
         self.delShm(iJob)
 
     def delShm(self,iJob):
-        shared_dict.delDict("DATA_%i"%(iJob))
-        shared_dict.delDict("DicoJones_%i"%(iJob))
+        ShDict_dat = shared_dict.attach("DATA_%i"%(iJob))
+        ShDict_dat.delete()
+        ShDict_dico = shared_dict.attach("DicoJones_%i"%(iJob))
+        ShDict_dico.delete()
         
         
     def killWorkers(self):
@@ -1022,8 +1025,8 @@ class ClassDynSpecMS(object):
         self.APP.terminate()
         self.APP.shutdown()
         del(self.DicoGrids)
-        shared_dict.delDict("Grids")
-        #Multiprocessing.cleanupShm()
+        ShDict_grids = shared_dict.attach("Grids")
+        ShDict_grids.delete()
 
 
 
