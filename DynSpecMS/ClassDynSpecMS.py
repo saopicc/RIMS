@@ -37,6 +37,19 @@ import DDFacet.Other.ClassJonesDomains
 import psutil
 from . import ClassGiveCatalog
 
+def print_memory_info():
+    mem_info = psutil.virtual_memory()
+    print(f"Total memory: {mem_info.total / (1024 ** 3):.2f} GB")
+    print(f"Available memory: {mem_info.available / (1024 ** 3):.2f} GB")
+    print(f"Used memory: {mem_info.used / (1024 ** 3):.2f} GB")
+    print(f"Memory percent used: {mem_info.percent}%")
+
+def compute_memory_usage_gb(shape):
+    num_elements = np.prod(shape)
+    bytes_per_element = np.dtype(np.complex128).itemsize
+    bytes_total = num_elements * bytes_per_element
+    return bytes_total / (1024 ** 3)  # convert bytes to GB
+
 def AngDist(ra0,ra1,dec0,dec1):
     AC=np.arccos
     C=np.cos
@@ -296,10 +309,23 @@ class ClassDynSpecMS(object):
         #self.DicoDATA = shared_dict.create("DATA")
         self.DicoGrids = shared_dict.create("Grids")
 
-        self.DicoGrids["GridLinPol"] = np.zeros((self.NDir,self.NChan, self.NTimesGrid, 4), np.complex128)
-        self.DicoGrids["GridWeight"] = np.zeros((self.NDir,self.NChan, self.NTimesGrid, 4), np.complex128)
-        self.DicoGrids["GridWeight2"] = np.zeros((self.NDir,self.NChan, self.NTimesGrid, 4), np.complex128)
+        print_memory_info()
 
+        try:
+            shape = (self.NDir, self.NChan, self.NTimesGrid, 4)
+            print(f"Allocating GridLinPol with shape {shape}, memory usage: {compute_memory_usage_gb(shape)} GB")
+            self.DicoGrids["GridLinPol"] = np.zeros(shape, np.complex128)
+
+            shape = (self.NDir, self.NChan, self.NTimesGrid, 4)
+            print(f"Allocating GridWeight with shape {shape}, memory usage: {compute_memory_usage_gb(shape)} GB")
+            self.DicoGrids["GridWeight"] = np.zeros(shape, np.complex128)
+
+            shape = (self.NDir, self.NChan, self.NTimesGrid, 4)
+            print(f"Allocating GridWeight2 with shape {shape}, memory usage: {compute_memory_usage_gb(shape)} GB")
+            self.DicoGrids["GridWeight2"] = np.zeros(shape, np.complex128)
+        except Exception as e:
+            print(f"Error during allocation: {e}")
+            raise
 
         
 
