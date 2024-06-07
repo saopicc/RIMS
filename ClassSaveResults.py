@@ -20,7 +20,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 import matplotlib.pyplot as pylab
 from DDFacet.Other.progressbar import ProgressBar
 from pyrap.images import image
-from .dynspecms_version import version
+from dynspecms_version import version
 import DDFacet.Other.MyPickle
 
 def GiveMAD(X):
@@ -34,8 +34,8 @@ class ClassSaveResults(object):
             self.DIRNAME="DynSpecs_%s"%self.DynSpecMS.OutName
         else:
             self.DIRNAME="%s_DynSpecs_%s"%(self.DIRNAME,self.DynSpecMS.OutName)
-            
-            
+
+
         #image  = self.DynSpecMS.Image
         #self.ImageData=np.squeeze(fits.getdata(image, ext=0))
 
@@ -44,7 +44,7 @@ class ClassSaveResults(object):
             self.im=self.imI=image(self.DynSpecMS.ImageI)
             self.ImageIData=self.imI.getdata()[0,0]
 
-            
+
         self.ImageV=self.DynSpecMS.ImageV
         if self.ImageV and os.path.isfile(self.ImageV):
             self.imV=image(self.DynSpecMS.ImageV)
@@ -59,7 +59,7 @@ class ClassSaveResults(object):
                                                             ("IDTessel",np.int32),("IDFacet",np.int32),
                                                             ("FluxI",np.float32),("FluxV",np.float32),("sigFluxI",np.float32),("sigFluxV",np.float32)])
         self.CatFlux=self.CatFlux.view(np.recarray)
-        
+
         os.system("rm -rf %s"%self.DIRNAME)
         os.system("mkdir -p %s/TARGET"%self.DIRNAME)
         os.system("mkdir -p %s/OFF"%self.DIRNAME)
@@ -82,12 +82,18 @@ class ClassSaveResults(object):
         if self.DynSpecMS.DoJonesCorr_kMS:
             self.CatFlux.IDFacet[:]=self.DynSpecMS.PosArray.iFacet[:]
             self.CatFlux.IDTessel[:]=self.DynSpecMS.PosArray.iTessel[:]
-            
-            
+
+        pBAR = ProgressBar(Title="Saving fits")
+        NJobs=self.DynSpecMS.NDir #Selected
+        iDone=0
+        pBAR.render(0, NJobs)
+
         for iDir in range(self.DynSpecMS.NDir):
             self.WriteFitsThisDir(iDir)
             self.WriteFitsThisDir(iDir,Weight="Weight")
             self.WriteFitsThisDir(iDir,Weight="W2")
+            iDone+=1
+            pBAR.render(iDone, NJobs)
 
     def SaveCatalog(self):
         FileName = "%s/%s.npy"%(self.DIRNAME,"Catalog")
@@ -96,28 +102,28 @@ class ClassSaveResults(object):
         if self.DynSpecMS.DFacet is not None:
             DDFacet.Other.MyPickle.Save(self.DynSpecMS.DFacet,"%s/%s.npy"%(self.DIRNAME,"DDF.DicoFacet"))
         self.radecToReg()
-        
+
     def GiveSubDir(self,Type,Weight=False):
         SubDir="OFF"
         if Type!=b"Off":
             SubDir="TARGET"
         if Weight=="Weight" or Weight=="W2":
             SubDir+="_W"
-            
+
         return SubDir
 
     def radecToReg(self):
         FName="%s/%s.reg"%(self.DIRNAME,self.DynSpecMS.OutName)
         ra,dec=self.DynSpecMS.PosArray.ra,self.DynSpecMS.PosArray.dec
         Type=self.DynSpecMS.PosArray.Type
-        
+
         log.print(("Writting target reg file: %s"%FName))
         f=open(FName,"w")
-        
+
         f.write("""# Region file format: DS9 version 4.1\n""")
         f.write("""global color=green dashlist=8 3 width=1 font="helvetica 10 normal roman" select=1 highlite=1 dash=0 fixed=0 edit=1 move=1 delete=1 include=1 source=1\n""")
         f.write("""fk5\n""")
-        
+
         sRA0=rad2hmsdms(self.DynSpecMS.ra0,Type="ra").replace(" ",":")
         sDEC0=rad2hmsdms(self.DynSpecMS.dec0,Type="dec").replace(" ",":")
         f.write("""circle(%s,%s,%f" # color=%s\n"""%(sRA0,sDEC0,self.DynSpecMS.Radius*3600,"green"))
@@ -126,7 +132,7 @@ class ClassSaveResults(object):
             ra0,dec0=ra[iTarget],dec[iTarget]
             sRA0=rad2hmsdms(ra0,Type="ra").replace(" ",":")
             sDEC0=rad2hmsdms(dec0,Type="dec").replace(" ",":")
-            
+
             if Type[iTarget].decode('ASCII')=="Off":
                 color="blue"
             else:
@@ -138,25 +144,25 @@ class ClassSaveResults(object):
             # f.write("""point(%s,%s # text={[F%i_S%i]} point=cross 5 color=%s\n"""%(sRA0,sDEC0,iFacet,iTessel,color))
         f.close()
 
-    
+
     def WriteFitsThisDir(self,iDir,Weight=False):
         """ Store the dynamic spectrum in a FITS file
         """
         ra,dec=self.DynSpecMS.PosArray.ra[iDir],self.DynSpecMS.PosArray.dec[iDir]
-        
+
         strRA=rad2hmsdms(ra,Type="ra").replace(" ",":")
         strDEC=rad2hmsdms(dec,Type="dec").replace(" ",":")
-        
+
         fitsname = "%s/%s/%s_%s_%s.fits"%(self.DIRNAME,self.GiveSubDir(self.DynSpecMS.PosArray.Type[iDir],Weight=Weight),self.DynSpecMS.OutName, strRA, strDEC)
         self.CatFlux.FileName[iDir]=fitsname
         if Weight=="Weight":
             fitsname = "%s/%s/%s_%s_%s.W.fits"%(self.DIRNAME,self.GiveSubDir(self.DynSpecMS.PosArray.Type[iDir],Weight=Weight),self.DynSpecMS.OutName, strRA, strDEC)
         elif Weight=="W2":
             fitsname = "%s/%s/%s_%s_%s.W2.fits"%(self.DIRNAME,self.GiveSubDir(self.DynSpecMS.PosArray.Type[iDir],Weight=Weight),self.DynSpecMS.OutName, strRA, strDEC)
-            
-        print("#%i %s %s"%(iDir,self.DynSpecMS.PosArray.Type[iDir].decode("ascii"),fitsname),file=log)
+
+        #print("#%i %s %s"%(iDir,self.DynSpecMS.PosArray.Type[iDir].decode("ascii"),fitsname),file=log)
         # Create the fits file
-        prihdr  = fits.Header() 
+        prihdr  = fits.Header()
         prihdr.set('CTYPE1', 'Time', 'Time')
         prihdr.set('CRPIX1', 1., 'Reference')
         prihdr.set('CRVAL1', 0., 'Time at the reference pixel (sec since OBS-STAR)')
@@ -192,15 +198,15 @@ class ClassSaveResults(object):
         if Weight:
             ThisType+="_%s"%Weight
         prihdr.set('SRC-TYPE', ThisType, 'Type of the source in the source list')
-        
+
         prihdr.set('ORIGIN', 'DynSpecMS '+version(),'Created by')
         if "iFacet" in self.DynSpecMS.PosArray.dtype.fields.keys():
             iFacet=self.DynSpecMS.PosArray.iFacet[iDir]
             iTessel=self.DynSpecMS.PosArray.iTessel[iDir]
             prihdr.set('FACET', iFacet, 'ID of the facet')
             prihdr.set('TESSEL', iTessel, 'ID of the Tessel')
-            
-            
+
+
         if Weight=="Weight":
             Gn = self.DynSpecMS.DicoGrids["GridWeight"][iDir,:, :, 0:1].real # dir, time, freq, pol
         elif Weight=="W2":
@@ -221,7 +227,7 @@ class ClassSaveResults(object):
         # Pdf file of target positions
         pdfname = "%s/%s_TARGET%s.pdf"%(self.DIRNAME,self.DynSpecMS.OutName,Prefix)
         print("Making pdf overview: %s"%pdfname, file=log)
-        pBAR = ProgressBar(Title="Making pages")        
+        pBAR = ProgressBar(Title="Making pages")
         NPages=self.DynSpecMS.NDirSelected #Selected
         iDone=0
         pBAR.render(0, NPages)
@@ -256,7 +262,7 @@ class ClassSaveResults(object):
         # # Pdf smoothed of target positions
         # pdfname = "%s/%s_TARGET_Smoothed%s.pdf"%(self.DIRNAME,self.DynSpecMS.OutName,Prefix)
         # print>>log,"Making pdf overview: %s"%pdfname
-        # pBAR = ProgressBar(Title="Making pages")        
+        # pBAR = ProgressBar(Title="Making pages")
         # NPages=self.DynSpecMS.NDirSelected #Selected
         # iDone=0
         # pBAR.render(0, NPages)
@@ -270,7 +276,7 @@ class ClassSaveResults(object):
         #         iDone+=1
         #         pBAR.render(iDone, NPages)
 
-                
+
     def PlotSpecSingleDir(self, iDir=0, BoxArcSec=300.):
         label = ["I", "Q", "U", "V"]
 
@@ -279,7 +285,7 @@ class ClassSaveResults(object):
             pylab.rc('text', usetex=True)
         font = {'family':'serif', 'serif': ['Times']}
         pylab.rc('font', **font)
-        
+
 
         # Figure properties
         bigfont   = 8
@@ -320,7 +326,7 @@ class ClassSaveResults(object):
                 cmap = copy.copy(matplotlib.cm.get_cmap(cmap))#.copy()
                 cmap.set_bad(color='black')
 
-                
+
                 ax1 = pylab.subplot(4, 1, ipol+1)
                 spec = pylab.pcolormesh(times, freqs, Gn, cmap=cmap,#'bone_r',
                                         vmin=mean-3*sig, vmax=mean+10*sig, rasterized=True,shading='auto')
@@ -343,11 +349,11 @@ class ClassSaveResults(object):
             sig  = GiveMAD(Gn)
             mean = np.median(Gn)
             #spec = pylab.pcolormesh(times, freqs, Gn, cmap='bone_r', vmin=mean-3*sig, vmax=mean+10*sig, rasterized=True)
-            spec = pylab.imshow(Gn, interpolation="nearest", cmap='bone_r', vmin=mean-3*sig, vmax=mean+10*sig, extent=(times[0],times[-1],self.DynSpecMS.fMin*1.e-6,self.DynSpecMS.fMax*1.e-6),rasterized=True) 
+            spec = pylab.imshow(Gn, interpolation="nearest", cmap='bone_r', vmin=mean-3*sig, vmax=mean+10*sig, extent=(times[0],times[-1],self.DynSpecMS.fMin*1.e-6,self.DynSpecMS.fMax*1.e-6),rasterized=True)
             axspec.axis('tight')
             cbar = pylab.colorbar(fraction=0.046, pad=0.01)
             cbar.ax.tick_params(labelsize=smallfont)
-            cbar.set_label(r'Flux density (Jy)', fontsize=8, horizontalalignment='center') 
+            cbar.set_label(r'Flux density (Jy)', fontsize=8, horizontalalignment='center')
             pylab.text(times[-1]-0.02*(times[-1]-times[0]), freqs[-1]-0.1*(freqs[-1]-freqs[0]), 'I', horizontalalignment='center', verticalalignment='center', fontsize=bigfont+2)
             pylab.text(times[0]+0.02*(times[-1]-times[0]), freqs[0]+0.1*(freqs[-1]-freqs[0]), r"$\sigma =$ %.3f Jy"%sig, horizontalalignment='left', verticalalignment='center', fontsize=bigfont+2)
             pylab.xlabel("Time (min since %s)"%(t0.iso), fontsize=bigfont)
@@ -360,13 +366,13 @@ class ClassSaveResults(object):
             AG=np.abs(Gn)
             sig  = GiveMAD(Gn)
 
-            mean = np.median(Gn) 
+            mean = np.median(Gn)
             #spec = pylab.pcolormesh(times, freqs, Gn, cmap='bone_r', vmin=0, vmax=mean+10*sig, rasterized=True)
-            spec = pylab.imshow(Gn, interpolation="nearest", cmap='bone_r', vmin=mean-3*sig, vmax=mean+10*sig, extent=(times[0],times[-1],self.DynSpecMS.fMin*1.e-6,self.DynSpecMS.fMax*1.e-6), rasterized=True) 
+            spec = pylab.imshow(Gn, interpolation="nearest", cmap='bone_r', vmin=mean-3*sig, vmax=mean+10*sig, extent=(times[0],times[-1],self.DynSpecMS.fMin*1.e-6,self.DynSpecMS.fMax*1.e-6), rasterized=True)
             axspec.axis('tight')
             cbar = pylab.colorbar(fraction=0.046, pad=0.01)
             cbar.ax.tick_params(labelsize=smallfont)
-            cbar.set_label(r'Flux density (Jy)', fontsize=8, horizontalalignment='center') 
+            cbar.set_label(r'Flux density (Jy)', fontsize=8, horizontalalignment='center')
             pylab.text(times[-1]-0.02*(times[-1]-times[0]), freqs[-1]-0.1*(freqs[-1]-freqs[0]), 'L', horizontalalignment='center', verticalalignment='center', fontsize=bigfont+2)
             pylab.text(times[0]+0.02*(times[-1]-times[0]), freqs[0]+0.1*(freqs[-1]-freqs[0]), r"$\sigma =$ %.3f Jy"%sig, horizontalalignment='left', verticalalignment='center', fontsize=bigfont+2)
             pylab.xlabel("Time (min since %s)"%(t0.iso), fontsize=bigfont)
@@ -379,13 +385,13 @@ class ClassSaveResults(object):
             AG=np.abs(Gn)
             sig  = GiveMAD(Gn)
 
-            mean = np.median(Gn) 
+            mean = np.median(Gn)
             #spec = pylab.pcolormesh(times, freqs, Gn, cmap='bone_r', vmin=mean-3*sig, vmax=mean+10*sig, rasterized=True)
-            spec = pylab.imshow(Gn, interpolation="nearest", cmap='bone_r', vmin=mean-5*sig, vmax=mean+5*sig, extent=(times[0],times[-1],self.DynSpecMS.fMin*1.e-6,self.DynSpecMS.fMax*1.e-6), rasterized=True) 
+            spec = pylab.imshow(Gn, interpolation="nearest", cmap='bone_r', vmin=mean-5*sig, vmax=mean+5*sig, extent=(times[0],times[-1],self.DynSpecMS.fMin*1.e-6,self.DynSpecMS.fMax*1.e-6), rasterized=True)
             axspec.axis('tight')
             cbar = pylab.colorbar(fraction=0.046, pad=0.01)
             cbar.ax.tick_params(labelsize=smallfont)
-            cbar.set_label(r'Flux density (Jy)', fontsize=8, horizontalalignment='center') 
+            cbar.set_label(r'Flux density (Jy)', fontsize=8, horizontalalignment='center')
             pylab.text(times[-1]-0.02*(times[-1]-times[0]), freqs[-1]-0.1*(freqs[-1]-freqs[0]), 'V', horizontalalignment='center', verticalalignment='center', fontsize=bigfont+2)
             pylab.text(times[0]+0.02*(times[-1]-times[0]), freqs[0]+0.1*(freqs[-1]-freqs[0]), r"$\sigma =$ %.3f Jy"%sig, horizontalalignment='left', verticalalignment='center', fontsize=bigfont+2)
             pylab.xlabel("Time (min since %s)"%(t0.iso), fontsize=bigfont)
@@ -451,7 +457,7 @@ class ClassSaveResults(object):
             x1=giveBounded(xc+box)
             y0=giveBounded(yc-box)
             y1=giveBounded(yc+box)
-            
+
             DataBoxed=self.ImageIData[y0:y1,x0:x1]
             FluxI=self.ImageIData[yc,xc]
             sigFluxI=GiveMAD(DataBoxed)
@@ -467,7 +473,7 @@ class ClassSaveResults(object):
                 im = pylab.imshow(DataBoxed, interpolation="nearest", cmap='bone_r', aspect="auto", vmin=vMin, vmax=vMax, origin='lower', rasterized=True)
                 #pylab.text((ra_crop[1]-ra_crop[0])/16, (dec_crop[1]-dec_crop[0])/16, r"$\sigma =$ %.3f mJy"%rms, horizontalalignment='left', verticalalignment='center', fontsize=bigfont+2)
                 cbar = pylab.colorbar()#(fraction=0.046*2., pad=0.01*4.)
-                
+
                 ax1.set_xlabel(r'RA (J2000)')
                 raax = ax1.coords[0]
                 raax.set_major_formatter('hh:mm:ss')
@@ -483,13 +489,13 @@ class ClassSaveResults(object):
                 cbar.ax.tick_params(labelsize=smallfont)
                 pylab.setp(ax1.get_xticklabels(), rotation='horizontal', fontsize=smallfont)
                 pylab.setp(ax1.get_yticklabels(), rotation='horizontal', fontsize=smallfont)
-                
+
                 ra_cen, dec_cen = wcs.wcs_world2pix(np.degrees(self.DynSpecMS.PosArray.ra[iDir]), np.degrees(self.DynSpecMS.PosArray.dec[iDir]), 1)
                 #pylab.plot(ra_cen, dec_cen, 'o', markerfacecolor='none', markeredgecolor='red', markersize=bigfont) # plot a circle at the target
                 #pylab.plot(newra_cen, newdec_cen, 'o', markerfacecolor='none', markeredgecolor='red', markersize=bigfont) # plot a circle at the target
                 pylab.plot(DataBoxed.shape[1]/2., DataBoxed.shape[0]/2., 'o', markerfacecolor='none', markeredgecolor='red', markersize=bigfont) # plot a circle at the target
-                
-                pylab.text(DataBoxed.shape[0]*0.9, DataBoxed.shape[1]*0.9, 'I', horizontalalignment='center', verticalalignment='center', fontsize=bigfont+2)        
+
+                pylab.text(DataBoxed.shape[0]*0.9, DataBoxed.shape[1]*0.9, 'I', horizontalalignment='center', verticalalignment='center', fontsize=bigfont+2)
 
 
             # ---- Image V ----
@@ -524,7 +530,7 @@ class ClassSaveResults(object):
             self.CatFlux.Type[iDir]=self.DynSpecMS.PosArray.Type[iDir]
             self.CatFlux.ra[iDir]=self.DynSpecMS.PosArray.ra[iDir]
             self.CatFlux.dec[iDir]=self.DynSpecMS.PosArray.dec[iDir]
-            
+
             newra_cen, newdec_cen = wcs.wcs_pix2world( (x1+x0)/2., (y1+y0)/2., 1)
             wcs.wcs.crpix  = [ DataBoxed.shape[1]/2., DataBoxed.shape[0]/2. ] # update the WCS object
             wcs.wcs.crval = [ newra_cen, newdec_cen ]
@@ -549,7 +555,7 @@ class ClassSaveResults(object):
                 pylab.setp(ax1.get_yticklabels(), rotation='horizontal', fontsize=smallfont)
                 ra_cen, dec_cen = wcs.wcs_world2pix(np.degrees(self.DynSpecMS.PosArray.ra[iDir]), np.degrees(self.DynSpecMS.PosArray.dec[iDir]), 1)
                 pylab.plot(DataBoxed.shape[1]/2., DataBoxed.shape[0]/2., 'o', markerfacecolor='none', markeredgecolor='red', markersize=bigfont) # plot a circle at the target
-                pylab.text(DataBoxed.shape[0]*0.9, DataBoxed.shape[1]*0.9, 'V', horizontalalignment='center', verticalalignment='center', fontsize=bigfont+2) 
+                pylab.text(DataBoxed.shape[0]*0.9, DataBoxed.shape[1]*0.9, 'V', horizontalalignment='center', verticalalignment='center', fontsize=bigfont+2)
 
 
         #pylab.subplots_adjust(wspace=0.15, hspace=0.30)
