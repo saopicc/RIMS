@@ -1,0 +1,127 @@
+cabs:
+  ms2dynspec:
+    backend:
+      native: 
+        virtual_env: /home/myburgh/venv/ddfacet_venv
+    command: /home/myburgh/venv/ddfacet_venv/bin/python /home/myburgh/repos/DynSpecMS/scripts/ms2dynspec.py
+    inputs:
+      ms:
+        info: "Name of MS file / directory"
+        dtype: MS
+        required: true
+      data:
+        info: "Name of DATA column"
+        dtype: str
+        required: false
+      TChunkHours:
+        info: "Chunk size in hours"
+        dtype: float
+        required: false
+      WeightCol:
+        dtype: str
+        info: "Name of weights column to be taken into account"
+        required: false
+      model:
+        dtype: str
+        info: "Name of MODEL column"
+      sols:
+        dtype: str
+        info: "Jones solutions"
+      srclist:
+        dtype: str
+        info: "List of targets --> 'source_name ra dec'"
+      FitsCatalog:
+        dtype: str 
+        info: "FITS catalog. List of targets --> Name,ra,dec,pmra,pmdec,ref_epoch,parallax,Type"
+      rad:
+        dtype: float 
+        info: "Radius of the field"
+        required: false
+      noff:
+        dtype: int
+        info: "Number of off sources. -1 means twice as much as there are sources in the catalog" 
+        required: false
+      nMinOffPerFacet:
+        dtype: int 
+        info: "Minimum of off sources per facet if DicoFacet is specified."
+        required: false
+      DicoFacet:
+        dtype: str
+        info: "DDFacet DicoFacet file."
+        required: false
+      LogBoring:
+        dtype: int
+        info: "Boring?"
+        required: false
+      imageI:
+        dtype: str
+        info: "Survey image to plot"
+        required: false
+      imageV:
+        dtype: str
+        info: "Survey image to plot"
+        required: false
+      BaseDirSpecs:
+        dtype: str
+        info: "Path to the precomputed specs"
+        required: false
+      uv:
+        dtype: str
+        info: "UV range in km [UVmin, UVmax]"
+        required: false
+      SolsDir:
+        dtype: str
+        info: "Base directory for the DDE solutions"
+        required: false
+      CutGainsMinMax:
+        dtype: str
+        info: "Cut Jones min,max"
+        required: false
+      SplitNonContiguous:
+        dtype: int
+        info: "Split non time-contiguous MSs"
+        required: false
+      UseLoTSSDB:
+        dtype: int
+        info: "Use LoTSS DB for target list"
+        required: false
+      UseGaiaDB:
+        dtype: str
+        info: "Use Gaia DB for target list"
+        required: false
+      DoTar:
+        dtype: int
+        info: "Tar final products"
+        required: false
+      NCPU:
+        dtype: int
+        info: "NCPU"
+        required: false
+      BeamModel:
+        dtype: str 
+        info: "Beam Model to be used"
+        required: false
+      BeamNBand:
+        dtype: int
+        info: "Number of channels in the Beam Jones matrix"
+        required: false
+      OutDirName:
+        dtype: str
+        info: "Name of the output directory name"
+        required: false
+      SavePDF:
+        dtype: int
+        info: "Save PDF"
+        required: false
+      SourceCatOff:
+        dtype: str
+        info: "Read the code"
+        required: false
+      SourceCatOff_FluxMean:
+        dtype: float
+        info: "Read the code"
+        required: false
+      SourceCatOff_dFluxMean:
+        dtype: float
+        info: "Read the code"
+        required: false
