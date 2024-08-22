@@ -162,6 +162,7 @@ def main(args=None, messages=[]):
                                SolsDir=args.SolsDir,NCPU=args.NCPU,
                                BaseDirSpecs=args.BaseDirSpecs,
                                BeamModel=args.BeamModel,
+                               BeamFITS=args.BeamFITS,
                                BeamNBand=args.BeamNBand,
                                SourceCatOff_FluxMean=args.SourceCatOff_FluxMean,
                                SourceCatOff_dFluxMean=args.SourceCatOff_dFluxMean,
@@ -220,6 +221,7 @@ if __name__ == "__main__":
     
     parser.add_argument("--NCPU", type=int, default=0, help="NCPU", required=False)
     parser.add_argument("--BeamModel", type=str, default=None, help="Beam Model to be used", required=False)
+    parser.add_argument("--BeamFITS", type=str, default=None, help="Beam FITS file to be used if Beam Model ='FITS'", required=False)
     parser.add_argument("--BeamNBand", type=int, default=1, help="Number of channels in the Beam Jones matrix", required=False)
     parser.add_argument("--OutDirName", type=str, default="MSName", help="Name of the output directory name", required=False)
     parser.add_argument("--SavePDF", type=int, default=0, help="Save PDF", required=False)

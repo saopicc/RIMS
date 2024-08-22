@@ -2,9 +2,7 @@ cabs:
   ms2dynspec:
     backend:
       select: native
-      native: 
-        virtual_env: /home/myburgh/venv/ddfacet_venv
-    command: python /home/myburgh/repos/DynSpecMS/scripts/ms2dynspec.py
+    command: python ../scripts/ms2dynspec.py
     inputs:
       ms:
         info: "Name of MS file / directory"
