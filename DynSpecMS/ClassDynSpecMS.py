@@ -839,7 +839,7 @@ class ClassDynSpecMS(object):
         
         ms=ClassMS.ClassMS(self.DicoMSInfos[iMS]["MSName"],GD=GD,DoReadData=False,)
         JonesMachine = ClassJones.ClassJones(GD, ms, CacheMode=False)
-        JonesMachine.InitDDESols(DicoDATA,RADEC_ForcedBeamDirs=RADEC_ForcedBeamDirs)
+        JonesMachine.InitDDESols(DicoDATA)
 
 
         # print("================")
