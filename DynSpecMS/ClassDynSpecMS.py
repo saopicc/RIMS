@@ -96,6 +96,7 @@ class ClassDynSpecMS(object):
                  SourceCatOff=None,
                  SourceCatOff_FluxMean=None,
                  SourceCatOff_dFluxMean=None,
+                 CacheDir="",
                  options=None,SubSet=None):
 
         self.options=options
@@ -111,6 +112,7 @@ class ClassDynSpecMS(object):
         self.SourceCatOff_FluxMean=SourceCatOff_FluxMean
         self.SourceCatOff_dFluxMean=SourceCatOff_dFluxMean
         self.SourceCatOff=SourceCatOff
+        self.CacheDir=CacheDir
         self.DicoFacet=DicoFacet
         self.ColName    = ColName
         if ModelName=="None": ModelName=None
@@ -826,7 +828,7 @@ class ClassDynSpecMS(object):
                             "SolsDir":self.SolsDir,
                             "GlobalNorm":None,
                             "JonesNormList":"AP"},
-            "Cache":{"Dir":""}
+            "Cache":{"Dir":self.CacheDir}
             }
         print("Reading Jones matrices solution file:", file=log)
         

@@ -167,6 +167,7 @@ def main(args=None, messages=[]):
                                SourceCatOff_FluxMean=args.SourceCatOff_FluxMean,
                                SourceCatOff_dFluxMean=args.SourceCatOff_dFluxMean,
                                SourceCatOff=args.SourceCatOff,
+                               CacheDir=args.CacheDir,
                                options=args,
                                SubSet=SubSet)
     
@@ -218,6 +219,7 @@ if __name__ == "__main__":
     parser.add_argument("--UseGaiaDB", type=str, default=None, help="Use Gaia DB for target list", required=False)
     parser.add_argument("--DoTar", type=int, default=1, help="Tar final products", required=False)
     parser.add_argument("--UseRandomSeed", type=int, default=0, help="Use random seed", required=False)
+    parser.add_argument("--CacheDir", type=str, default="", help="Use specific cache directory for caching. Default is colocated with ms.", required=False)
     
     parser.add_argument("--NCPU", type=int, default=0, help="NCPU", required=False)
     parser.add_argument("--BeamModel", type=str, default=None, help="Beam Model to be used", required=False)
