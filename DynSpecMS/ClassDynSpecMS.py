@@ -92,7 +92,7 @@ class ClassDynSpecMS(object):
                  ImageV=None,
                  SolsDir=None,
                  NCPU=1,
-                 BaseDirSpecs=None,BeamModel=None,BeamFITS="",BeamNBand=1,
+                 BaseDirSpecs=None,BeamModel=None,BeamNBand=1,
                  SourceCatOff=None,
                  SourceCatOff_FluxMean=None,
                  SourceCatOff_dFluxMean=None,
@@ -127,7 +127,6 @@ class ClassDynSpecMS(object):
         self.SolsName=SolsName
         self.NCPU=NCPU
         self.BeamModel=BeamModel
-        self.BeamFITS=BeamFITS
         self.ra0, self.dec0=None,None
         if ListMSName is None:
             print(ModColor.Str("WORKING IN REPLOT MODE"), file=log)
@@ -817,7 +816,6 @@ class ClassDynSpecMS(object):
             SolsName=SolsName.replace("]","")
             SolsName=SolsName.split(",")
         GD={"Beam":{"Model":self.BeamModel,
-                    "FITSFile":self.BeamFITS,
                     "PhasedArrayMode":"A",
                     "At":"tessel",
                     "DtBeamMin":5.,
