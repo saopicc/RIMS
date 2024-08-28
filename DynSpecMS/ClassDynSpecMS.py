@@ -92,7 +92,8 @@ class ClassDynSpecMS(object):
                  ImageV=None,
                  SolsDir=None,
                  NCPU=1,
-                 BaseDirSpecs=None,BeamModel=None,BeamNBand=1,
+                 BaseDirSpecs=None,BeamModel=None,
+                 DDFParset="",BeamNBand=1,
                  SourceCatOff=None,
                  SourceCatOff_FluxMean=None,
                  SourceCatOff_dFluxMean=None,
@@ -119,6 +120,7 @@ class ClassDynSpecMS(object):
         self.ModelName  = ModelName
         self.TChunkHours=TChunkHours
         self.ColWeights = ColWeights
+        self.DDFParset  = DDFParset
         self.BeamNBand  = BeamNBand
         self.UVRange    = UVRange
         self.Mode="Spec"
