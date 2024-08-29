@@ -26,6 +26,7 @@ import glob
 from astropy.io import fits
 from astropy.wcs import WCS
 from DDFacet.ToolsDir.rad2hmsdms import rad2hmsdms
+from DDFacet.Parset import ReadCFG
 from DDFacet.ToolsDir import ModCoord
 from SkyModel.Array import RecArrayOps
 import DDFacet.Other.MyPickle
@@ -812,17 +813,24 @@ class ClassDynSpecMS(object):
         iMS,iChunk=self.LJob[iJob]
         T0,T1=self.T0s[iChunk],self.T1s[iChunk]
 
+        try:
+            TestParset = ReadCFG.Parset(self.DDFParset)
+            BeamDict = dict(TestParset.value_dict['Beam'])
+        except:
+            print("No Beam parset found, using default", file=log)
+            BeamDict = {"Model":self.BeamModel,
+                    "PhasedArrayMode":"A",
+                    "At":"tessel",
+                    "DtBeamMin":5.,
+                    "NBand":self.BeamNBand,
+                    "CenterNorm":1}
+
         SolsName=self.SolsName
         if SolsName is not None and "[" in SolsName:
             SolsName=SolsName.replace("[","")
             SolsName=SolsName.replace("]","")
             SolsName=SolsName.split(",")
-        GD={"Beam":{"Model":self.BeamModel,
-                    "PhasedArrayMode":"A",
-                    "At":"tessel",
-                    "DtBeamMin":5.,
-                    "NBand":self.BeamNBand,
-                    "CenterNorm":1},
+        GD={"Beam":BeamDict,
             "Image":{"PhaseCenterRADEC":None},
             "DDESolutions":{"DDSols":SolsName,
                             "SolsDir":self.SolsDir,
