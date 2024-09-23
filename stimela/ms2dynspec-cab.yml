@@ -2,7 +2,7 @@ cabs:
   ms2dynspec:
     backend:
       select: native
-    command: python ../scripts/ms2dynspec.py
+    command: python /home/myburgh/repos/DynSpecMS/scripts/ms2dynspec.py
     inputs:
       ms:
         info: "Name of MS file / directory"
@@ -28,7 +28,11 @@ cabs:
         info: "Jones solutions"
       srclist:
         dtype: str
-        info: "List of targets --> 'source_name ra dec'"
+        info: "Path (regex or not) to files containing a list of targets --> 'source_name ra dec'"
+      src-id:
+        dtype: str
+        required: false
+        info: "Source ID's to be processed - if not provided, all contained in srclist are processed"
       FitsCatalog:
         dtype: str 
         info: "FITS catalog. List of targets --> Name,ra,dec,pmra,pmdec,ref_epoch,parallax,Type"
@@ -92,6 +96,11 @@ cabs:
         dtype: int
         info: "Tar final products"
         required: false
+      CacheDir:
+        dtype: str
+        info: "Temporary cache directory"
+        required: false
+        default : "~/_cache_tmp"
       NCPU:
         dtype: int
         info: "NCPU"
@@ -99,6 +108,10 @@ cabs:
       BeamModel:
         dtype: str 
         info: "Beam Model to be used"
+        required: false
+      DDFParset:
+        dtype: str
+        info: "DDF Parset to be used"
         required: false
       BeamNBand:
         dtype: int

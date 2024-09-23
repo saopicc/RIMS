@@ -11,6 +11,7 @@ log=logger.getLogger("ms2dynspec")
 from DDFacet.Other import ModColor
 __version__ = version()
 import numpy as np
+import fnmatch
 SaveFile = "last_dynspec.obj"
 from DynSpecMS import ClassGiveCatalog
 
@@ -69,6 +70,53 @@ from DDFacet.Other import progressbar
 # #    warnings.filterwarnings('error')
 # # ##############################
 # =========================================================================
+
+def read_sources_from_ecsv(file_path):
+    with open(file_path, 'r') as f:
+        lines = f.readlines()
+    
+    # Find the header line containing "id did cid pid x y pos.ra pos.dec"
+    header_index = None
+    for i, line in enumerate(lines):
+        if line.startswith("id did cid pid x y pos.ra pos.dec"):
+            header_index = i
+            break
+    
+    if header_index is None:
+        raise ValueError("Header line not found in the file.")
+    
+    header = lines[header_index].strip().split()
+    source_lines = lines[header_index + 1:]
+    
+    sources = []
+    for line in source_lines:
+        parts = line.strip().split()
+        source_dict = {header[i]: parts[i] for i in range(len(header))}
+        sources.append(source_dict)
+    return sources
+
+def compose_srclist_from_ecsv(file_path, source_id=None):
+    source_dicts = read_sources_from_ecsv(file_path)
+    unique_sources = {}
+    for source_dict in source_dicts:
+        id = source_dict['id']
+        ra = float(source_dict['pos.ra'])
+        dec = float(source_dict['pos.dec'])
+        src_type = source_dict['stokes']
+        unique_sources[id] = (id, ra, dec, src_type)
+
+    if source_id:
+        filtered_sources = {id: source for id, source in unique_sources.items() if fnmatch.fnmatch(id.split(':')[1], source_id)}
+    else:
+        filtered_sources = unique_sources
+    
+    super_name = id.split(':')[0]
+    srclist_path = f'{super_name}_srclist.txt'
+    with open(srclist_path, 'w') as f:
+        for source in filtered_sources.values():
+            f.write(','.join(map(str, source)) + '\n')
+    
+    return srclist_path
 
 def angSep(ra1, dec1, ra2, dec2):
     """ Find the angular separation of two sources (ra# dec# in deg) in deg
@@ -233,6 +281,9 @@ if __name__ == "__main__":
     parser.add_argument("--NMaxTargets", type=int, default=0, help="Read the code", required=False)
 
     args = parser.parse_args()
+
+    if args.srclist.endswith('unified.ecsv') and os.path.isfile(args.srclist):
+        args.srclist = compose_srclist_from_ecsv(args.srclist)
 
     MyPickle.Save(args, SaveFile)
 
