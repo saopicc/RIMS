@@ -340,7 +340,7 @@ class ClassDynSpecMS(object):
             self.DoJonesCorr_kMS=True
 
         self.DoJonesCorr_Beam=False
-        if self.BeamModel:
+        if self.BeamModel or self.DDFParset!="":
             self.DoJonesCorr_Beam=True
 
         AsyncProcessPool.APP=None
