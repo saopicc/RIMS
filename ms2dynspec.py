@@ -229,9 +229,9 @@ if __name__ == "__main__":
     parser.add_argument("--SourceCatOff_FluxMean", type=float, default=0, help="Read the code", required=False)
     parser.add_argument("--SourceCatOff_dFluxMean", type=float, default=0, help="Read the code", required=False)
     parser.add_argument("--NMaxTargets", type=int, default=0, help="Read the code", required=False)
-
+    
     args = parser.parse_args()
-
+    
     MyPickle.Save(args, SaveFile)
 
     ModColor.silent = progressbar.ProgressBar.silent = args.LogBoring

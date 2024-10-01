@@ -602,7 +602,7 @@ class ClassDynSpecMS(object):
                                 "deltaTime":  (ThisTimes[-1] - ThisTimes[0])/3600., # h
                                 "RevertChans": RevertChans,
                                 "Readable":   True}
-                                
+            
             if DicoMSInfos[iMS]["ChanWidth"][0] != self.ChanWidth:
                 raise ValueError("should have the same chan width")
             pBAR.render(iMS+1, self.nMS)
@@ -786,6 +786,7 @@ class ClassDynSpecMS(object):
             SolsName=SolsName.replace("[","")
             SolsName=SolsName.replace("]","")
             SolsName=SolsName.split(",")
+            
         GD={"Beam":{"Model":self.BeamModel,
                     "PhasedArrayMode":"A",
                     "At":"tessel",
