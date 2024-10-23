@@ -340,7 +340,7 @@ class ClassDynSpecMS(object):
             self.DoJonesCorr_kMS=True
 
         self.DoJonesCorr_Beam=False
-        if self.BeamModel or self.DDFParset!="":
+        if self.BeamModel is not None or self.DDFParset!="":
             self.DoJonesCorr_Beam=True
 
         AsyncProcessPool.APP=None
@@ -847,7 +847,7 @@ class ClassDynSpecMS(object):
         
         ms=ClassMS.ClassMS(self.DicoMSInfos[iMS]["MSName"],GD=GD,DoReadData=False,)
         JonesMachine = ClassJones.ClassJones(GD, ms, CacheMode=False)
-        JonesMachine.InitDDESols(DicoDATA)
+        JonesMachine.InitDDESols(DicoDATA, RADEC_ForcedBeamDirs=RADEC_ForcedBeamDirs)
 
 
         # print("================")

@@ -271,7 +271,7 @@ if __name__ == "__main__":
     
     parser.add_argument("--NCPU", type=int, default=0, help="NCPU", required=False)
     parser.add_argument("--BeamModel", type=str, default=None, help="Beam Model to be used", required=False)
-    parser.add_argument("--DDFParset", type=str, default=None, help="DDF Parset to be used", required=False)
+    parser.add_argument("--DDFParset", type=str, default="", help="DDF Parset to be used", required=False)
     parser.add_argument("--BeamNBand", type=int, default=1, help="Number of channels in the Beam Jones matrix", required=False)
     parser.add_argument("--OutDirName", type=str, default="MSName", help="Name of the output directory name", required=False)
     parser.add_argument("--SavePDF", type=int, default=0, help="Save PDF", required=False)
