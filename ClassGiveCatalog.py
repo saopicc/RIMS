@@ -1,5 +1,6 @@
 import numpy as np
 from DDFacet.Other import logger
+from SkyModel.Sky import ModRegFile
 log=logger.getLogger("DynSpecMS")
 from astropy.io import fits
 from astropy.wcs import WCS
@@ -116,7 +117,12 @@ class ClassGiveCatalog():
             if FileCoords is not None and FileCoords!="":
                 print('Adding data from file '+FileCoords, file=log)
                 dtype0=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')]
-                additional=np.genfromtxt(FileCoords,dtype=dtype0,delimiter=",")[()]
+                if ".reg" in FileCoords:
+                    R=ModRegFile.Reg2Np(FileCoords)
+                    R="/data/cyril.tasse/DataDynSpec_Jan23/P151+52/image_full_ampphase_di_m.NS.BrightSel.reg"
+                    stop
+                else:
+                    additional=np.genfromtxt(FileCoords,dtype=dtype0,delimiter=",")[()]
                 if len(additional.shape)==0: additional=additional.reshape((1,))
                 if not additional.shape:
                     # deal with a one-line input file
@@ -129,6 +135,7 @@ class ClassGiveCatalog():
                 
                 for r in additional1:
                     l.append(tuple(r))
+            
 
             
             self.PosArray=np.asarray(l,dtype=dtype)
