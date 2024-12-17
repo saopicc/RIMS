@@ -26,8 +26,6 @@ SaveFile = "last_dynspec.obj"
 =========================================================================
 """
 
-import sys
-import os
 import argparse
 from distutils.spawn import find_executable
 import matplotlib
@@ -38,15 +36,7 @@ rc('font',**{'family':'serif','serif':['Times'],'size':fontsize})
 if find_executable("latex") is not None:
     rc('text', usetex=True)
 
-from pyrap.tables import table
-from astropy.time import Time
-from astropy import units as uni
-from astropy.io import fits
-from astropy import coordinates as coord
-from astropy import constants as const
 import numpy as np
-import glob, os
-import pylab
 from DDFacet.Other import MyPickle
 import logo
 logo.PrintLogo(__version__)

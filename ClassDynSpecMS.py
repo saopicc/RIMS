@@ -5,11 +5,10 @@ from builtins import str
 from builtins import range
 from builtins import object
 from pyrap.tables import table
-import sys
 from DDFacet.Other import logger
 log=logger.getLogger("DynSpecMS")
 from DDFacet.Array import shared_dict
-from DDFacet.Other.AsyncProcessPool import APP, WorkerProcessError
+from DDFacet.Other.AsyncProcessPool import APP
 from DDFacet.Other import Multiprocessing
 from DDFacet.Other import ModColor
 from DDFacet.Other.progressbar import ProgressBar
@@ -17,13 +16,10 @@ import numpy as np
 from astropy.time import Time
 from astropy import constants as const
 import os
-from killMS.Other import reformat
 from DDFacet.Other import AsyncProcessPool
 from dynspecms_version import version
 import glob
 from astropy.io import fits
-from astropy.wcs import WCS
-from DDFacet.ToolsDir.rad2hmsdms import rad2hmsdms
 
 def AngDist(ra0,ra1,dec0,dec1):
     AC=np.arccos
@@ -107,7 +103,7 @@ class ClassDynSpecMS(object):
         self.fMax=float(F[0].header['FRQ-MAX'])
 
         self.NDirSelected=len(ListTargetFits)
-        NOrig=len(ListTargetFits)
+        # NOrig=len(ListTargetFits)
         
         ListOffFits=glob.glob("%s/OFF/*.fits"%self.BaseDirSpecs)
         NOff=len(ListOffFits)
@@ -118,7 +114,7 @@ class ClassDynSpecMS(object):
         self.NDir=self.PosArray.shape[0]
         print("For a total of %i targets"%(self.NDir), file=log)
         self.GOut=np.zeros((self.NDir,self.NChan, self.NTimes, 4), np.complex128)
-        W=fits.open("%s/Weights.fits"%self.BaseDirSpecs)[0].data
+        # W=fits.open("%s/Weights.fits"%self.BaseDirSpecs)[0].data
 
         for iDir,File in enumerate(ListTargetFits+ListOffFits):
             print("  Reading %s"%File, file=log)
@@ -127,7 +123,7 @@ class ClassDynSpecMS(object):
             ra=float(F[0].header['RA_RAD'])
             if ra<0.: ra+=2.*np.pi
             self.PosArray.ra[iDir]=ra
-            dec=self.PosArray.dec[iDir]=float(F[0].header['DEC_RAD'])
+            # dec=self.PosArray.dec[iDir]=float(F[0].header['DEC_RAD'])
             
             # print File,rad2hmsdms(ra,Type="ra").replace(" ",":"),rad2hmsdms(dec,Type="dec").replace(" ",":")
             # if self.PosArray.Type[iDir]=="Off": stop
@@ -567,7 +563,7 @@ class ClassDynSpecMS(object):
 
 
         chfreq=self.DicoMSInfos[iMS]["ChanFreq"].reshape((1,-1,1))
-        chfreq_mean=np.mean(chfreq)
+        # chfreq_mean=np.mean(chfreq)
         # kk  = np.exp( -2.*np.pi*1j* f/const.c.value *(u0*l + v0*m + w0*(n-1)) ) # Phasing term
         #print iTime,iDir
         kk  = np.exp(-2.*np.pi*1j* chfreq/const.c.value *(u0*l + v0*m + w0*(n-1)) ) # Phasing term
@@ -586,7 +582,7 @@ class ClassDynSpecMS(object):
         
         f0, _ = self.Freq_minmax
         
-        DicoMSInfos      = self.DicoMSInfos
+        # DicoMSInfos      = self.DicoMSInfos
 
         _,nch,_=self.DicoDATA["data"].shape
 
@@ -661,5 +657,3 @@ class ClassDynSpecMS(object):
         l = np.cos(dec) * np.sin(ra - self.ra0)
         m = np.sin(dec) * np.cos(self.dec0) - np.cos(dec) * np.sin(self.dec0) * np.cos(ra - self.ra0)
         return l, m
-# =========================================================================
-# =========================================================================

@@ -24,21 +24,12 @@ from __future__ import print_function
 from builtins import str
 import optparse
 import pickle
-import numpy as np
-import numpy as np
 #import pylab
 import os
 from DDFacet.Other import MyLogger
 from DDFacet.Other import MyPickle
-from DDFacet.Other import ModColor
 log=MyLogger.getLogger("ClassInterpol")
 IdSharedMem=str(int(os.getpid()))+"."
-from pyrap.tables import table
-from killMS.Other.ClassTimeIt import ClassTimeIt
-from killMS.Other.least_squares import least_squares
-import copy
-import astropy.io.fits as pyfits
-import glob
 import surveys_db
 
 SaveName="last_InterPol.obj"
