@@ -5,13 +5,10 @@ from builtins import range
 from builtins import object
 from distutils.spawn import find_executable
 from astropy.time import Time
-from astropy import units as uni
 from astropy.io import fits
 from astropy.wcs import WCS
-from astropy import coordinates as coord
-from astropy import constants as const
 import numpy as np
-import glob, os
+import os
 #import pylab
 from DDFacet.Other import logger
 log=logger.getLogger("ClassSaveResults")
@@ -210,7 +207,7 @@ class ClassSaveResults(object):
         # Figure properties
         bigfont   = 8
         smallfont = 6
-        ra, dec = np.degrees(self.DynSpecMS.PosArray.ra[iDir]), np.degrees(self.DynSpecMS.PosArray.dec[iDir])
+        # ra, dec = np.degrees(self.DynSpecMS.PosArray.ra[iDir]), np.degrees(self.DynSpecMS.PosArray.dec[iDir])
         strRA  = rad2hmsdms(self.DynSpecMS.PosArray.ra[iDir], Type="ra").replace(" ", ":")
         strDEC = rad2hmsdms(self.DynSpecMS.PosArray.dec[iDir], Type="dec").replace(" ", ":")
         #freqs = self.DynSpecMS.FreqsAll.ravel() * 1.e-6 # in MHz
@@ -276,7 +273,7 @@ class ClassSaveResults(object):
 
             mean = np.median(Gn) 
             #spec = pylab.pcolormesh(times, freqs, Gn, cmap='bone_r', vmin=0, vmax=mean+10*sig, rasterized=True)
-            spec = pylab.imshow(Gn, interpolation="nearest", cmap='bone_r', vmin=mean-3*sig, vmax=mean+10*sig, extent=(times[0],times[-1],self.DynSpecMS.fMin*1.e-6,self.DynSpecMS.fMax*1.e-6), rasterized=True) 
+            # spec = pylab.imshow(Gn, interpolation="nearest", cmap='bone_r', vmin=mean-3*sig, vmax=mean+10*sig, extent=(times[0],times[-1],self.DynSpecMS.fMin*1.e-6,self.DynSpecMS.fMax*1.e-6), rasterized=True) 
             axspec.axis('tight')
             cbar = pylab.colorbar(fraction=0.046, pad=0.01)
             cbar.ax.tick_params(labelsize=smallfont)
@@ -290,12 +287,12 @@ class ClassSaveResults(object):
             # ---- Dynamic spectra V  ----
             axspec = pylab.subplot2grid((5, 2), (4, 0), colspan=2)
             Gn   = self.DynSpecMS.GOut[iDir,:, :, 3].real
-            AG=np.abs(Gn)
+            # AG=np.abs(Gn)
             sig  = GiveMAD(Gn)
 
             mean = np.median(Gn) 
             #spec = pylab.pcolormesh(times, freqs, Gn, cmap='bone_r', vmin=mean-3*sig, vmax=mean+10*sig, rasterized=True)
-            spec = pylab.imshow(Gn, interpolation="nearest", cmap='bone_r', vmin=mean-5*sig, vmax=mean+5*sig, extent=(times[0],times[-1],self.DynSpecMS.fMin*1.e-6,self.DynSpecMS.fMax*1.e-6), rasterized=True) 
+            # spec = pylab.imshow(Gn, interpolation="nearest", cmap='bone_r', vmin=mean-5*sig, vmax=mean+5*sig, extent=(times[0],times[-1],self.DynSpecMS.fMin*1.e-6,self.DynSpecMS.fMax*1.e-6), rasterized=True) 
             axspec.axis('tight')
             cbar = pylab.colorbar(fraction=0.046, pad=0.01)
             cbar.ax.tick_params(labelsize=smallfont)
@@ -341,16 +338,16 @@ class ClassSaveResults(object):
             # ax3.set_xlim([freqs.ravel()[0], freqs.ravel()[-1]])
 
             # ---- Image ----
-            npix = 1000
+            # npix = 1000
             header = fits.getheader(image)
-            data   = self.ImageIData # A VERIFIER
+            # data   = self.ImageIData # A VERIFIER
             f,p,_,_=self.im.toworld([0,0,0,0])
             _,_,xc,yc=self.im.topixel([f,p,self.DynSpecMS.PosArray.dec[iDir], self.DynSpecMS.PosArray.ra[iDir]])
             yc,xc=int(xc),int(yc)
 
             wcs    = WCS(header).celestial
-            CDEL   = wcs.wcs.cdelt
-            pos_ra_pix, pos_dec_pix = wcs.wcs_world2pix(np.degrees(self.DynSpecMS.PosArray.ra[iDir]), np.degrees(self.DynSpecMS.PosArray.dec[iDir]), 1)
+            # CDEL   = wcs.wcs.cdelt
+            # pos_ra_pix, pos_dec_pix = wcs.wcs_world2pix(np.degrees(self.DynSpecMS.PosArray.ra[iDir]), np.degrees(self.DynSpecMS.PosArray.dec[iDir]), 1)
             #cenpixra, cenpixdec = wcs.wcs_world2pix(np.degrees(self.DynSpecMS.PosArray.ra[iDir]), np.degrees(self.DynSpecMS.PosArray.dec[iDir]), 1)
             #print("central pixels {}, {}".format(cenpixx, cenpixy))
             #print>>log, "central pixels {}, {}".format(cenpixx, cenpixy)
@@ -414,8 +411,8 @@ class ClassSaveResults(object):
             _,_,xc,yc=self.imV.topixel([f,p,self.DynSpecMS.PosArray.dec[iDir], self.DynSpecMS.PosArray.ra[iDir]])
             yc,xc=int(xc),int(yc)
             wcs    = WCS(headerv).celestial
-            CDEL   = wcs.wcs.cdelt
-            pos_ra_pix, pos_dec_pix = wcs.wcs_world2pix(np.degrees(self.DynSpecMS.PosArray.ra[iDir]), np.degrees(self.DynSpecMS.PosArray.dec[iDir]), 1)
+            # CDEL   = wcs.wcs.cdelt
+            # pos_ra_pix, pos_dec_pix = wcs.wcs_world2pix(np.degrees(self.DynSpecMS.PosArray.ra[iDir]), np.degrees(self.DynSpecMS.PosArray.dec[iDir]), 1)
             nn=self.ImageVData.shape[-1]
             #boxv = int(box / np.abs(wcs.wcs.cdelt[0]) * np.abs(CDEL[0]))
             boxv=int(abs((BoxArcSec/3600.)/wcs.wcs.cdelt[0]))
@@ -446,7 +443,7 @@ class ClassSaveResults(object):
                 std=GiveMAD(DataBoxed)
                 vMin, vMax    = (-5.*std, 30*std)
                 ax1 = pylab.subplot2grid((5, 2), (0, 1), rowspan=2, projection=wcs)
-                im = pylab.imshow(DataBoxed, interpolation="nearest", cmap='bone_r', aspect="auto", vmin=vMin, vmax=vMax, origin='lower', rasterized=True)
+                # im = pylab.imshow(DataBoxed, interpolation="nearest", cmap='bone_r', aspect="auto", vmin=vMin, vmax=vMax, origin='lower', rasterized=True)
                 cbar = pylab.colorbar()
                 ax1.set_xlabel(r'RA (J2000)')
                 raax = ax1.coords[0]
