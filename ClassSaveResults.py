@@ -188,6 +188,8 @@ class ClassSaveResults(object):
         prihdr.set('OBS-STOP', self.DynSpecMS.tStop, 'Observation end date')
         prihdr.set('RA_RAD', ra, 'Pixel right ascension')
         prihdr.set('DEC_RAD', dec, 'Pixel declination')
+        prihdr.set('OBSTRY_NAME', self.DynSpecMS.TELESCOPE_NAME, 'Telescope Name')
+        
         name=self.DynSpecMS.PosArray.Name[iDir]
         if not isinstance(name,str):
             # it must be a byte string, this must be Python 3, act accordingly

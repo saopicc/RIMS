@@ -5,6 +5,10 @@ log=logger.getLogger("DynSpecMS")
 from astropy.io import fits
 from astropy.wcs import WCS
 import random
+from astropy.io import ascii
+import astropy.coordinates as coord
+import astropy.units as u
+
 
 def AngDist(ra0,ra1,dec0,dec1):
     AC=np.arccos
@@ -140,6 +144,15 @@ class ClassGiveCatalog():
             
             self.PosArray=np.asarray(l,dtype=dtype)
             self.DoProperMotionCorr=True
+        elif FileCoords is not None:
+            tbl = ascii.read(FileCoords)
+            ra = coord.Angle(tbl["ra"], unit=u.hour)
+            dec = coord.Angle(tbl["dec"], unit=u.degree)
+            self.PosArray=np.zeros((len(tbl),),dtype=dtype)
+            self.PosArray["ra"]=ra.degree
+            self.PosArray["dec"]=dec.degree
+            self.PosArray["Name"][:]=tbl["Name"][:]
+
         else:
             
             #FileCoords="Transient_LOTTS.csv"
@@ -157,7 +170,7 @@ class ClassGiveCatalog():
         self.PosArray=self.PosArray.view(np.recarray)
         self.PosArray.ra*=np.pi/180.
         self.PosArray.dec*=np.pi/180.
-        
+
         Radius=self.Radius
         self.NOrig=self.PosArray.Name.shape[0]
         Dist=AngDist(self.ra0,self.PosArray.ra,self.dec0,self.PosArray.dec)
