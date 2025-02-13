@@ -575,8 +575,12 @@ class ClassDynSpecMS(object):
             tp = table("%s::POLARIZATION"%MSName, ack=False)
             npol=tp.getcol("NUM_CORR").flat[0]
             CorrType=tp.getcol("CORR_TYPE").ravel().tolist()
-            if CorrType!=[9,10,11,12]:
-                raise ValueError("Pols should be XX, XY, YX, YY")
+            if CorrType==[9,10,11,12]:
+                self.slicePol=slice(None)
+            elif CorrType==[9,12]:
+                self.slicePol=slice(0,4,3)
+            else:
+                raise ValueError("Pols should be XX, XY, YX, YY or XX, YY")
             tp.close()
 
             chFreq=tf.getcol("CHAN_FREQ").ravel()
@@ -1246,9 +1250,9 @@ class ClassDynSpecMS(object):
             # ds[ind]/=dcorrs[ind]
             T.timeit("Sum")
 
-            self.DicoGrids["GridLinPol"][iDir,ich0:ich0+nch, iTimeGrid, :] = ds
-            self.DicoGrids["GridWeight"][iDir,ich0:ich0+nch, iTimeGrid, :] = np.float32(ws)
-            self.DicoGrids["GridWeight2"][iDir,ich0:ich0+nch, iTimeGrid, :] = np.float32(w2s)
+            self.DicoGrids["GridLinPol"][iDir,ich0:ich0+nch, iTimeGrid, self.slicePol] = ds
+            self.DicoGrids["GridWeight"][iDir,ich0:ich0+nch, iTimeGrid, self.slicePol] = np.float32(ws)
+            self.DicoGrids["GridWeight2"][iDir,ich0:ich0+nch, iTimeGrid, self.slicePol] = np.float32(w2s)
             T.timeit("Write")
             
         T.timeit("rest")
