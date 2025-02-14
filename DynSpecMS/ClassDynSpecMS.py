@@ -229,7 +229,7 @@ class ClassDynSpecMS(object):
                                               self.FileCoords)
         self.PosArray=CGC.giveCat(SubSet=self.SubSet)
         DoProperMotionCorr=CGC.DoProperMotionCorr
-
+        
         if DoProperMotionCorr:
             Lra,Ldec=[],[]
             log.print("Do proper motion corrrection")
@@ -542,6 +542,12 @@ class ClassDynSpecMS(object):
             if self.ra0<0.: self.ra0+=2.*np.pi
         tField.close()
 
+        tObs = table("%s::OBSERVATION"%MSName, ack=False)
+        self.TELESCOPE_NAME=tObs.getcol("TELESCOPE_NAME")[0]
+        tObs.close()
+
+
+        
         self.CoordMachine = ModCoord.ClassCoordConv(self.ra0, self.dec0)
 
         pBAR = ProgressBar(Title="Reading metadata")
@@ -601,8 +607,12 @@ class ClassDynSpecMS(object):
             tp = table("%s::POLARIZATION"%MSName, ack=False)
             npol=tp.getcol("NUM_CORR").flat[0]
             CorrType=tp.getcol("CORR_TYPE").ravel().tolist()
-            if CorrType!=[9,10,11,12]:
-                raise ValueError("Pols should be XX, XY, YX, YY")
+            if CorrType==[9,10,11,12]:
+                self.slicePol=slice(None)
+            elif CorrType==[9,12]:
+                self.slicePol=slice(0,4,3)
+            else:
+                raise ValueError("Pols should be XX, XY, YX, YY or XX, YY")
             tp.close()
 
             chFreq=tf.getcol("CHAN_FREQ").ravel()
@@ -634,7 +644,7 @@ class ClassDynSpecMS(object):
                                 "deltaTime":  (ThisTimes[-1] - ThisTimes[0])/3600., # h
                                 "RevertChans": RevertChans,
                                 "Readable":   True}
-                                
+            
             if DicoMSInfos[iMS]["ChanWidth"][0] != self.ChanWidth:
                 raise ValueError("should have the same chan width")
             pBAR.render(iMS+1, self.nMS)
@@ -664,7 +674,7 @@ class ClassDynSpecMS(object):
 
         
         f0, f1           = self.Freq_minmax
-        self.NChan       = int((f1 - f0)/self.ChanWidth) + 1
+        self.NChan       = int(round((f1 - f0)/self.ChanWidth)) + 1
 
         # Fill properties
         
@@ -992,18 +1002,19 @@ class ClassDynSpecMS(object):
         self.Finalise()
 
     def processJob(self,iJob):
-        #SERIAL=True
+        SERIAL=True
+        SERIAL=False
         if iJob==0:
             self.APP.runJob("LoadMS_%i"%(iJob), 
                        self.LoadMS,
                        args=(iJob,),
-                       io=0)#,serial=True)
+                       io=0,serial=SERIAL)
 
         if iJob!=len(self.LJob)-1:
             self.APP.runJob("LoadMS_%i"%(iJob+1), 
                        self.LoadMS,
                        args=(iJob+1,),
-                       io=0)
+                            io=0,serial=SERIAL)
             
         
         # print(rep)
@@ -1019,7 +1030,7 @@ class ClassDynSpecMS(object):
         for iTime in range(NTimes):
             self.APP.runJob("Stack_SingleTime:%i_%d"%(iJob,iTime), 
                        self.Stack_SingleTimeAllDir,
-                       args=(iJob,iTime,))#,serial=True)
+                       args=(iJob,iTime,),serial=SERIAL)
             
         self.APP.awaitJobResults("Stack_SingleTime:%i_*"%iJob, progress="Append MS %i"%iMS)
         
@@ -1279,9 +1290,9 @@ class ClassDynSpecMS(object):
             # ds[ind]/=dcorrs[ind]
             T.timeit("Sum")
 
-            self.DicoGrids["GridLinPol"][iDir,ich0:ich0+nch, iTimeGrid, :] = ds
-            self.DicoGrids["GridWeight"][iDir,ich0:ich0+nch, iTimeGrid, :] = np.float32(ws)
-            self.DicoGrids["GridWeight2"][iDir,ich0:ich0+nch, iTimeGrid, :] = np.float32(w2s)
+            self.DicoGrids["GridLinPol"][iDir,ich0:ich0+nch, iTimeGrid, self.slicePol] = ds
+            self.DicoGrids["GridWeight"][iDir,ich0:ich0+nch, iTimeGrid, self.slicePol] = np.float32(ws)
+            self.DicoGrids["GridWeight2"][iDir,ich0:ich0+nch, iTimeGrid, self.slicePol] = np.float32(w2s)
             T.timeit("Write")
             
         T.timeit("rest")

@@ -1,9 +1,14 @@
 import numpy as np
 from DDFacet.Other import logger
+from SkyModel.Sky import ModRegFile
 log=logger.getLogger("DynSpecMS")
 from astropy.io import fits
 from astropy.wcs import WCS
 import random
+from astropy.io import ascii
+import astropy.coordinates as coord
+import astropy.units as u
+
 
 def AngDist(ra0,ra1,dec0,dec1):
     AC=np.arccos
@@ -116,7 +121,12 @@ class ClassGiveCatalog():
             if FileCoords is not None and FileCoords!="":
                 print('Adding data from file '+FileCoords, file=log)
                 dtype0=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')]
-                additional=np.genfromtxt(FileCoords,dtype=dtype0,delimiter=",")[()]
+                if ".reg" in FileCoords:
+                    R=ModRegFile.Reg2Np(FileCoords)
+                    R="/data/cyril.tasse/DataDynSpec_Jan23/P151+52/image_full_ampphase_di_m.NS.BrightSel.reg"
+                    stop
+                else:
+                    additional=np.genfromtxt(FileCoords,dtype=dtype0,delimiter=",")[()]
                 if len(additional.shape)==0: additional=additional.reshape((1,))
                 if not additional.shape:
                     # deal with a one-line input file
@@ -129,10 +139,20 @@ class ClassGiveCatalog():
                 
                 for r in additional1:
                     l.append(tuple(r))
+            
 
             
             self.PosArray=np.asarray(l,dtype=dtype)
             self.DoProperMotionCorr=True
+        elif FileCoords is not None:
+            tbl = ascii.read(FileCoords)
+            ra = coord.Angle(tbl["ra"], unit=u.hour)
+            dec = coord.Angle(tbl["dec"], unit=u.degree)
+            self.PosArray=np.zeros((len(tbl),),dtype=dtype)
+            self.PosArray["ra"]=ra.degree
+            self.PosArray["dec"]=dec.degree
+            self.PosArray["Name"][:]=tbl["Name"][:]
+
         else:
             
             #FileCoords="Transient_LOTTS.csv"
@@ -150,7 +170,7 @@ class ClassGiveCatalog():
         self.PosArray=self.PosArray.view(np.recarray)
         self.PosArray.ra*=np.pi/180.
         self.PosArray.dec*=np.pi/180.
-        
+
         Radius=self.Radius
         self.NOrig=self.PosArray.Name.shape[0]
         Dist=AngDist(self.ra0,self.PosArray.ra,self.dec0,self.PosArray.dec)
