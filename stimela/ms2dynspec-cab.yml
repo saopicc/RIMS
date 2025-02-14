@@ -2,7 +2,7 @@ cabs:
   ms2dynspec:
     backend:
       select: native
-    command: python /home/myburgh/repos/DynSpecMS/scripts/ms2dynspec.py
+    command: ms2dynspec
     inputs:
       ms:
         info: "Name of MS file / directory"

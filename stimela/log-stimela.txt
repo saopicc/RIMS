@@ -1,0 +1,2 @@
+2024-06-13 12:49:49 STIMELA INFO: saving config dependencies to ./stimela.config.deps
+2024-06-13 12:49:49 STIMELA ERROR: mkdynspec-recipe.yml doesn't exist

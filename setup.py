@@ -3,14 +3,15 @@ from setuptools import setup, find_packages
 setup(
     name='DynSpecMS',
     version='0.1.0',
-    packages=find_packages(),
+    packages=find_packages(include=['DynSpecMS', 'DynSpecMS.*']),
     include_package_data=True,
     install_requires=[
-        # list of packages your project depends on
+        'dask[array]<=2023.5.0',  # Add this line
+        # other dependencies
     ],
     entry_points={
         'console_scripts': [
-            # allows command line execution of your functions
+            'ms2dynspec=DynSpecMS.scripts.ms2dynspec:main',  # Correct this line
         ],
     },
     author='Cyril Tasse',
