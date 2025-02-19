@@ -7,6 +7,7 @@ setup(
     include_package_data=True,
     install_requires=[
         'dask[array]<=2023.5.0',  # Add this line
+        'psutil<=5.9.3'
         # other dependencies
     ],
     entry_points={
