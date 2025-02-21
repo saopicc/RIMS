@@ -12,7 +12,7 @@ setup(
     ],
     entry_points={
         'console_scripts': [
-            'ms2dynspec=DynSpecMS.scripts.ms2dynspec:main',  # Correct this line
+            'ms2dynspec=DynSpecMS.scripts.ms2dynspec:main', 
         ],
     },
     author='Cyril Tasse',

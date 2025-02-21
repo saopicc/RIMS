@@ -131,7 +131,7 @@ def angSep(ra1, dec1, ra2, dec2):
 
 
 
-def main(args=None, messages=[]):
+def ms2dynspec(args=None, messages=[]):
     if args is None:
         args = MyPickle.Load(SaveFile)
     if args.UseRandomSeed!=0:
@@ -240,7 +240,7 @@ def main(args=None, messages=[]):
 
 # =========================================================================
 # =========================================================================
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--ms", type=str, help="Name of MS file / directory", required=False)
     parser.add_argument("--data", type=str, default="CORRECTED", help="Name of DATA column", required=False)
@@ -289,4 +289,7 @@ if __name__ == "__main__":
 
     ModColor.silent = progressbar.ProgressBar.silent = args.LogBoring
 
-    main(args)
+    ms2dynspec(args)
+
+if __name__ == "__main__":
+    main()
