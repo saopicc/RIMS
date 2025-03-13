@@ -475,8 +475,10 @@ class ClassDynSpecMS(object):
             while NDone<NOff:
                 # dx=np.random.rand(1)[0]*self.Radius*np.pi/180
                 # dy=np.random.rand(1)[0]*self.Radius*np.pi/180
-                dx=(np.random.rand(1)[0]-0.5)*2*self.Radius*np.pi/180
+                
+                dx=(np.random.rand(1)[0]-0.5)*2*self.Radius*np.pi/180/np.cos(self.dec0)
                 dy=(np.random.rand(1)[0]-0.5)*2*self.Radius*np.pi/180
+                
                 ra=self.ra0+dx
                 dec=self.dec0+dy
                 d=AngDist(self.ra0,ra,self.dec0,dec)
@@ -485,6 +487,7 @@ class ClassDynSpecMS(object):
                     CatOff.dec[NDone]=dec
                     CatOff.Name[NDone]="Off%4.4i"%NDone
                     NDone+=1
+                    
         return CatOff
 
     def ReadMSInfos(self):
@@ -940,7 +943,6 @@ class ClassDynSpecMS(object):
     #     self.Finalise()
 
     def StackAll(self):
-
             
         #import DynSpecMS.testLibBeam
         T0s,T1s=self.T0s,self.T1s
@@ -1121,6 +1123,7 @@ class ClassDynSpecMS(object):
             for ipol in range(npol):
                 kk[:,:,ipol]=kkk[:,:,0]
             T.timeit("kkk copy")
+            
             # #ind=np.where((A0s==0)&(A1s==10))[0]
             # ind=np.where((A0s!=1000))[0]
             # import pylab
