@@ -12,6 +12,7 @@ from DDFacet.Other import ModColor
 __version__ = version()
 import numpy as np
 import fnmatch
+import os
 SaveFile = "last_dynspec.obj"
 from DynSpecMS import ClassGiveCatalog
 
@@ -188,12 +189,11 @@ def ms2dynspec(args=None, messages=[]):
             SubSet=(iChunk,NChunk)
         for ik,k in enumerate(sorted(list(DT.keys()))):
             MSList=DT[k]
-            DIRNAME="%s"%(args.OutDirName)
+            DIRNAME=os.path.abspath(args.OutDirName)
             if len(DT)>1:
-                DIRNAME+="_T%i"%ik
+                DIRNAME = os.path.join(DIRNAME,f"_T{ik}")
             if NChunk>1:
-                DIRNAME+="_RandChunk%i"%iChunk
-
+                DIRNAME = os.path.join(DIRNAME,f"_RandChunk{iChunk}")
                 
             D = ClassDynSpecMS(ListMSName=MSList, 
                                ColName=args.data, ModelName=args.model, 
