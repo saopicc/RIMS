@@ -64,10 +64,10 @@ class ClassSaveResults(object):
         self.CatFlux=self.CatFlux.view(np.recarray)
         
         os.system("rm -rf %s"%self.DIRNAME)
-        os.system("mkdir -p %s/TARGET"%self.DIRNAME)
-        os.system("mkdir -p %s/OFF"%self.DIRNAME)
-        os.system("mkdir -p %s/TARGET_W"%self.DIRNAME)
-        os.system("mkdir -p %s/OFF_W"%self.DIRNAME)
+        os.system(f"mkdir -p {os.path.join(self.DIRNAME,"TARGET")}")
+        os.system(f"mkdir -p {os.path.join(self.DIRNAME, "OFF")}")
+        os.system(f"mkdir -p {os.path.join(self.DIRNAME,"TARGET_W")}")
+        os.system(f"mkdir -p {os.path.join(self.DIRNAME,"OFF_W")}")
         #os.system("mkdir -p %s/PNG"%self.DIRNAME)
 
     def tarDirectory(self):
