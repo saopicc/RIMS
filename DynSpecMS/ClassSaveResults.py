@@ -224,6 +224,7 @@ class ClassSaveResults(object):
             Gn = self.DynSpecMS.GOut[iDir,:, :, :].real
 
         hdu = fits.PrimaryHDU(np.rollaxis(Gn, 2), header=prihdr)
+        print(f"Fits being written: {fitsname}")
 
         hdu.writeto(fitsname, overwrite=True)
 
