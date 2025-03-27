@@ -36,7 +36,7 @@ class ClassSaveResults(object):
         if self.DIRNAME is None or self.DIRNAME=="MSName":
             self.DIRNAME="DynSpecs_%s"%self.DynSpecMS.OutName
         else:
-            self.DIRNAME="%s_DynSpecs_%s"%(self.DIRNAME,self.DynSpecMS.OutName)
+            self.DIRNAME=os.path.join(self.DIRNAME,"_DynSpecs_%s"%(self.DynSpecMS.OutName))
             
             
         #image  = self.DynSpecMS.Image
