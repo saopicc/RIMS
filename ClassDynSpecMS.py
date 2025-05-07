@@ -943,13 +943,13 @@ class ClassDynSpecMS(object):
     #     self.Finalise()
 
     def StackAll(self):
-            
-        #import DynSpecMS.testLibBeam
-        T0s,T1s=self.T0s,self.T1s
+        # import DynSpecMS.testLibBeam
         
+        T0s,T1s=self.T0s,self.T1s
                 
         for iJob in range(len(self.LJob)):
             self.processJob(iJob)
+            
             # iMS,iChunk=LJob[iJob]
             # rep=self.LoadMS(iJob)
             # if rep=="NotRead": continue
