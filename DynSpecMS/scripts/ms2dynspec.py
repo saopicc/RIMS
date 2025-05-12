@@ -226,10 +226,10 @@ def ms2dynspec(args=None, messages=[]):
         
             SaveMachine=ClassSaveResults.ClassSaveResults(D,DIRNAME=DIRNAME)
             if D.Mode=="Spec":
+                SaveMachine.SaveCatalog()
                 SaveMachine.WriteFits()
                 if args.SavePDF:
                     SaveMachine.PlotSpec()
-                SaveMachine.SaveCatalog()
                 if args.DoTar: SaveMachine.tarDirectory()
             else:
                 SaveMachine.SaveCatalog()

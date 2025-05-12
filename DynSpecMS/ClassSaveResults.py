@@ -119,6 +119,7 @@ class ClassSaveResults(object):
         FName="%s/%s.reg"%(self.DIRNAME,self.DynSpecMS.OutName)
         ra,dec=self.DynSpecMS.PosArray.ra,self.DynSpecMS.PosArray.dec
         Type=self.DynSpecMS.PosArray.Type
+        Name=self.DynSpecMS.PosArray.Name
         
         log.print(("Writting target reg file: %s"%FName))
         f=open(FName,"w")
@@ -142,7 +143,7 @@ class ClassSaveResults(object):
                 color="green"
             f.write("""circle(%s,%s,4.465" # color=%s\n"""%(sRA0,sDEC0,color))
             f.write("""circle(%s,%s,19.962" # color=%s\n"""%(sRA0,sDEC0,color))
-            f.write("""point(%s,%s # point=cross 10 color=%s\n"""%(sRA0,sDEC0,color))
+            f.write("""point(%s,%s # point=cross 10 color=%s text={%s} \n"""%(sRA0,sDEC0,color,Name[iTarget].decode("ascii")))
             # iFacet,iTessel=self.DynSpecMS.PosArray.iFacet[iTarget],self.DynSpecMS.PosArray.iTessel[iTarget]
             # f.write("""point(%s,%s # text={[F%i_S%i]} point=cross 5 color=%s\n"""%(sRA0,sDEC0,iFacet,iTessel,color))
         f.close()
