@@ -9,9 +9,7 @@ import sys
 from DDFacet.Other import logger
 log=logger.getLogger("DynSpecMS")
 from DDFacet.Array import shared_dict
-from DDFacet.Other import AsyncProcessPool
     
-from DDFacet.Other import Multiprocessing
 from DDFacet.Other import ModColor
 from DDFacet.Other.progressbar import ProgressBar
 import numpy as np
@@ -20,7 +18,6 @@ from DDFacet.Other import ClassTimeIt
 from astropy import constants as const
 import os
 from killMS.Other import reformat
-from DDFacet.Other import AsyncProcessPool
 from .dynspecms_version import version
 import glob
 from astropy.io import fits
@@ -37,6 +34,20 @@ from Polygon.Utils import convexHull
 import DDFacet.Other.ClassJonesDomains
 import psutil
 from . import ClassGiveCatalog
+import nvtx
+import jax
+import jax.numpy as jnp
+
+# List all available devices
+devices = jax.devices()
+gpu_devices = [d for d in devices if d.platform == "gpu"]
+
+if gpu_devices:
+    device = gpu_devices[0]
+    print("Using GPU:", device)
+else:
+    device = jax.devices("cpu")[0]
+    print("Using CPU:", device)
 
 def print_memory_info():
     mem_info = psutil.virtual_memory()
@@ -51,6 +62,7 @@ def compute_memory_usage_gb(shape):
     bytes_total = num_elements * bytes_per_element
     return bytes_total / (1024 ** 3)  # convert bytes to GB
 
+@nvtx.annotate("AngDist", color="green")
 def AngDist(ra0,ra1,dec0,dec1):
     AC=np.arccos
     C=np.cos
@@ -77,6 +89,7 @@ def StrToList(s):
     return Ls
 
 class ClassDynSpecMS(object):
+    @nvtx.annotate("__init__ ClassDynSpecMS", color="green")
     def __init__(self,
                  ListMSName=None,
                  ColName="DATA",
@@ -157,6 +170,7 @@ class ClassDynSpecMS(object):
             self.OutName    = self.BaseDirSpecs.split("_")[-1]
             self.InitFromSpecs()
 
+    @nvtx.annotate("InitFromSpecs ClassDynSpecMS", color="green")
     def InitFromSpecs(self):
         print("Initialising from precomputed spectra", file=log)
         ListTargetFits=glob.glob("%s/TARGET/*.fits"%self.BaseDirSpecs)#[0:1]
@@ -218,6 +232,7 @@ class ClassDynSpecMS(object):
                 self.PosArray.Type[iDir]=PosArrayTarget.Type[iS]
                 self.PosArray.Name[iDir]=PosArrayTarget.Name[iS]
                 
+    @nvtx.annotate("InitFromCatalog ClassDynSpecMS", color="green")
     def InitFromCatalog(self):
 
         FileCoords=self.FileCoords
@@ -342,25 +357,9 @@ class ClassDynSpecMS(object):
         self.DoJonesCorr_Beam=False
         if self.BeamModel is not None or self.DDFParset!="":
             self.DoJonesCorr_Beam=True
-
-        AsyncProcessPool.APP=None
-        # AsyncProcessPool.init(ncpu=self.NCPU,
-        #                       num_io_processes=1,
-        #                       affinity="disable")
-        AsyncProcessPool._init_default()
-        AsyncProcessPool.init((self.NCPU or psutil.cpu_count(logical=False)-2),
-                              affinity=0,
-                              num_io_processes=1,
-                              verbose=0)
-        self.APP=AsyncProcessPool.APP
-    
-        self.APP.registerJobHandlers(self)
-        self.APP.startWorkers()
-
-        
         
 
-        
+    @nvtx.annotate("GiveOffPosArray ClassDynSpecMS", color="green")
     def GiveOffPosArray(self,NOff):
         print("Making random off catalog with %i directions"%NOff, file=log)
         CatOff=np.zeros((NOff,),self.PosArray.dtype)
@@ -522,6 +521,7 @@ class ClassDynSpecMS(object):
                     
         return CatOff
 
+    @nvtx.annotate("ReadMSInfos ClassDynSpecMS", color="green")
     def ReadMSInfos(self):
         DicoMSInfos = {}
 
@@ -705,7 +705,7 @@ class ClassDynSpecMS(object):
                 LJob.append((iMS,iChunk))
         self.LJob=LJob
 
-    
+    @nvtx.annotate("LoadMS ClassDynSpecMS", color="green")
     def LoadMS(self,iJob):
         iMS,iChunk=self.LJob[iJob]
         T0,T1=self.T0s[iChunk],self.T1s[iChunk]
@@ -819,6 +819,7 @@ class ClassDynSpecMS(object):
         if self.DoJonesCorr_kMS or self.DoJonesCorr_Beam:
             self.setJones(DicoDATA)
 
+    @nvtx.annotate("setJones ClassDynSpecMS", color="green")
     def setJones(self,DicoDATA):
         from DDFacet.Data import ClassJones
         from DDFacet.Data import ClassMS
@@ -980,6 +981,7 @@ class ClassDynSpecMS(object):
     #                 self.Stack_SingleTimeDir(iTime,iDir)
     #     self.Finalise()
 
+    @nvtx.annotate("StackAll ClassDynSpecMS", color="green")
     def StackAll(self):
         # import DynSpecMS.testLibBeam
         
@@ -1003,27 +1005,20 @@ class ClassDynSpecMS(object):
        
         self.Finalise()
 
+    @nvtx.annotate("processJob ClassDynSpecMS", color="green")
     def processJob(self,iJob):
         SERIAL=True
         SERIAL=False
-        if iJob==0:
-            self.APP.runJob("LoadMS_%i"%(iJob), 
-                       self.LoadMS,
-                       args=(iJob,),
-                       io=0,serial=SERIAL)
-
-        if iJob!=len(self.LJob)-1:
-            self.APP.runJob("LoadMS_%i"%(iJob+1), 
-                       self.LoadMS,
-                       args=(iJob+1,),
-                            io=0,serial=SERIAL)
-            
-        
-        # print(rep)
-        rep=self.APP.awaitJobResults("LoadMS_%i"%(iJob))
-        if rep=="NotRead": 
-            self.delShm(iJob)
-            return
+        iJobs = []
+        iTimes = []
+        for iJob in range(len(self.LJob)):
+            iMS, iChunk = self.LJob[iJob]
+            NTimes = self.DicoMSInfos[iMS]["times"].size
+            for iTime in range(NTimes):
+                iJobs.append(iJob)
+                iTimes.append(iTime)
+        iJobs = jnp.array(iJobs)
+        iTimes = jnp.array(iTimes)
 
         # NTimes=self.NTimesGrid
         iMS,iChunk=self.LJob[iJob]
@@ -1038,13 +1033,14 @@ class ClassDynSpecMS(object):
         
         self.delShm(iJob)
 
+    @nvtx.annotate("delShm ClassDynSpecMS", color="green")
     def delShm(self,iJob):
         ShDict_dat = shared_dict.attach("DATA_%i"%(iJob))
         ShDict_dat.delete()
         ShDict_dico = shared_dict.attach("DicoJones_%i"%(iJob))
         ShDict_dico.delete()
         
-        
+    @nvtx.annotate("killWorkers ClassDynSpecMS", color="green")
     def killWorkers(self):
         print("Killing workers", file=log)
         self.APP.terminate()
@@ -1054,7 +1050,7 @@ class ClassDynSpecMS(object):
         ShDict_grids.delete()
 
 
-
+    @nvtx.annotate("Finalise ClassDynSpecMS", color="green")
     def Finalise(self):
 
         G=self.DicoGrids["GridLinPol"]
@@ -1079,6 +1075,7 @@ class ClassDynSpecMS(object):
         
     #     self.Stack_SingleTimeDir(iTime)
         
+    @nvtx.annotate("Stack_SingleTimeAllDir ClassDynSpecMS", color="green")
     def Stack_SingleTimeAllDir(self,iJob,iTime):
         iMS,iChunk=self.LJob[iJob]
         DicoDATA=shared_dict.attach("DATA_%i"%(iJob))
@@ -1094,10 +1091,6 @@ class ClassDynSpecMS(object):
         indR=indRow.reshape((indRow.size,1,1))
         nRowOut=indRow.size
         indArr=nch*npol*np.int64(indR)+npol*np.int64(indCh)+np.int64(indPol)
-        
-        #indRow = np.where(DicoDATA["times"]>0)[0]
-        #f   = DicoDATA["flag"][indRow, :, :]
-        #d   = DicoDATA["data"][indRow, :, :]
 
         T=ClassTimeIt.ClassTimeIt("SingleTimeAllDir")
         T.disable()
@@ -1105,13 +1098,7 @@ class ClassDynSpecMS(object):
         f   = np.array((DicoDATA["flag"].flat[indArr.flat[:]]).reshape((nRowOut,nch,npol))).copy()
         T.timeit("first")
         
-        # for i in range(10):
-        #     d   = (DicoDATA["data"].flat[indArr.flat[:]]).reshape((nRowOut,nch,npol)).copy()
-        #     f   = (DicoDATA["flag"].flat[indArr.flat[:]]).reshape((nRowOut,nch,npol)).copy()
-        #     T.timeit("first %i"%i)
-        
         nrow,nch,_=d.shape
-        #weights   = (DicoDATA["weights"][indRow, :]).reshape((nrow,nch,1))
         
         indArr=nch*np.int64(indR)+np.int64(indCh)
         weights   = np.array((DicoDATA["weights"].flat[indArr.flat[:]]).reshape((nRowOut,nch,1))).copy()
@@ -1123,30 +1110,24 @@ class ClassDynSpecMS(object):
         w0  = DicoDATA["w"][indRow].reshape((-1,1,1)).copy()
         T.timeit("second")
 
-
         chfreq=np.array(self.DicoMSInfos[iMS]["ChanFreq"].reshape((1,-1,1))).copy()
+        chfreq_jax = jnp.array(chfreq)
         chfreq_mean=np.mean(chfreq)
-        # kk  = np.exp( -2.*np.pi*1j* f/const.c.value *(u0*l + v0*m + w0*(n-1)) ) # Phasing term
-        #print iTime,iDir
         ChanFreqs=np.array(self.DicoMSInfos[iMS]["ChanFreq"][0]).copy()
         
         iTimeGrid=np.argmin(np.abs(self.timesGrid-self.DicoMSInfos[iMS]["times"][iTime]))
         
-        dcorr=d.copy()
+        dcorr = jnp.array(d)
         f0, _ = self.Freq_minmax
         ich0 = int( (ChanFreqs - f0)/self.ChanWidth )
-        OneMinusF=(1-f).copy()
         
-        W=np.zeros((nRowOut,nch,npol),np.float32)
-        for ipol in range(npol):
-            W[:,:,ipol]=weights[:,:,0]
+        W=jnp.zeros((nRowOut,nch,npol),dtype=jnp.float32)
+        weights_jax = jnp.array(weights)
+        W = W.at[:, :, :].set(weights_jax[:, :, 0:1])
         W[f]=0
-        Wc=W.copy()
-        # weights=weights*np.ones((1,1,npol))
-        # W=weights
+        Wc=jnp.array(W)
 
-        
-        kk=np.zeros_like(d)
+        kk=jnp.zeros_like(d)
         T.timeit("third")
         for iDir in range(self.NDir):
             ra=self.PosArray.ra[iDir]
@@ -1157,36 +1138,14 @@ class ClassDynSpecMS(object):
 
         
             T.timeit("lmn")
-            kkk  = np.exp(-2.*np.pi*1j* chfreq/const.c.value *(u0*l + v0*m + w0*(n-1)) ) # Phasing term
+            kkk  = jnp.exp(-2.*np.pi*1j* chfreq_jax/const.c.value *(u0*l + v0*m + w0*(n-1)) ) # Phasing term
             T.timeit("kkk")
 
-            for ipol in range(npol):
-                kk[:,:,ipol]=kkk[:,:,0]
+            kk = kk.at[:, :, :].set(kkk[:, :, 0])
             T.timeit("kkk copy")
-            
-            # #ind=np.where((A0s==0)&(A1s==10))[0]
-            # ind=np.where((A0s!=1000))[0]
-            # import pylab
-            # pylab.ion()
-            # pylab.clf()
-            # pylab.plot(np.angle(d[ind,2,0]))
-            # pylab.plot(np.angle(kk[ind,2,0].conj()))
-            # pylab.draw()
-            # pylab.show(False)
-            # pylab.pause(0.1)
     
-            
-            
-            #DicoMSInfos      = self.DicoMSInfos
-    
-            #_,nch,_=DicoDATA["data"].shape
-    
-            dcorr[:]=d[:]
-            W=Wc.copy()
-            #W2=Wc.copy()
-            dcorr*=W
-            wdcorr=np.ones(dcorr.shape,np.float64)
-            #kk=kk*np.ones((1,1,npol))
+            W=Wc
+            dcorr = dcorr * W
             
             T.timeit("corr")
             
@@ -1221,76 +1180,21 @@ class ClassDynSpecMS(object):
                     J0 = DicoJones['G'][iTJones, iFJones, A0s, iDJones, 0, 0]
                     J1 = DicoJones['G'][iTJones, iFJones, A1s, iDJones, 0, 0]
 
-                    #JJ0=self.DicoJones['G'][iTJones, iFJones, A0s, :, 0, 0]
-                    #JJ1=self.DicoJones['G'][iTJones, iFJones, A1s, :, 0, 0]
-                    #indZeroJones,=np.where((JJ0=0)|(JJ1==0))
-                    
-
-                    J0 = J0.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
-                    J1 = J1.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
-                    T1.timeit("[%i] read J0J1"%iFJones)
-                    dcorr[:,indCh,:] = J0.conj() * dcorr[:,indCh,:] * J1
-                    #wdcorr[:,indCh,:] *= (np.abs(J0) * np.abs(J1))**2
-                    #print(iDir,iFJones,np.count_nonzero(J0==0),np.count_nonzero(J1==0))
-                    #dcorr[:,indCh,:] = 1./J0 * dcorr[:,indCh,:] * 1./J1.conj()
-                    #W[:,indCh,:]*=(np.abs(J0) * np.abs(J1))
-                    W[:,indCh,:]*=(np.abs(J0) * np.abs(J1))**2
-                    T1.timeit("[%i] apply "%iFJones)
-
-
-                # iFJones=np.argmin(np.abs(chfreq_mean-self.DicoJones['FreqDomains_mean']))
-                # # construct corrected visibilities
-                # J0 = self.DicoJones['G'][iTJones, iFJones, A0s, iDJones, 0, 0]
-                # J1 = self.DicoJones['G'][iTJones, iFJones, A1s, iDJones, 0, 0]
-                # J0 = J0.reshape((-1, 1, 1))*np.ones((1, nch, 1))
-                # J1 = J1.reshape((-1, 1, 1))*np.ones((1, nch, 1))
-                # dcorr = J0.conj() * dcorr * J1
-    
-            # T.timeit("corr kMS")
-            # if self.DoJonesCorr_Beam:
-            #     DicoJones_Beam=shared_dict.attach("DicoJones_Beam_%i"%iJob)
-            #     DicoJones_Beam.reload()
-            #     tm = DicoJones_Beam['tm']
-            #     # Time slot for the solution
-            #     iTJones=np.argmin(np.abs(tm-self.timesGrid[iTime]))
-            #     iDJones=np.argmin(AngDist(ra,DicoJones_Beam['ra'],dec,DicoJones_Beam['dec']))
-            #     _,nchJones,_,_,_,_=DicoJones_Beam['G'].shape
-            #     for iFJones in range(nchJones):
-            #         nu0,nu1=DicoJones_Beam['FreqDomains'][iFJones]
-            #         fData=self.DicoMSInfos[iMS]["ChanFreq"].ravel()
-            #         indCh=np.where((fData>=nu0) & (fData<nu1))[0]
-            #         #iFJones=np.argmin(np.abs(chfreq_mean-self.DicoJones_Beam['FreqDomains_mean']))
-            #         # construct corrected visibilities
-            #         J0 = DicoJones_Beam['G'][iTJones, iFJones, A0s, iDJones, 0, 0]
-            #         J1 = DicoJones_Beam['G'][iTJones, iFJones, A1s, iDJones, 0, 0]
-            #         J0 = J0.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
-            #         J1 = J1.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
-            #         dcorr[:,indCh,:] = J0.conj() * dcorr[:,indCh,:] * J1
-            #         #wdcorr[:,indCh,:] *= (np.abs(J0) * np.abs(J1))**2
-            #         W[:,indCh,:]*=(np.abs(J0) * np.abs(J1))**2
-            #         #dcorr[:,indCh,:] = 1./J0 * dcorr[:,indCh,:] * 1./J1.conj()
-                    
-    
+                    J0 = J0.reshape((-1, 1, 1))
+                    J0_jax = jnp.array(J0) * jnp.ones((1, indCh.size, 1), dtype=jnp.complex64)
+                    J1 = J1.reshape((-1, 1, 1))
+                    J1_jax = jnp.array(J1) * jnp.ones((1, indCh.size, 1), dtype=jnp.complex64)
+                    T1.timeit("[%i] read J0J1" % iFJones)
+                    dcorr = dcorr.at[:, indCh, :].set(J0.conj() * dcorr[:, indCh, :] * J1)
+                    W = W.at[:, indCh, :].multiply((jnp.abs(J0_jax) * jnp.abs(J1_jax)) ** 2)
+                    T1.timeit("[%i] apply " % iFJones)
                 
             T.timeit("corr Beam")
-            #ds=np.sum(d*kk, axis=0) # without Jones
+            dcorr = dcorr*kk
+            ds = jnp.sum(dcorr, axis=0) #with Jones
+            ws = jnp.sum(W, axis=0)
+            w2s = jnp.sum(W**2, axis=0)
             
-            #ds = np.sum(dcorr * kk*weights, axis=0) # with Jones
-            #dcorr.flat[:]*=kk.flat[:]
-            #dcorr.flat[:]*=W.flat[:]
-            dcorr*=kk
-            #dcorr=dcorr*kk
-            ds = np.sum(dcorr, axis=0) # with Jones
-            #W*=wdcorr
-            ws = np.sum(W, axis=0)
-            w2s = np.sum(W**2, axis=0)
-            
-            # wdcorr*=W
-            # dcorrs=np.sum(wdcorr, axis=0)
-            # ind=np.where(ws!=0)
-            # dcorrs[ind]/=ws[ind]
-            # ind=np.where(dcorrs!=0)
-            # ds[ind]/=dcorrs[ind]
             T.timeit("Sum")
 
             self.DicoGrids["GridLinPol"][iDir,ich0:ich0+nch, iTimeGrid, self.slicePol] = ds
@@ -1301,14 +1205,14 @@ class ClassDynSpecMS(object):
         T.timeit("rest")
 
 
-
+    @nvtx.annotate("NormJones ClassDynSpecMS", color="green")
     def NormJones(self, G):
         print("  Normalising Jones matrices by the amplitude", file=log)
         G[G != 0.] /= np.abs(G[G != 0.])
         return G
         
 
-
+    @nvtx.annotate("radec2lm ClassDynSpecMS", color="green")
     def radec2lm(self, ra, dec,ra0,dec0):
         # ra and dec must be in radians
         l = np.cos(dec) * np.sin(ra - ra0)
@@ -1331,6 +1235,7 @@ import astropy.units as u
 
 # In terms of a pipeline I would have an if statement here that if pmra is a real value, then do the following, 
 # otherwise just extract at the reported ra,dec position
+@nvtx.annotate("ProperMotionCorrection", color="green")
 def ProperMotionCorrection(ra,dec,pmra,pmdec,ref_epoch,parallax,time70):
     #log.print('Performing proper motion corrections...')
     

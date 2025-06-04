@@ -62,6 +62,7 @@ from DynSpecMS import ClassSaveResults
 from DDFacet.Data.ClassMS import expandMSList
 from DDFacet.Other import ModColor
 from DDFacet.Other import progressbar
+import nvtx
 
 # # ##############################
 # # Catch numpy warning
@@ -72,7 +73,7 @@ from DDFacet.Other import progressbar
 # #    warnings.filterwarnings('error')
 # # ##############################
 # =========================================================================
-
+@nvtx.annotate("read_sources_from_ecsv", color="blue")
 def read_sources_from_ecsv(file_path):
     with open(file_path, 'r') as f:
         lines = f.readlines()
@@ -97,6 +98,7 @@ def read_sources_from_ecsv(file_path):
         sources.append(source_dict)
     return sources
 
+@nvtx.annotate("compose_srclist_from_ecsv", color="blue")
 def compose_srclist_from_ecsv(file_path, source_id=None):
     source_dicts = read_sources_from_ecsv(file_path)
     unique_sources = {}
@@ -120,6 +122,7 @@ def compose_srclist_from_ecsv(file_path, source_id=None):
     
     return srclist_path
 
+@nvtx.annotate("angSep", color="blue")
 def angSep(ra1, dec1, ra2, dec2):
     """ Find the angular separation of two sources (ra# dec# in deg) in deg
         (Stolen from the LOFAR scripts), works --> compared with astropy (A. Loh)
@@ -132,7 +135,7 @@ def angSep(ra1, dec1, ra2, dec2):
     return np.degrees(np.arccos(temp))
 
 
-
+@nvtx.annotate("ms2dynspec", color="blue")
 def ms2dynspec(args=None, messages=[]):
     if args is None:
         args = MyPickle.Load(SaveFile)
@@ -241,6 +244,7 @@ def ms2dynspec(args=None, messages=[]):
 
 # =========================================================================
 # =========================================================================
+@nvtx.annotate("ms2dynspec main", color="blue")
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--ms", type=str, help="Name of MS file / directory", required=False)
