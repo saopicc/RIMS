@@ -44,7 +44,8 @@ if find_executable("latex") is not None:
     rc('text', usetex=True)
 from DDFacet.Other import Multiprocessing
 
-from pyrap.tables import table
+import dask.array as da
+from daskms import xds_from_table, xds_to_table
 from astropy.time import Time
 from astropy import units as uni
 from astropy.io import fits
@@ -146,14 +147,14 @@ def ms2dynspec(args=None, messages=[]):
     if args.SplitNonContiguous:
         DT={}
         for MSName in MSList:
-            t=table(MSName,ack=False)
-            Times=np.unique(t.getcol("TIME"))
+            t = xds_from_table(MSName)
+            Times=np.unique((t[0]["TIME"].values))
             T=(Times.min(),Times.max())
             if T not in DT.keys():
                 DT[T]=[MSName]
             else:
                 DT[T].append(MSName)
-            t.close()
+            del t
 
         if len(DT)>1:
             log.print(ModColor.Str("FOUND %i time periods"%len(DT)))
@@ -162,11 +163,11 @@ def ms2dynspec(args=None, messages=[]):
 
     L_radec=[]
     for MSName in MSList:
-        tField = table("%s::FIELD"%MSName, ack=False)
-        ra0, dec0 = tField.getcol("PHASE_DIR").ravel()
+        tField = xds_from_table(f"{MSName}::FIELD")
+        ra0, dec0 = np.ravel(tField[0]["PHASE_DIR"].values)
         if ra0<0.: ra0+=2.*np.pi
         L_radec.append((ra0,dec0))            
-        tField.close()
+        del tField
     L_radec=list(set(L_radec))
     if len(L_radec)>1: stop
     ra0,dec0=L_radec[0]

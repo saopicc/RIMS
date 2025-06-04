@@ -771,7 +771,7 @@ class ClassDynSpecMS(object):
             nrow,nch,_=data.shape
             weights=np.ones((nrow,nch),np.float32)
 
-        flag=np.zeros((NROW,nch,npol),np.bool)
+        flag=np.zeros((NROW,nch,npol),bool)
         t.getcolnp("FLAG",flag,ROW0,NROW)
         if RevertChans: flag=flag[:,::-1]
             

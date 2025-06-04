@@ -6,7 +6,9 @@ setup(
     packages=find_packages(include=['DynSpecMS', 'DynSpecMS.*']),
     include_package_data=True,
     install_requires=[
-        'dask[array]<=2023.5.0',  # Add this line
+        'dask[array]<=2023.5.0',
+        'dask-ms==0.2.21',
+        'xarray==2024.7.0',
         'psutil<=5.9.3'
         # other dependencies
     ],
