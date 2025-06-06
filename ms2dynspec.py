@@ -178,8 +178,8 @@ def main(args=None, messages=[]):
         
             SaveMachine=ClassSaveResults.ClassSaveResults(D,DIRNAME=DIRNAME)
             if D.Mode=="Spec":
-                SaveMachine.SaveCatalog()
                 SaveMachine.WriteFits()
+                SaveMachine.SaveCatalog()
                 if args.SavePDF:
                     SaveMachine.PlotSpec()
                 if args.DoTar: SaveMachine.tarDirectory()
