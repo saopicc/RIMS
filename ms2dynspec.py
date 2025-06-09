@@ -120,9 +120,13 @@ def main(args=None, messages=[]):
         if ra0<0.: ra0+=2.*np.pi
         L_radec.append((ra0,dec0))            
         tField.close()
-    L_radec=list(set(L_radec))
-    if len(L_radec)>1: stop
-    ra0,dec0=L_radec[0]
+    L_radec_s=list(set(L_radec))
+    if len(L_radec_s)>1:
+        print('Issue with pointing directions --- dumping MS and direction info')
+        for i,MSName in enumerate(MSList):
+            print(MSName,L_radec[i])
+        raise RuntimeError('There is more than one pointing direction in the MS list, cannot proceed')
+    ra0,dec0=L_radec_s[0]
 
     NChunk=1
     if args.NMaxTargets!=0:
