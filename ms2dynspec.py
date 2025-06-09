@@ -113,20 +113,28 @@ def main(args=None, messages=[]):
     else:
         DT={0:MSList}
 
-    L_radec=[]
+    # Modified 09/06/25: very small differences in RA/Dec are acceptable
+    field_ras=[]
+    field_decs=[]
     for MSName in MSList:
         tField = table("%s::FIELD"%MSName, ack=False)
         ra0, dec0 = tField.getcol("PHASE_DIR").ravel()
         if ra0<0.: ra0+=2.*np.pi
-        L_radec.append((ra0,dec0))            
+        field_ras.append(ra0)
+        field_decs.append(dec)
         tField.close()
-    L_radec_s=list(set(L_radec))
-    if len(L_radec_s)>1:
+    field_ras=np.array(field_ras)
+    field_decs=np.array(field_decs)
+    ra_different=np.any(np.abs(field_ras-np.mean(field_ras))>1e-7)
+    dec_different=np.any(np.abs(field_decs-np.mean(field_decs))>1e-7)
+        
+    if ra_different or dec_different:
         print('Issue with pointing directions --- dumping MS and direction info')
         for i,MSName in enumerate(MSList):
-            print(MSName,L_radec[i])
+            print(MSName,field_ras[i],field_decs[i])
         raise RuntimeError('There is more than one pointing direction in the MS list, cannot proceed')
-    ra0,dec0=L_radec_s[0]
+    ra0=np.mean(field_ras)
+    dec0=np.mean(field_decs)
 
     NChunk=1
     if args.NMaxTargets!=0:
