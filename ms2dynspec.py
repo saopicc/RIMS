@@ -121,7 +121,7 @@ def main(args=None, messages=[]):
         ra0, dec0 = tField.getcol("PHASE_DIR").ravel()
         if ra0<0.: ra0+=2.*np.pi
         field_ras.append(ra0)
-        field_decs.append(dec)
+        field_decs.append(dec0)
         tField.close()
     field_ras=np.array(field_ras)
     field_decs=np.array(field_decs)
