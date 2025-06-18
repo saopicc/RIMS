@@ -114,6 +114,7 @@ def main(args=None, messages=[]):
         DT={0:MSList}
 
     # Modified 09/06/25: very small differences in RA/Dec are acceptable
+    # add a tolerance argument so this isn't hard-wired in
     field_ras=[]
     field_decs=[]
     for MSName in MSList:
@@ -125,8 +126,8 @@ def main(args=None, messages=[]):
         tField.close()
     field_ras=np.array(field_ras)
     field_decs=np.array(field_decs)
-    ra_different=np.any(np.abs(field_ras-np.mean(field_ras))>1e-7)
-    dec_different=np.any(np.abs(field_decs-np.mean(field_decs))>1e-7)
+    ra_different=np.any(np.abs(field_ras-np.mean(field_ras))>args.tolerance*np.pi/(180*3600))
+    dec_different=np.any(np.abs(field_decs-np.mean(field_decs))>args.tolerance*np.pi/(180*3600))
         
     if ra_different or dec_different:
         print('Issue with pointing directions --- dumping MS and direction info')
@@ -216,6 +217,7 @@ if __name__ == "__main__":
     parser.add_argument("--srclist", type=str, default="", help="List of targets --> 'source_name ra dec'")
     parser.add_argument("--FitsCatalog", type=str, default="", help="FITS catalog. List of targets --> Name,ra,dec,pmra,pmdec,ref_epoch,parallax,Type")
     parser.add_argument("--rad", type=float, default=3., help="Radius of the field", required=False)
+    parser.add_argument("--tolerance", type=float, default=0.1, help="Measurement set offset tolerance in arcsec", required=False)
     parser.add_argument("--noff", type=int, default=-1, help="Number of off sources. -1 means twice as much as there are sources in the catalog", required=False)
     parser.add_argument("--nMinOffPerFacet", type=int, default=5, help="Minimum of off sources per facet if DicoFacet is specified.", required=False)
     parser.add_argument("--DicoFacet", type=str, default="", help="DDFacet DicoFacet file.", required=False)
