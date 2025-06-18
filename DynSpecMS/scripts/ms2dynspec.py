@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 from __future__ import division
 from __future__ import absolute_import
 import matplotlib
@@ -13,6 +11,8 @@ log=logger.getLogger("ms2dynspec")
 from DDFacet.Other import ModColor
 __version__ = version()
 import numpy as np
+import fnmatch
+import os
 SaveFile = "last_dynspec.obj"
 from DynSpecMS import ClassGiveCatalog
 
@@ -44,7 +44,8 @@ if find_executable("latex") is not None:
     rc('text', usetex=True)
 from DDFacet.Other import Multiprocessing
 
-from pyrap.tables import table
+import dask.array as da
+from daskms import xds_from_table, xds_to_table
 from astropy.time import Time
 from astropy import units as uni
 from astropy.io import fits
@@ -72,6 +73,53 @@ from DDFacet.Other import progressbar
 # # ##############################
 # =========================================================================
 
+def read_sources_from_ecsv(file_path):
+    with open(file_path, 'r') as f:
+        lines = f.readlines()
+    
+    # Find the header line containing "id did cid pid x y pos.ra pos.dec"
+    header_index = None
+    for i, line in enumerate(lines):
+        if line.startswith("id did cid pid x y pos.ra pos.dec"):
+            header_index = i
+            break
+    
+    if header_index is None:
+        raise ValueError("Header line not found in the file.")
+    
+    header = lines[header_index].strip().split()
+    source_lines = lines[header_index + 1:]
+    
+    sources = []
+    for line in source_lines:
+        parts = line.strip().split()
+        source_dict = {header[i]: parts[i] for i in range(len(header))}
+        sources.append(source_dict)
+    return sources
+
+def compose_srclist_from_ecsv(file_path, source_id=None):
+    source_dicts = read_sources_from_ecsv(file_path)
+    unique_sources = {}
+    for source_dict in source_dicts:
+        id = source_dict['id']
+        ra = float(source_dict['pos.ra'])
+        dec = float(source_dict['pos.dec'])
+        src_type = source_dict['stokes']
+        unique_sources[id] = (id, ra, dec, src_type)
+
+    if source_id:
+        filtered_sources = {id: source for id, source in unique_sources.items() if fnmatch.fnmatch(id.split(':')[1], source_id)}
+    else:
+        filtered_sources = unique_sources
+    
+    super_name = id.split(':')[0]
+    srclist_path = f'{super_name}_srclist.txt'
+    with open(srclist_path, 'w') as f:
+        for source in filtered_sources.values():
+            f.write(','.join(map(str, source)) + '\n')
+    
+    return srclist_path
+
 def angSep(ra1, dec1, ra2, dec2):
     """ Find the angular separation of two sources (ra# dec# in deg) in deg
         (Stolen from the LOFAR scripts), works --> compared with astropy (A. Loh)
@@ -85,7 +133,7 @@ def angSep(ra1, dec1, ra2, dec2):
 
 
 
-def main(args=None, messages=[]):
+def ms2dynspec(args=None, messages=[]):
     if args is None:
         args = MyPickle.Load(SaveFile)
     if args.UseRandomSeed!=0:
@@ -99,14 +147,14 @@ def main(args=None, messages=[]):
     if args.SplitNonContiguous:
         DT={}
         for MSName in MSList:
-            t=table(MSName,ack=False)
-            Times=np.unique(t.getcol("TIME"))
+            t = xds_from_table(MSName)
+            Times=np.unique((t[0]["TIME"].values))
             T=(Times.min(),Times.max())
             if T not in DT.keys():
                 DT[T]=[MSName]
             else:
                 DT[T].append(MSName)
-            t.close()
+            del t
 
         if len(DT)>1:
             log.print(ModColor.Str("FOUND %i time periods"%len(DT)))
@@ -118,8 +166,8 @@ def main(args=None, messages=[]):
     field_ras=[]
     field_decs=[]
     for MSName in MSList:
-        tField = table("%s::FIELD"%MSName, ack=False)
-        ra0, dec0 = tField.getcol("PHASE_DIR").ravel()
+        tField = xds_from_table(f"{MSName}::FIELD")
+        ra0, dec0 = np.ravel(tField[0]["PHASE_DIR"].values)
         if ra0<0.: ra0+=2.*np.pi
         field_ras.append(ra0)
         field_decs.append(dec0)
@@ -155,12 +203,11 @@ def main(args=None, messages=[]):
             SubSet=(iChunk,NChunk)
         for ik,k in enumerate(sorted(list(DT.keys()))):
             MSList=DT[k]
-            DIRNAME="%s"%(args.OutDirName)
+            DIRNAME=os.path.abspath(args.OutDirName)
             if len(DT)>1:
-                DIRNAME+="_T%i"%ik
+                DIRNAME = os.path.join(DIRNAME,f"_T{ik}")
             if NChunk>1:
-                DIRNAME+="_RandChunk%i"%iChunk
-
+                DIRNAME = os.path.join(DIRNAME,f"_RandChunk{iChunk}")
                 
             D = ClassDynSpecMS(ListMSName=MSList, 
                                ColName=args.data, ModelName=args.model, 
@@ -177,10 +224,12 @@ def main(args=None, messages=[]):
                                SolsDir=args.SolsDir,NCPU=args.NCPU,
                                BaseDirSpecs=args.BaseDirSpecs,
                                BeamModel=args.BeamModel,
+                               DDFParset=args.DDFParset,
                                BeamNBand=args.BeamNBand,
                                SourceCatOff_FluxMean=args.SourceCatOff_FluxMean,
                                SourceCatOff_dFluxMean=args.SourceCatOff_dFluxMean,
                                SourceCatOff=args.SourceCatOff,
+                               CacheDir=args.CacheDir,
                                options=args,
                                SubSet=SubSet)
     
@@ -205,7 +254,7 @@ def main(args=None, messages=[]):
 
 # =========================================================================
 # =========================================================================
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--ms", type=str, help="Name of MS file / directory", required=False)
     parser.add_argument("--data", type=str, default="CORRECTED", help="Name of DATA column", required=False)
@@ -233,9 +282,11 @@ if __name__ == "__main__":
     parser.add_argument("--UseGaiaDB", type=str, default=None, help="Use Gaia DB for target list", required=False)
     parser.add_argument("--DoTar", type=int, default=1, help="Tar final products", required=False)
     parser.add_argument("--UseRandomSeed", type=int, default=0, help="Use random seed", required=False)
+    parser.add_argument("--CacheDir", type=str, default="", help="Use specific cache directory for caching. Default is colocated with ms.", required=False)
     
     parser.add_argument("--NCPU", type=int, default=0, help="NCPU", required=False)
     parser.add_argument("--BeamModel", type=str, default=None, help="Beam Model to be used", required=False)
+    parser.add_argument("--DDFParset", type=str, default="", help="DDF Parset to be used", required=False)
     parser.add_argument("--BeamNBand", type=int, default=1, help="Number of channels in the Beam Jones matrix", required=False)
     parser.add_argument("--OutDirName", type=str, default="MSName", help="Name of the output directory name", required=False)
     parser.add_argument("--SavePDF", type=int, default=0, help="Save PDF", required=False)
@@ -245,9 +296,15 @@ if __name__ == "__main__":
     parser.add_argument("--NMaxTargets", type=int, default=0, help="Read the code", required=False)
     
     args = parser.parse_args()
-    
+
+    if args.srclist.endswith('unified.ecsv') and os.path.isfile(args.srclist):
+        args.srclist = compose_srclist_from_ecsv(args.srclist)
+
     MyPickle.Save(args, SaveFile)
 
     ModColor.silent = progressbar.ProgressBar.silent = args.LogBoring
 
-    main(args)
+    ms2dynspec(args)
+
+if __name__ == "__main__":
+    main()

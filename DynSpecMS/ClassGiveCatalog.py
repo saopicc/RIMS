@@ -144,14 +144,6 @@ class ClassGiveCatalog():
             
             self.PosArray=np.asarray(l,dtype=dtype)
             self.DoProperMotionCorr=True
-        elif FileCoords is not None:
-            tbl = ascii.read(FileCoords)
-            ra = coord.Angle(tbl["ra"], unit=u.hour)
-            dec = coord.Angle(tbl["dec"], unit=u.degree)
-            self.PosArray=np.zeros((len(tbl),),dtype=dtype)
-            self.PosArray["ra"]=ra.degree
-            self.PosArray["dec"]=dec.degree
-            self.PosArray["Name"][:]=tbl["Name"][:]
 
         else:
             

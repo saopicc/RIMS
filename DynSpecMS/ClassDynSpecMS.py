@@ -26,6 +26,7 @@ import glob
 from astropy.io import fits
 from astropy.wcs import WCS
 from DDFacet.ToolsDir.rad2hmsdms import rad2hmsdms
+from DDFacet.Parset import ReadCFG
 from DDFacet.ToolsDir import ModCoord
 from SkyModel.Array import RecArrayOps
 import DDFacet.Other.MyPickle
@@ -36,6 +37,19 @@ from Polygon.Utils import convexHull
 import DDFacet.Other.ClassJonesDomains
 import psutil
 from . import ClassGiveCatalog
+
+def print_memory_info():
+    mem_info = psutil.virtual_memory()
+    print(f"Total memory: {mem_info.total / (1024 ** 3):.2f} GB")
+    print(f"Available memory: {mem_info.available / (1024 ** 3):.2f} GB")
+    print(f"Used memory: {mem_info.used / (1024 ** 3):.2f} GB")
+    print(f"Memory percent used: {mem_info.percent}%")
+
+def compute_memory_usage_gb(shape):
+    num_elements = np.prod(shape)
+    bytes_per_element = np.dtype(np.complex128).itemsize
+    bytes_total = num_elements * bytes_per_element
+    return bytes_total / (1024 ** 3)  # convert bytes to GB
 
 def AngDist(ra0,ra1,dec0,dec1):
     AC=np.arccos
@@ -79,10 +93,12 @@ class ClassDynSpecMS(object):
                  ImageV=None,
                  SolsDir=None,
                  NCPU=1,
-                 BaseDirSpecs=None,BeamModel=None,BeamNBand=1,
+                 BaseDirSpecs=None,BeamModel=None,
+                 DDFParset="",BeamNBand=1,
                  SourceCatOff=None,
                  SourceCatOff_FluxMean=None,
                  SourceCatOff_dFluxMean=None,
+                 CacheDir="",
                  options=None,SubSet=None):
 
         self.options=options
@@ -98,12 +114,14 @@ class ClassDynSpecMS(object):
         self.SourceCatOff_FluxMean=SourceCatOff_FluxMean
         self.SourceCatOff_dFluxMean=SourceCatOff_dFluxMean
         self.SourceCatOff=SourceCatOff
+        self.CacheDir=CacheDir
         self.DicoFacet=DicoFacet
         self.ColName    = ColName
         if ModelName=="None": ModelName=None
         self.ModelName  = ModelName
         self.TChunkHours=TChunkHours
         self.ColWeights = ColWeights
+        self.DDFParset  = DDFParset
         self.BeamNBand  = BeamNBand
         self.UVRange    = UVRange
         self.Mode="Spec"
@@ -305,10 +323,23 @@ class ClassDynSpecMS(object):
         #self.DicoDATA = shared_dict.create("DATA")
         self.DicoGrids = shared_dict.create("Grids")
 
-        self.DicoGrids["GridLinPol"] = np.zeros((self.NDir,self.NChan, self.NTimesGrid, 4), np.complex128)
-        self.DicoGrids["GridWeight"] = np.zeros((self.NDir,self.NChan, self.NTimesGrid, 4), np.complex128)
-        self.DicoGrids["GridWeight2"] = np.zeros((self.NDir,self.NChan, self.NTimesGrid, 4), np.complex128)
+        print_memory_info()
 
+        try:
+            shape = (self.NDir, self.NChan, self.NTimesGrid, 4)
+            print(f"Allocating GridLinPol with shape {shape}, memory usage: {compute_memory_usage_gb(shape)} GB")
+            self.DicoGrids["GridLinPol"] = np.zeros(shape, np.complex128)
+
+            shape = (self.NDir, self.NChan, self.NTimesGrid, 4)
+            print(f"Allocating GridWeight with shape {shape}, memory usage: {compute_memory_usage_gb(shape)} GB")
+            self.DicoGrids["GridWeight"] = np.zeros(shape, np.complex128)
+
+            shape = (self.NDir, self.NChan, self.NTimesGrid, 4)
+            print(f"Allocating GridWeight2 with shape {shape}, memory usage: {compute_memory_usage_gb(shape)} GB")
+            self.DicoGrids["GridWeight2"] = np.zeros(shape, np.complex128)
+        except Exception as e:
+            print(f"Error during allocation: {e}")
+            raise
 
         
 
@@ -318,13 +349,14 @@ class ClassDynSpecMS(object):
             self.DoJonesCorr_kMS=True
 
         self.DoJonesCorr_Beam=False
-        if self.BeamModel:
+        if self.BeamModel is not None or self.DDFParset!="":
             self.DoJonesCorr_Beam=True
 
         AsyncProcessPool.APP=None
         # AsyncProcessPool.init(ncpu=self.NCPU,
         #                       num_io_processes=1,
         #                       affinity="disable")
+        AsyncProcessPool._init_default()
         AsyncProcessPool.init((self.NCPU or psutil.cpu_count(logical=False)-2),
                               affinity=0,
                               num_io_processes=1,
@@ -748,7 +780,7 @@ class ClassDynSpecMS(object):
             nrow,nch,_=data.shape
             weights=np.ones((nrow,nch),np.float32)
 
-        flag=np.zeros((NROW,nch,npol),np.bool)
+        flag=np.zeros((NROW,nch,npol),bool)
         t.getcolnp("FLAG",flag,ROW0,NROW)
         if RevertChans: flag=flag[:,::-1]
             
@@ -803,24 +835,30 @@ class ClassDynSpecMS(object):
         iMS,iChunk=self.LJob[iJob]
         T0,T1=self.T0s[iChunk],self.T1s[iChunk]
 
+        try:
+            TestParset = ReadCFG.Parset(self.DDFParset)
+            BeamDict = dict(TestParset.value_dict['Beam'])
+        except:
+            print("No Beam parset found, using default", file=log)
+            BeamDict = {"Model":self.BeamModel,
+                    "PhasedArrayMode":"A",
+                    "At":"tessel",
+                    "DtBeamMin":5.,
+                    "NBand":self.BeamNBand,
+                    "CenterNorm":1}
+
         SolsName=self.SolsName
         if SolsName is not None and "[" in SolsName:
             SolsName=SolsName.replace("[","")
             SolsName=SolsName.replace("]","")
             SolsName=SolsName.split(",")
-            
-        GD={"Beam":{"Model":self.BeamModel,
-                    "PhasedArrayMode":"A",
-                    "At":"tessel",
-                    "DtBeamMin":5.,
-                    "NBand":self.BeamNBand,
-                    "CenterNorm":1},
+        GD={"Beam":BeamDict,
             "Image":{"PhaseCenterRADEC":None},
             "DDESolutions":{"DDSols":SolsName,
                             "SolsDir":self.SolsDir,
                             "GlobalNorm":None,
                             "JonesNormList":"AP"},
-            "Cache":{"Dir":""}
+            "Cache":{"Dir":self.CacheDir}
             }
         print("Reading Jones matrices solution file:", file=log)
         
@@ -831,7 +869,7 @@ class ClassDynSpecMS(object):
         
         ms=ClassMS.ClassMS(self.DicoMSInfos[iMS]["MSName"],GD=GD,DoReadData=False,)
         JonesMachine = ClassJones.ClassJones(GD, ms, CacheMode=False)
-        JonesMachine.InitDDESols(DicoDATA,RADEC_ForcedBeamDirs=RADEC_ForcedBeamDirs)
+        JonesMachine.InitDDESols(DicoDATA, RADEC_ForcedBeamDirs=RADEC_ForcedBeamDirs)
 
 
         # print("================")
@@ -1010,8 +1048,10 @@ class ClassDynSpecMS(object):
         self.delShm(iJob)
 
     def delShm(self,iJob):
-        shared_dict.delDict("DATA_%i"%(iJob))
-        shared_dict.delDict("DicoJones_%i"%(iJob))
+        ShDict_dat = shared_dict.attach("DATA_%i"%(iJob))
+        ShDict_dat.delete()
+        ShDict_dico = shared_dict.attach("DicoJones_%i"%(iJob))
+        ShDict_dico.delete()
         
         
     def killWorkers(self):
@@ -1019,8 +1059,8 @@ class ClassDynSpecMS(object):
         self.APP.terminate()
         self.APP.shutdown()
         del(self.DicoGrids)
-        shared_dict.delDict("Grids")
-        #Multiprocessing.cleanupShm()
+        ShDict_grids = shared_dict.attach("Grids")
+        ShDict_grids.delete()
 
 
 

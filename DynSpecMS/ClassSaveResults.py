@@ -36,7 +36,7 @@ class ClassSaveResults(object):
         if self.DIRNAME is None or self.DIRNAME=="MSName":
             self.DIRNAME="DynSpecs_%s"%self.DynSpecMS.OutName
         else:
-            self.DIRNAME="%s_DynSpecs_%s"%(self.DIRNAME,self.DynSpecMS.OutName)
+            self.DIRNAME=os.path.join(self.DIRNAME,"_DynSpecs_%s"%(self.DynSpecMS.OutName))
             
             
         #image  = self.DynSpecMS.Image
@@ -64,10 +64,10 @@ class ClassSaveResults(object):
         self.CatFlux=self.CatFlux.view(np.recarray)
         
         os.system("rm -rf %s"%self.DIRNAME)
-        os.system("mkdir -p %s/TARGET"%self.DIRNAME)
-        os.system("mkdir -p %s/OFF"%self.DIRNAME)
-        os.system("mkdir -p %s/TARGET_W"%self.DIRNAME)
-        os.system("mkdir -p %s/OFF_W"%self.DIRNAME)
+        os.system(f"mkdir -p {os.path.join(self.DIRNAME,'TARGET')}")
+        os.system(f"mkdir -p {os.path.join(self.DIRNAME,'OFF')}")
+        os.system(f"mkdir -p {os.path.join(self.DIRNAME,'TARGET_W')}")
+        os.system(f"mkdir -p {os.path.join(self.DIRNAME,'OFF_W')}")
         #os.system("mkdir -p %s/PNG"%self.DIRNAME)
 
     def tarDirectory(self):
@@ -225,6 +225,7 @@ class ClassSaveResults(object):
             Gn = self.DynSpecMS.GOut[iDir,:, :, :].real
 
         hdu = fits.PrimaryHDU(np.rollaxis(Gn, 2), header=prihdr)
+        print(f"Fits being written: {fitsname}")
 
         hdu.writeto(fitsname, overwrite=True)
 
