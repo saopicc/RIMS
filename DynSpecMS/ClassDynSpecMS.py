@@ -286,7 +286,16 @@ class ClassDynSpecMS(object):
                     if Arr>ArrMax: #P.covers(Plm):
                         ArrMax=Arr
                         iFacetMax=iFacet
-                return iFacetMax,self.DFacet[iFacetMax]["iSol"]
+
+                if "iSol" in self.DFacet[iFacetMax].keys():
+                    # older version of DDFacer
+                    iSol=self.DFacet[iFacetMax]["iSol"]
+                elif "iDirJones" in self.DFacet[iFacetMax].keys():
+                    iSol=self.DFacet[iFacetMax]["iDirJones"]
+                else:
+                    stop
+                        
+                return iFacetMax,iSol
                     
             self.PosArray=RecArrayOps.AppendField(self.PosArray,'iFacet',int)
             self.PosArray=RecArrayOps.AppendField(self.PosArray,'iTessel',int)
