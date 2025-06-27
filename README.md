@@ -1,4 +1,4 @@
-# DynSpecMS
+# RIMS
 A Radio Astronomy Software tool for creating the _Dynamic Spectra_ for a specified point in the sky from image visibilities in a [Measurement Set](https://casaguides.nrao.edu/index.php?title=Measurement_Set_Contents) (MS). The tool offers algorithmic support for _beam correction_ and _re-phasing_ to provide an accurate _Jy/beam_ measure of the specified target. With little overhead, the tool also supports the generation of _Dynamic Spectra_ for multiple targets or off-targets. A larger sample of off-target (randomly sampled within a specified radius of the _Phase Center_) _Dynamic Spectra_  provide an increasingly accurate variance estimate for the target Dynamic Spectra when used with [Inspect_Dynspec](https://github.com/ratt-ru/inspect-dynspec).
 
 ### Installation
