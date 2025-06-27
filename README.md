@@ -10,8 +10,8 @@ A Radio Astronomy Software tool for creating the _Dynamic Spectra_ for a specifi
 
 #### Steps:
 ```
-git clone https://github.com/cyriltasse/DynSpecMS.git
-pip install ./DynSpecMS
+git clone https://github.com/saopicc/RIMS.git
+pip install ./RIMS
 ```
 
 ### Usage
