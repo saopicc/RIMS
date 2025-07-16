@@ -31,6 +31,7 @@ Notes:
 ### Creating a source file:
 A source file may either be in [ECSV](https://docs.astropy.org/en/stable/io/ascii/ecsv.html) format or a simple `csv` format of the following structure:
 ```
+# Example source list
 Name ra dec
 Deneb    20:41:25.9   +45:16:49
 etc      12:00:00.0   +42:00:00
