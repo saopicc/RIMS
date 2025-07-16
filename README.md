@@ -33,7 +33,7 @@ A source file may either be in [ECSV](https://docs.astropy.org/en/stable/io/asci
 ```
 Name ra dec
 Deneb    20:41:25.9   +45:16:49
-etc   HH:MM:SS  DD:MM:SS
+etc      12:00:00.0   +42:00:00
 ```
 
 or in fits table format
