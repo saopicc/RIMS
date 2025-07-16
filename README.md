@@ -32,7 +32,6 @@ Notes:
 A source file may either be in [ECSV](https://docs.astropy.org/en/stable/io/ascii/ecsv.html) format or a simple `csv` format of the following structure:
 ```
 Name ra dec
-# Name     ra          dec
 Deneb    20:41:25.9   +45:16:49
 etc   HH:MM:SS  DD:MM:SS
 ```
