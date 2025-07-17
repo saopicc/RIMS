@@ -123,7 +123,7 @@ def main(args=None, messages=[]):
     L_radec=list(set(L_radec))
     if len(L_radec)>1: stop
     ra0,dec0=L_radec[0]
-
+    
     NChunk=1
     if args.NMaxTargets!=0:
         CGC=ClassGiveCatalog.ClassGiveCatalog(args,
