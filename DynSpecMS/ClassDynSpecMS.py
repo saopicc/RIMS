@@ -256,7 +256,6 @@ class ClassDynSpecMS(object):
         print("Selected %i target [out of the %i in the original list]"%(self.NDirSelected,CGC.NOrig), file=log)
         if self.NDirSelected==0:
             print(ModColor.Str("   Have found no sources - returning"), file=log)
-            self.killWorkers()
             return
         
         NOff=self.NOff
