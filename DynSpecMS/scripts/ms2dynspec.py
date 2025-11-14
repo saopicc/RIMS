@@ -254,6 +254,11 @@ def ms2dynspec(args=None, messages=[]):
                 SaveMachine.SaveCatalog()
                 SaveMachine.PlotSpec(Prefix="_replot")
             D.killWorkers()
+
+            if args.PushToDB is not None:
+                # REMI: rclone upload to PushToDB
+                stop
+                
     Multiprocessing.cleanupShm()
         
 
@@ -285,6 +290,8 @@ def main():
     parser.add_argument("--SplitNonContiguous", type=int, default=1, help="Split non time-contiguous MSs", required=False)
     parser.add_argument("--UseLoTSSDB", type=int, default=0, help="Use LoTSS DB for target list", required=False)
     parser.add_argument("--UseGaiaDB", type=str, default=None, help="Use Gaia DB for target list", required=False)
+    parser.add_argument("--PushToDB", type=str, default=None, help="Push the spectra to a DB", required=False)
+    
     parser.add_argument("--DoTar", type=int, default=1, help="Tar final products", required=False)
     parser.add_argument("--UseRandomSeed", type=int, default=0, help="Use random seed", required=False)
     parser.add_argument("--CacheDir", type=str, default="", help="Use specific cache directory for caching. Default is colocated with ms.", required=False)

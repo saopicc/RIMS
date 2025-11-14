@@ -57,8 +57,10 @@ class ClassGiveCatalog():
                     additional=np.array([additional],dtype=dtype)
                 for r in additional:
                     l.append(tuple(r))
-                    
             self.PosArray=np.asarray(l,dtype=dtype)
+        elif self.options.RIMSAddOnDB:
+            # REMI: Define you way to build self.PosArray
+            stop
         elif self.options.UseGaiaDB is not None:
             from astroquery.gaia import Gaia
             rac_deg,decc_deg=self.ra0*180/np.pi, self.dec0*180/np.pi
