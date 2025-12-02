@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 from __future__ import division
 from __future__ import absolute_import
 import matplotlib
@@ -37,15 +38,22 @@ import sys
 import os
 import argparse
 from distutils.spawn import find_executable
-from matplotlib import rc
-fontsize=12
-rc('font',**{'family':'serif','serif':['Times'],'size':fontsize})
-if find_executable("latex") is not None:
-    rc('text', usetex=True)
+# from matplotlib import rc
+# fontsize=12
+# rc('font',**{'family':'serif','serif':['Times'],'size':fontsize})
+# if find_executable("latex") is not None:
+#     rc('text', usetex=True)
 from DDFacet.Other import Multiprocessing
 
-import dask.array as da
-from daskms import xds_from_table, xds_to_table
+
+try:
+    import dask.array as da
+    from daskms import xds_from_table as table
+    HAS_DASK=True
+except:
+    HAS_DASK=False
+    
+from pyrap.tables import table    
 from astropy.time import Time
 from astropy import units as uni
 from astropy.io import fits
@@ -147,8 +155,13 @@ def ms2dynspec(args=None, messages=[]):
     if args.SplitNonContiguous:
         DT={}
         for MSName in MSList:
-            t = xds_from_table(MSName)
-            Times=np.unique((t[0]["TIME"].values))
+            if HAS_DASK:
+                t = table(MSName)
+                Times=np.unique((t[0]["TIME"].values))
+            else:
+                t = table(MSName,ack=False)
+                Times=np.unique(t.getcol("TIME"))
+                
             T=(Times.min(),Times.max())
             if T not in DT.keys():
                 DT[T]=[MSName]
@@ -166,8 +179,13 @@ def ms2dynspec(args=None, messages=[]):
     field_ras=[]
     field_decs=[]
     for MSName in MSList:
-        tField = xds_from_table(f"{MSName}::FIELD")
-        ra0, dec0 = np.ravel(tField[0]["PHASE_DIR"].values)
+        if HAS_DASK:
+            tField = table(f"{MSName}::FIELD")
+            ra0, dec0 = np.ravel(tField[0]["PHASE_DIR"].values)
+        else:
+            tField = table(f"{MSName}::FIELD",ack=False)
+            ra0, dec0 = np.ravel(tField.getcol("PHASE_DIR").ravel())
+            
         if ra0<0.: ra0+=2.*np.pi
         field_ras.append(ra0)
         field_decs.append(dec0)
