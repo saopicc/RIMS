@@ -38,12 +38,15 @@ import sys
 import os
 import argparse
 from distutils.spawn import find_executable
-# from matplotlib import rc
-# fontsize=12
-# rc('font',**{'family':'serif','serif':['Times'],'size':fontsize})
-# if find_executable("latex") is not None:
-#     rc('text', usetex=True)
+from matplotlib import rc
+#import matplotlib
+#matplotlib.rcParams['font.family'] = 'sans-serif'
+#fontsize=12
+#rc('font',**{'family':'serif','serif':['Times'],'size':fontsize})
+#if find_executable("latex") is not None:
+#    rc('text', usetex=True)
 from DDFacet.Other import Multiprocessing
+
 
 
 try:
@@ -226,12 +229,16 @@ def ms2dynspec(args=None, messages=[]):
             SubSet=(iChunk,NChunk)
         for ik,k in enumerate(sorted(list(DT.keys()))):
             MSList=DT[k]
-            DIRNAME=os.path.abspath(args.OutDirName)
+            OutDirName=args.OutDirName
+            if OutDirName=="MSName":
+                OutDirName=args.ms
+            else:
+                OutDirName=os.path.basename(os.path.abspath(OutDirName))
+            DIRNAME=os.path.abspath("DynSpecs_%s"%OutDirName)
             if len(DT)>1:
-                DIRNAME = os.path.join(DIRNAME,f"_T{ik}")
+                DIRNAME = "%s_T%i"%(DIRNAME,ik)
             if NChunk>1:
-                DIRNAME = os.path.join(DIRNAME,f"_RandChunk{iChunk}")
-                
+                DIRNAME = "%s_RandChunk%i"%(DIRNAME,iChunk)
             D = ClassDynSpecMS(ListMSName=MSList, 
                                ColName=args.data, ModelName=args.model, 
                                SolsName=args.sols,
