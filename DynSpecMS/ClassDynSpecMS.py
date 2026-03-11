@@ -37,6 +37,8 @@ from Polygon.Utils import convexHull
 import DDFacet.Other.ClassJonesDomains
 import psutil
 from . import ClassGiveCatalog
+from DynSpecMS.kernels.phase_and_sum_vis import phase_and_sum_direction
+from DynSpecMS.kernels.t_idx_jones import compute_jones_diag_for_time, extract_row_jones_jax
 
 def print_memory_info():
     mem_info = psutil.virtual_memory()
@@ -1143,167 +1145,65 @@ class ClassDynSpecMS(object):
         dcorr=d.copy()
         f0, _ = self.Freq_minmax
         ich0 = int( (ChanFreqs - f0)/self.ChanWidth )
-        OneMinusF=(1-f).copy()
-        
-        W=np.zeros((nRowOut,nch,npol),np.float32)
-        for ipol in range(npol):
-            W[:,:,ipol]=weights[:,:,0]
-        W[f]=0
-        Wc=W.copy()
-        # weights=weights*np.ones((1,1,npol))
-        # W=weights
 
-        
-        kk=np.zeros_like(d)
+        chfreq_1d = self.DicoMSInfos[iMS]["ChanFreq"].ravel()
+
+        # 1. OPTIONAL: Evaluate domain-wide Jones diagnostics EXACTLY ONCE prior to direction iteration
+        J_diag, J_ch_domain_idx = None, None
+        if self.DoJonesCorr_kMS or self.DoJonesCorr_Beam:
+            DicoJones = shared_dict.attach("DicoJones_%i"%iJob)
+            DicoJones.reload()
+            
+            # Our new kernel computes the full diagonal cube for the timestep
+            G_arr = DicoJones["G"]
+            tm_arr = DicoJones["tm"]
+            fd_arr = DicoJones["FreqDomains"]
+            
+            # Send native primitives & memory arrays
+            J_diag, iTJones, J_ch_domain_idx = compute_jones_diag_for_time(
+                G_arr, tm_arr, fd_arr, chfreq_1d, ThisTime
+            )
+
+        # Simplify weights: phase_and_sum_direction casts to pols locally
+        w_scalar = weights[:, :, 0]
+
         T.timeit("third")
-        for iDir in range(self.NDir):
-            ra=self.PosArray.ra[iDir]
-            dec=self.PosArray.dec[iDir]
-            ra0,dec0=self.DicoMSInfos[iMS]["ra0dec0"]
-            l, m = self.radec2lm(ra, dec,ra0,dec0)
-            n  = np.sqrt(1. - l**2. - m**2.)
-
         
-            T.timeit("lmn")
-            kkk  = np.exp(-2.*np.pi*1j* chfreq/const.c.value *(u0*l + v0*m + w0*(n-1)) ) # Phasing term
-            T.timeit("kkk")
+        # 2. Iterate each direction
+        for iDir in range(self.NDir):
+            ra = self.PosArray.ra[iDir]
+            dec = self.PosArray.dec[iDir]
+            ra0, dec0 = self.DicoMSInfos[iMS]["ra0dec0"]
 
-            for ipol in range(npol):
-                kk[:,:,ipol]=kkk[:,:,0]
-            T.timeit("kkk copy")
-            
-            # #ind=np.where((A0s==0)&(A1s==10))[0]
-            # ind=np.where((A0s!=1000))[0]
-            # import pylab
-            # pylab.ion()
-            # pylab.clf()
-            # pylab.plot(np.angle(d[ind,2,0]))
-            # pylab.plot(np.angle(kk[ind,2,0].conj()))
-            # pylab.draw()
-            # pylab.show(False)
-            # pylab.pause(0.1)
-    
-            
-            
-            #DicoMSInfos      = self.DicoMSInfos
-    
-            #_,nch,_=DicoDATA["data"].shape
-    
-            dcorr[:]=d[:]
-            W=Wc.copy()
-            #W2=Wc.copy()
-            dcorr*=W
-            wdcorr=np.ones(dcorr.shape,np.float64)
-            #kk=kk*np.ones((1,1,npol))
-            
-            T.timeit("corr")
-            
+            Jones_tuple = None
             if self.DoJonesCorr_kMS or self.DoJonesCorr_Beam:
-                T1=ClassTimeIt.ClassTimeIt("  DoJonesCorr")
-                T1.disable()
-                DicoJones=shared_dict.attach("DicoJones_%i"%iJob)
-                DicoJones.reload()
-                T1.timeit("Load")
-                tm = DicoJones['tm']
-                # Time slot for the solution
-                iTJones=np.argmin(np.abs(tm-ThisTime))#self.timesGrid[iTime]))
-                
-                #iDJones=np.argmin(AngDist(ra,DicoJones['ra'],dec,DicoJones['dec']))
+                # Determine closest direction for Jones calibration constraints
                 lJones, mJones = self.CoordMachine.radec2lm(DicoJones['ra'], DicoJones['dec'])
-                iDJones=np.argmin(np.sqrt((l-lJones)**2+(m-mJones)**2))
+                l, m = self.radec2lm(ra, dec, ra0, dec0)
+                iDJones = np.argmin(np.sqrt((l-lJones)**2+(m-mJones)**2))
 
-                
-                _,nchJones,_,_,_,_=DicoJones['G'].shape
-                T1.timeit("argmin")
-                
-                
+                # Rapidly bind specific antennas and frequencies using our JAX indices:
+                J0, J1, ch_indices = extract_row_jones_jax(J_diag, A0s, A1s, iDJones)
+                Jones_tuple = (J0, J1, ch_indices)
 
-                for iFJones in range(nchJones):
-                    
-                    nu0,nu1=DicoJones['FreqDomains'][iFJones]
-                    fData=self.DicoMSInfos[iMS]["ChanFreq"].ravel()
-                    indCh=np.where((fData>=nu0) & (fData<nu1))[0]
-
-                    #iFJones=np.argmin(np.abs(chfreq_mean-DicoJones['FreqDomains_mean']))
-                    # construct corrected visibilities
-                    J0 = DicoJones['G'][iTJones, iFJones, A0s, iDJones, 0, 0]
-                    J1 = DicoJones['G'][iTJones, iFJones, A1s, iDJones, 0, 0]
-
-                    #JJ0=self.DicoJones['G'][iTJones, iFJones, A0s, :, 0, 0]
-                    #JJ1=self.DicoJones['G'][iTJones, iFJones, A1s, :, 0, 0]
-                    #indZeroJones,=np.where((JJ0=0)|(JJ1==0))
-                    
-
-                    J0 = J0.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
-                    J1 = J1.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
-                    T1.timeit("[%i] read J0J1"%iFJones)
-                    dcorr[:,indCh,:] = J0.conj() * dcorr[:,indCh,:] * J1
-                    #wdcorr[:,indCh,:] *= (np.abs(J0) * np.abs(J1))**2
-                    #print(iDir,iFJones,np.count_nonzero(J0==0),np.count_nonzero(J1==0))
-                    #dcorr[:,indCh,:] = 1./J0 * dcorr[:,indCh,:] * 1./J1.conj()
-                    #W[:,indCh,:]*=(np.abs(J0) * np.abs(J1))
-                    W[:,indCh,:]*=(np.abs(J0) * np.abs(J1))**2
-                    T1.timeit("[%i] apply "%iFJones)
-
-
-                # iFJones=np.argmin(np.abs(chfreq_mean-self.DicoJones['FreqDomains_mean']))
-                # # construct corrected visibilities
-                # J0 = self.DicoJones['G'][iTJones, iFJones, A0s, iDJones, 0, 0]
-                # J1 = self.DicoJones['G'][iTJones, iFJones, A1s, iDJones, 0, 0]
-                # J0 = J0.reshape((-1, 1, 1))*np.ones((1, nch, 1))
-                # J1 = J1.reshape((-1, 1, 1))*np.ones((1, nch, 1))
-                # dcorr = J0.conj() * dcorr * J1
-    
-            # T.timeit("corr kMS")
-            # if self.DoJonesCorr_Beam:
-            #     DicoJones_Beam=shared_dict.attach("DicoJones_Beam_%i"%iJob)
-            #     DicoJones_Beam.reload()
-            #     tm = DicoJones_Beam['tm']
-            #     # Time slot for the solution
-            #     iTJones=np.argmin(np.abs(tm-self.timesGrid[iTime]))
-            #     iDJones=np.argmin(AngDist(ra,DicoJones_Beam['ra'],dec,DicoJones_Beam['dec']))
-            #     _,nchJones,_,_,_,_=DicoJones_Beam['G'].shape
-            #     for iFJones in range(nchJones):
-            #         nu0,nu1=DicoJones_Beam['FreqDomains'][iFJones]
-            #         fData=self.DicoMSInfos[iMS]["ChanFreq"].ravel()
-            #         indCh=np.where((fData>=nu0) & (fData<nu1))[0]
-            #         #iFJones=np.argmin(np.abs(chfreq_mean-self.DicoJones_Beam['FreqDomains_mean']))
-            #         # construct corrected visibilities
-            #         J0 = DicoJones_Beam['G'][iTJones, iFJones, A0s, iDJones, 0, 0]
-            #         J1 = DicoJones_Beam['G'][iTJones, iFJones, A1s, iDJones, 0, 0]
-            #         J0 = J0.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
-            #         J1 = J1.reshape((-1, 1, 1))*np.ones((1, indCh.size, 1))
-            #         dcorr[:,indCh,:] = J0.conj() * dcorr[:,indCh,:] * J1
-            #         #wdcorr[:,indCh,:] *= (np.abs(J0) * np.abs(J1))**2
-            #         W[:,indCh,:]*=(np.abs(J0) * np.abs(J1))**2
-            #         #dcorr[:,indCh,:] = 1./J0 * dcorr[:,indCh,:] * 1./J1.conj()
-                    
-    
-                
-            T.timeit("corr Beam")
-            #ds=np.sum(d*kk, axis=0) # without Jones
+            # 3. Offload all Phasing + Appended Jones + Summations logic strictly to JAX
+            ds, ws, w2s = phase_and_sum_direction(
+                vis=d,
+                flag=f,
+                weights=w_scalar, 
+                u=u0, v=v0, w=w0,
+                A0s=A0s, A1s=A1s,
+                chan_freqs=chfreq_1d,
+                ra=ra, dec=dec, ra0=ra0, dec0=dec0,
+                slicePol=self.slicePol,
+                Jones=Jones_tuple
+            )
             
-            #ds = np.sum(dcorr * kk*weights, axis=0) # with Jones
-            #dcorr.flat[:]*=kk.flat[:]
-            #dcorr.flat[:]*=W.flat[:]
-            dcorr*=kk
-            #dcorr=dcorr*kk
-            ds = np.sum(dcorr, axis=0) # with Jones
-            #W*=wdcorr
-            ws = np.sum(W, axis=0)
-            w2s = np.sum(W**2, axis=0)
-            
-            # wdcorr*=W
-            # dcorrs=np.sum(wdcorr, axis=0)
-            # ind=np.where(ws!=0)
-            # dcorrs[ind]/=ws[ind]
-            # ind=np.where(dcorrs!=0)
-            # ds[ind]/=dcorrs[ind]
-            T.timeit("Sum")
-
+            # 4. Fill to final arrays
             self.DicoGrids["GridLinPol"][iDir,ich0:ich0+nch, iTimeGrid, self.slicePol] = ds
             self.DicoGrids["GridWeight"][iDir,ich0:ich0+nch, iTimeGrid, self.slicePol] = np.float32(ws)
             self.DicoGrids["GridWeight2"][iDir,ich0:ich0+nch, iTimeGrid, self.slicePol] = np.float32(w2s)
+            
             T.timeit("Write")
             
         T.timeit("rest")

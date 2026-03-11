@@ -1,6 +1,5 @@
 """
-JAX-enabled kernel to phase visibilities to directions and sum them
-( Dynamic Spectra kernel ).
+JAX-enabled kernel to phase visibilities to directions and sum them.
 
 Behavior:
 - Phases visibilities to a target (ra,dec) given a phase centre (ra0,dec0).
@@ -116,7 +115,7 @@ def phase_and_sum_direction(vis : jnp.ndarray, flag : jnp.ndarray, weights : jnp
     # zero weights where flagged
     W = jnp.where(flag, 0.0, W)
 
-    dcorr = vis.copy()
+    dcorr = jnp.asarray(vis)
 
     # compute l,m,n
     l, m = radec2lm(ra, dec, ra0, dec0)

@@ -51,7 +51,7 @@ from DDFacet.Other import Multiprocessing
 
 try:
     import dask.array as da
-    from daskms import xds_from_table as table
+    from daskms import xds_from_table as dasktable
     HAS_DASK=True
 except:
     HAS_DASK=False
@@ -159,7 +159,8 @@ def ms2dynspec(args=None, messages=[]):
         DT={}
         for MSName in MSList:
             if HAS_DASK:
-                t = table(MSName)
+                t = dasktable(MSName)
+                print(type(t[0]["TIME"].values))
                 Times=np.unique((t[0]["TIME"].values))
             else:
                 t = table(MSName,ack=False)
@@ -183,7 +184,7 @@ def ms2dynspec(args=None, messages=[]):
     field_decs=[]
     for MSName in MSList:
         if HAS_DASK:
-            tField = table(f"{MSName}::FIELD")
+            tField = dasktable(f"{MSName}::FIELD")
             ra0, dec0 = np.ravel(tField[0]["PHASE_DIR"].values)
         else:
             tField = table(f"{MSName}::FIELD",ack=False)
@@ -223,12 +224,10 @@ def ms2dynspec(args=None, messages=[]):
             SubSet=(iChunk,NChunk)
         for ik,k in enumerate(sorted(list(DT.keys()))):
             MSList=DT[k]
-            OutDirName=args.OutDirName
-            if OutDirName=="MSName":
-                OutDirName=args.ms
+            if args.OutDirName=="MSName":
+                DIRNAME=os.path.abspath("DynSpecs_%s"%args.ms)
             else:
-                OutDirName=os.path.basename(os.path.abspath(OutDirName))
-            DIRNAME=os.path.abspath("DynSpecs_%s"%OutDirName)
+                DIRNAME=os.path.abspath(args.OutDirName)
             if len(DT)>1:
                 DIRNAME = "%s_T%i"%(DIRNAME,ik)
             if NChunk>1:

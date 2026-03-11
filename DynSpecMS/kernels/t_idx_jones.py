@@ -62,7 +62,7 @@ def _build_channel_domain_mapping(chan_freqs : jnp.ndarray, freq_domains : jnp.n
 
 
 @jit
-def compute_jones_diag_for_time(DicoJones, chan_freqs, time_value, default_val=1+0j):
+def compute_jones_diag_for_time(G, tm, freq_domains, chan_freqs, time_value, default_val=1+0j):
     """
     Compute per-antenna, per-channel diagonal Jones J_00 for nearest Jones time.
 
@@ -86,9 +86,9 @@ def compute_jones_diag_for_time(DicoJones, chan_freqs, time_value, default_val=1
         Index of the freq-domain each channel was assigned to, or -1.
     """
 
-    G = jnp.asarray(DicoJones["G"])            # (nT, nFdom, nAnt, nDirJones, 2, 2)
-    tm = jnp.asarray(DicoJones["tm"])          # (nT,)
-    freq_domains = jnp.asarray(DicoJones["FreqDomains"])  # (nFdom, 2)
+    G = jnp.asarray(G)
+    tm = jnp.asarray(tm)
+    freq_domains = jnp.asarray(freq_domains)
     chan_freqs = jnp.asarray(chan_freqs)
 
     # 1) choose nearest Jones time index
@@ -110,22 +110,18 @@ def compute_jones_diag_for_time(DicoJones, chan_freqs, time_value, default_val=1
     safe_idx = jnp.where(ch_domain_idx >= 0, ch_domain_idx, 0)  # (nChan,)
 
     # gather J00 for each channel using safe_idx -> shape (nChan, nAnt, nDirJones)
-    # then transpose to (nAnt, nChan, nDirJones)
-    # Use jnp.take along axis 0 to gather domains
-    J_chan_ant_dir = jnp.take(J00_domains, safe_idx, axis=0)  # (nChan, nAnt, nDirJones)
+    J_chan_ant_dir = jnp.take(J00_domains, safe_idx, axis=0)  
     J_chan_ant_dir = jnp.transpose(J_chan_ant_dir, (1, 0, 2))  # (nAnt, nChan, nDirJones)
 
-    # replace channels with default_val where ch_any_mask is False
-    if jnp.any(~ch_any_mask):
-        # build default block
-        nAnt = J_chan_ant_dir.shape[0]
-        nChan = J_chan_ant_dir.shape[1]
-        nDirJones = J_chan_ant_dir.shape[2]
-        default_block = jnp.full((nAnt, nChan, nDirJones), default_val, dtype=J_chan_ant_dir.dtype)
-        mask_broadcast = (~ch_any_mask).reshape((1, nChan, 1))
-        J_diag = jnp.where(mask_broadcast, default_block, J_chan_ant_dir)
-    else:
-        J_diag = J_chan_ant_dir
+    # Branchless JAX: Unconditionally apply the mask using jnp.where
+    nAnt, nChan, nDirJones = J_chan_ant_dir.shape
+    default_block = jnp.full((nAnt, nChan, nDirJones), default_val, dtype=J_chan_ant_dir.dtype)
+    
+    # Broadcast the invalid mask so it shapes exactly to (1, nChan, 1) to match (nAnt, nChan, nDirJones)
+    mask_broadcast = (~ch_any_mask).reshape((1, nChan, 1))
+    
+    # Fill in the default values wherever the mask failed
+    J_diag = jnp.where(mask_broadcast, default_block, J_chan_ant_dir)
 
     return J_diag, iTJones, ch_domain_idx
 
@@ -176,7 +172,7 @@ def extract_row_jones_jax(J_diag : jnp.ndarray, A0s : jnp.ndarray, A1s : jnp.nda
         # dir_idx is per-row array; we need J_diag[A_ant, :, d_idx] for each row
         dir_idx = jnp.asarray(dir_idx, dtype=jnp.int32)  # (nRow,)
 
-        # We'll vmapped over rows to gather row-specific (nChan,) arrays
+        # vmapped over rows to gather row-specific (nChan,) arrays
         def _row_fetch(a_idx, d_idx):
             # returns shape (nChan,)
             return J_diag[a_idx, :, d_idx]
@@ -190,24 +186,3 @@ def extract_row_jones_jax(J_diag : jnp.ndarray, A0s : jnp.ndarray, A1s : jnp.nda
     J1 = J1[..., jnp.newaxis]   # (nRow, nChan, 1)
     ch_indices = jnp.arange(nChan, dtype=jnp.int32)
     return J0, J1, ch_indices
-
-
-# ----------------------
-# Example integration helper (non-jitted, small convenience)
-# ----------------------
-def example_usage(DicoJones, chan_freqs, ThisTime, A0s, A1s, iDJones_for_dirs):
-    """
-    Convenience example showing the flow. Not jitted.
-
-    - Compute J_diag once per time:
-        J_diag, iTJones, ch_domain_idx = compute_jones_diag_for_time(...)
-    - For each iDir you can get J0,J1 quickly:
-        J0, J1, ch_indices = extract_row_jones_jax(J_diag, A0s, A1s, dir_idx)
-
-    Note: We return JAX arrays; if you need NumPy arrays call .block_until_ready() and np.array(...)
-    """
-    J_diag, iTJones, ch_domain_idx = compute_jones_diag_for_time(DicoJones, chan_freqs, ThisTime)
-    # Example: for a particular direction index (iDJones_for_dirs[idir]):
-    some_dir = int(iDJones_for_dirs[0])
-    J0, J1, ch_idx = extract_row_jones_jax(J_diag, A0s, A1s, some_dir)
-    return J0, J1, ch_idx
