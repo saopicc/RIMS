@@ -40,10 +40,10 @@ from . import ClassGiveCatalog
 
 def print_memory_info():
     mem_info = psutil.virtual_memory()
-    print(f"Total memory: {mem_info.total / (1024 ** 3):.2f} GB")
-    print(f"Available memory: {mem_info.available / (1024 ** 3):.2f} GB")
-    print(f"Used memory: {mem_info.used / (1024 ** 3):.2f} GB")
-    print(f"Memory percent used: {mem_info.percent}%")
+    log.print(f"Total memory: {mem_info.total / (1024 ** 3):.2f} GB")
+    log.print(f"Available memory: {mem_info.available / (1024 ** 3):.2f} GB")
+    log.print(f"Used memory: {mem_info.used / (1024 ** 3):.2f} GB")
+    log.print(f"Memory percent used: {mem_info.percent}%")
 
 def compute_memory_usage_gb(shape):
     num_elements = np.prod(shape)
@@ -286,7 +286,16 @@ class ClassDynSpecMS(object):
                     if Arr>ArrMax: #P.covers(Plm):
                         ArrMax=Arr
                         iFacetMax=iFacet
-                return iFacetMax,self.DFacet[iFacetMax]["iSol"]
+
+                if "iSol" in self.DFacet[iFacetMax].keys():
+                    # older version of DDFacer
+                    iSol=self.DFacet[iFacetMax]["iSol"]
+                elif "iDirJones" in self.DFacet[iFacetMax].keys():
+                    iSol=self.DFacet[iFacetMax]["iDirJones"]
+                else:
+                    stop
+                        
+                return iFacetMax,iSol
                     
             self.PosArray=RecArrayOps.AppendField(self.PosArray,'iFacet',int)
             self.PosArray=RecArrayOps.AppendField(self.PosArray,'iTessel',int)
@@ -318,15 +327,15 @@ class ClassDynSpecMS(object):
 
         try:
             shape = (self.NDir, self.NChan, self.NTimesGrid, 4)
-            print(f"Allocating GridLinPol with shape {shape}, memory usage: {compute_memory_usage_gb(shape)} GB")
+            log.print(f"Allocating GridLinPol with shape {shape}, memory usage: {compute_memory_usage_gb(shape):.2f} GB")
             self.DicoGrids["GridLinPol"] = np.zeros(shape, np.complex128)
 
             shape = (self.NDir, self.NChan, self.NTimesGrid, 4)
-            print(f"Allocating GridWeight with shape {shape}, memory usage: {compute_memory_usage_gb(shape)} GB")
+            log.print(f"Allocating GridWeight with shape {shape}, memory usage: {compute_memory_usage_gb(shape):.2f} GB")
             self.DicoGrids["GridWeight"] = np.zeros(shape, np.complex128)
 
             shape = (self.NDir, self.NChan, self.NTimesGrid, 4)
-            print(f"Allocating GridWeight2 with shape {shape}, memory usage: {compute_memory_usage_gb(shape)} GB")
+            log.print(f"Allocating GridWeight2 with shape {shape}, memory usage: {compute_memory_usage_gb(shape):.2f} GB")
             self.DicoGrids["GridWeight2"] = np.zeros(shape, np.complex128)
         except Exception as e:
             print(f"Error during allocation: {e}")

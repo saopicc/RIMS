@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 from __future__ import division
 from __future__ import absolute_import
 import matplotlib
@@ -38,14 +39,24 @@ import os
 import argparse
 from distutils.spawn import find_executable
 from matplotlib import rc
-fontsize=12
-rc('font',**{'family':'serif','serif':['Times'],'size':fontsize})
-if find_executable("latex") is not None:
-    rc('text', usetex=True)
+#import matplotlib
+#matplotlib.rcParams['font.family'] = 'sans-serif'
+#fontsize=12
+#rc('font',**{'family':'serif','serif':['Times'],'size':fontsize})
+#if find_executable("latex") is not None:
+#    rc('text', usetex=True)
 from DDFacet.Other import Multiprocessing
 
-import dask.array as da
-from daskms import xds_from_table, xds_to_table
+
+
+try:
+    import dask.array as da
+    from daskms import xds_from_table as table
+    HAS_DASK=True
+except:
+    HAS_DASK=False
+    
+from pyrap.tables import table    
 from astropy.time import Time
 from astropy import units as uni
 from astropy.io import fits
@@ -147,8 +158,13 @@ def ms2dynspec(args=None, messages=[]):
     if args.SplitNonContiguous:
         DT={}
         for MSName in MSList:
-            t = xds_from_table(MSName)
-            Times=np.unique((t[0]["TIME"].values))
+            if HAS_DASK:
+                t = table(MSName)
+                Times=np.unique((t[0]["TIME"].values))
+            else:
+                t = table(MSName,ack=False)
+                Times=np.unique(t.getcol("TIME"))
+                
             T=(Times.min(),Times.max())
             if T not in DT.keys():
                 DT[T]=[MSName]
@@ -161,16 +177,39 @@ def ms2dynspec(args=None, messages=[]):
     else:
         DT={0:MSList}
 
-    L_radec=[]
+    # Modified 09/06/25: very small differences in RA/Dec are acceptable
+    # add a tolerance argument so this isn't hard-wired in
+    field_ras=[]
+    field_decs=[]
     for MSName in MSList:
-        tField = xds_from_table(f"{MSName}::FIELD")
-        ra0, dec0 = np.ravel(tField[0]["PHASE_DIR"].values)
+        if HAS_DASK:
+            tField = table(f"{MSName}::FIELD")
+            ra0, dec0 = np.ravel(tField[0]["PHASE_DIR"].values)
+        else:
+            tField = table(f"{MSName}::FIELD",ack=False)
+            ra0, dec0 = np.ravel(tField.getcol("PHASE_DIR").ravel())
+            
         if ra0<0.: ra0+=2.*np.pi
-        L_radec.append((ra0,dec0))            
-        del tField
-    L_radec=list(set(L_radec))
-    if len(L_radec)>1: stop
-    ra0,dec0=L_radec[0]
+        field_ras.append(ra0)
+        field_decs.append(dec0)
+        tField.close()
+        
+    # L_radec=list(set(L_radec))
+    # if len(L_radec)>1: stop
+    # ra0,dec0=L_radec[0]
+    
+    field_ras=np.array(field_ras)
+    field_decs=np.array(field_decs)
+    ra_different=np.any(np.abs(field_ras-np.mean(field_ras))>args.tolerance*np.pi/(180*3600))
+    dec_different=np.any(np.abs(field_decs-np.mean(field_decs))>args.tolerance*np.pi/(180*3600))
+        
+    if ra_different or dec_different:
+        print('Issue with pointing directions --- dumping MS and direction info')
+        for i,MSName in enumerate(MSList):
+            print(MSName,field_ras[i],field_decs[i])
+        raise RuntimeError('There is more than one pointing direction in the MS list, cannot proceed')
+    ra0=np.mean(field_ras)
+    dec0=np.mean(field_decs)
 
     NChunk=1
     if args.NMaxTargets!=0:
@@ -190,12 +229,16 @@ def ms2dynspec(args=None, messages=[]):
             SubSet=(iChunk,NChunk)
         for ik,k in enumerate(sorted(list(DT.keys()))):
             MSList=DT[k]
-            DIRNAME=os.path.abspath(args.OutDirName)
+            OutDirName=args.OutDirName
+            if OutDirName=="MSName":
+                OutDirName=args.ms
+            else:
+                OutDirName=os.path.basename(os.path.abspath(OutDirName))
+            DIRNAME=os.path.abspath("DynSpecs_%s"%OutDirName)
             if len(DT)>1:
-                DIRNAME = os.path.join(DIRNAME,f"_T{ik}")
+                DIRNAME = "%s_T%i"%(DIRNAME,ik)
             if NChunk>1:
-                DIRNAME = os.path.join(DIRNAME,f"_RandChunk{iChunk}")
-                
+                DIRNAME = "%s_RandChunk%i"%(DIRNAME,iChunk)
             D = ClassDynSpecMS(ListMSName=MSList, 
                                ColName=args.data, ModelName=args.model, 
                                SolsName=args.sols,
@@ -227,8 +270,8 @@ def ms2dynspec(args=None, messages=[]):
         
             SaveMachine=ClassSaveResults.ClassSaveResults(D,DIRNAME=DIRNAME)
             if D.Mode=="Spec":
-                SaveMachine.SaveCatalog()
                 SaveMachine.WriteFits()
+                SaveMachine.SaveCatalog()
                 if args.SavePDF:
                     SaveMachine.PlotSpec()
                 if args.DoTar: SaveMachine.tarDirectory()
@@ -253,6 +296,7 @@ def main():
     parser.add_argument("--srclist", type=str, default="", help="List of targets --> 'source_name ra dec'")
     parser.add_argument("--FitsCatalog", type=str, default="", help="FITS catalog. List of targets --> Name,ra,dec,pmra,pmdec,ref_epoch,parallax,Type")
     parser.add_argument("--rad", type=float, default=3., help="Radius of the field", required=False)
+    parser.add_argument("--tolerance", type=float, default=0.1, help="Measurement set offset tolerance in arcsec", required=False)
     parser.add_argument("--noff", type=int, default=-1, help="Number of off sources. -1 means twice as much as there are sources in the catalog", required=False)
     parser.add_argument("--nMinOffPerFacet", type=int, default=5, help="Minimum of off sources per facet if DicoFacet is specified.", required=False)
     parser.add_argument("--DicoFacet", type=str, default="", help="DDFacet DicoFacet file.", required=False)

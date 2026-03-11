@@ -225,7 +225,7 @@ class ClassSaveResults(object):
             Gn = self.DynSpecMS.GOut[iDir,:, :, :].real
 
         hdu = fits.PrimaryHDU(np.rollaxis(Gn, 2), header=prihdr)
-        print(f"Fits being written: {fitsname}")
+        #print(f"Fits being written: {fitsname}")
 
         hdu.writeto(fitsname, overwrite=True)
 
@@ -288,10 +288,11 @@ class ClassSaveResults(object):
         label = ["I", "Q", "U", "V"]
 
         pylab.clf()
-        if find_executable("latex") is not None:
-            pylab.rc('text', usetex=True)
-        font = {'family':'serif', 'serif': ['Times']}
-        pylab.rc('font', **font)
+        
+        # if find_executable("latex") is not None:
+        #     pylab.rc('text', usetex=True)
+        # font = {'family':'serif', 'serif': ['Times']}
+        # pylab.rc('font', **font)
         
 
         # Figure properties
