@@ -192,12 +192,6 @@ def ms2dynspec(args=None, messages=[]):
         if ra0<0.: ra0+=2.*np.pi
         field_ras.append(ra0)
         field_decs.append(dec0)
-        tField.close()
-        
-    # L_radec=list(set(L_radec))
-    # if len(L_radec)>1: stop
-    # ra0,dec0=L_radec[0]
-    
     field_ras=np.array(field_ras)
     field_decs=np.array(field_decs)
     ra_different=np.any(np.abs(field_ras-np.mean(field_ras))>args.tolerance*np.pi/(180*3600))
