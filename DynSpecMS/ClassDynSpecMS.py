@@ -39,6 +39,7 @@ import psutil
 from . import ClassGiveCatalog
 from DynSpecMS.kernels.phase_and_sum_vis import phase_and_sum_direction
 from DynSpecMS.kernels.t_idx_jones import compute_jones_diag_for_time, extract_row_jones_jax
+from jax import jit, vmap
 
 def print_memory_info():
     mem_info = psutil.virtual_memory()
@@ -1148,18 +1149,18 @@ class ClassDynSpecMS(object):
 
         chfreq_1d = self.DicoMSInfos[iMS]["ChanFreq"].ravel()
 
-        # 1. OPTIONAL: Evaluate domain-wide Jones diagnostics EXACTLY ONCE prior to direction iteration
+        # evaluate domain-wide Jones diagnostics EXACTLY ONCE prior to direction iteration
         J_diag, J_ch_domain_idx = None, None
         if self.DoJonesCorr_kMS or self.DoJonesCorr_Beam:
             DicoJones = shared_dict.attach("DicoJones_%i"%iJob)
             DicoJones.reload()
             
-            # Our new kernel computes the full diagonal cube for the timestep
+            # kernel computes the full diagonal cube for the timestep
             G_arr = DicoJones["G"]
             tm_arr = DicoJones["tm"]
             fd_arr = DicoJones["FreqDomains"]
             
-            # Send native primitives & memory arrays
+            # pass native primitives & memory arrays - not dicts
             J_diag, iTJones, J_ch_domain_idx = compute_jones_diag_for_time(
                 G_arr, tm_arr, fd_arr, chfreq_1d, ThisTime
             )
@@ -1169,42 +1170,40 @@ class ClassDynSpecMS(object):
 
         T.timeit("third")
         
-        # 2. Iterate each direction
-        for iDir in range(self.NDir):
-            ra = self.PosArray.ra[iDir]
-            dec = self.PosArray.dec[iDir]
-            ra0, dec0 = self.DicoMSInfos[iMS]["ra0dec0"]
+        # extract direction coordinates for all targets simultaneously
+        ra_all = self.PosArray.ra
+        dec_all = self.PosArray.dec
+        ra0, dec0 = self.DicoMSInfos[iMS]["ra0dec0"]
 
-            Jones_tuple = None
-            if self.DoJonesCorr_kMS or self.DoJonesCorr_Beam:
-                # Determine closest direction for Jones calibration constraints
-                lJones, mJones = self.CoordMachine.radec2lm(DicoJones['ra'], DicoJones['dec'])
-                l, m = self.radec2lm(ra, dec, ra0, dec0)
-                iDJones = np.argmin(np.sqrt((l-lJones)**2+(m-mJones)**2))
-
-                # Rapidly bind specific antennas and frequencies using our JAX indices:
-                J0, J1, ch_indices = extract_row_jones_jax(J_diag, A0s, A1s, iDJones)
-                Jones_tuple = (J0, J1, ch_indices)
-
-            # 3. Offload all Phasing + Appended Jones + Summations logic strictly to JAX
-            ds, ws, w2s = phase_and_sum_direction(
-                vis=d,
-                flag=f,
-                weights=w_scalar, 
-                u=u0, v=v0, w=w0,
-                A0s=A0s, A1s=A1s,
-                chan_freqs=chfreq_1d,
-                ra=ra, dec=dec, ra0=ra0, dec0=dec0,
-                slicePol=self.slicePol,
-                Jones=Jones_tuple
-            )
+        Jones_tuple_all = None
+        if self.DoJonesCorr_kMS or self.DoJonesCorr_Beam:
+            # IDJones contains the closest Jones direction index for every target
+            iDJones_all = jnp.asarray(DicoJones['IDJones']) 
             
-            # 4. Fill to final arrays
-            self.DicoGrids["GridLinPol"][iDir,ich0:ich0+nch, iTimeGrid][:,self.slicePol] = ds
-            self.DicoGrids["GridWeight"][iDir,ich0:ich0+nch, iTimeGrid][:,self.slicePol] = np.float32(ws)
-            self.DicoGrids["GridWeight2"][iDir,ich0:ich0+nch, iTimeGrid][:,self.slicePol] = np.float32(w2s)
-            
-            T.timeit("Write")
+            # vmap the extraction over the directions
+            vmapped_extract = vmap(extract_row_jones_jax, in_axes=(None, None, None, 0))
+            J0_all, J1_all, ch_indices_all = vmapped_extract(J_diag, A0s, A1s, iDJones_all)
+            Jones_tuple_all = (J0_all, J1_all, ch_indices_all)
+
+            # Vmap the kernel, noting Jones is a tuple of 3 mapped arrays (0, 0, 0)
+            vmapped_kernel = jit(vmap(phase_and_sum_direction, 
+                                      in_axes=(None, None, None, None, None, None, None, None, None, 0, 0, None, None, None, (0, 0, 0))),
+                                 static_argnames=['slicePol'])
+        else:
+            # Vmap the kernel without Jones corrections
+            vmapped_kernel = jit(vmap(phase_and_sum_direction, 
+                                      in_axes=(None, None, None, None, None, None, None, None, None, 0, 0, None, None, None, None)),
+                                 static_argnames=['slicePol'])
+
+        # execue kernel
+        ds_all, ws_all, w2s_all = vmapped_kernel(
+            d, f, w_scalar, u0, v0, w0, A0s, A1s, chfreq_1d, ra_all, dec_all, ra0, dec0, self.slicePol, Jones_tuple_all
+        )
+        
+        # fill all arrays all at once
+        self.DicoGrids["GridLinPol"][:, ich0:ich0+nch, iTimeGrid][:, :, self.slicePol] = ds_all
+        self.DicoGrids["GridWeight"][:, ich0:ich0+nch, iTimeGrid][:, :, self.slicePol] = np.float32(ws_all)
+        self.DicoGrids["GridWeight2"][:, ich0:ich0+nch, iTimeGrid][:, :, self.slicePol] = np.float32(w2s_all)
             
         T.timeit("rest")
 

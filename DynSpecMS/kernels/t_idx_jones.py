@@ -125,16 +125,6 @@ def compute_jones_diag_for_time(G, tm, freq_domains, chan_freqs, time_value, def
 
     return J_diag, iTJones, ch_domain_idx
 
-@jit
-def _select_dir_slice(J_diag : jnp.ndarray, dir_idx : int) -> jnp.ndarray:
-    """
-    Select a single direction slice from J_diag along axis 2.
-    J_diag: (nAnt, nChan, nDirJones)
-    dir_idx: scalar int
-    returns J_dir: (nAnt, nChan)
-    """
-    return J_diag[:, :, dir_idx]
-
 
 def extract_row_jones_jax(J_diag : jnp.ndarray, A0s : jnp.ndarray, A1s : jnp.ndarray, dir_idx : int) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """
@@ -159,10 +149,9 @@ def extract_row_jones_jax(J_diag : jnp.ndarray, A0s : jnp.ndarray, A1s : jnp.nda
     nRow = A0s.shape[0]
     nChan = J_diag.shape[1]
 
-    # Case 1: scalar dir_idx for all rows -> simple indexing
+    # scalar dir_idx for all rows -> simple indexing
     if jnp.ndim(dir_idx) == 0:
-        dir_idx = int(dir_idx)  # convert DeviceArray scalar to int for take
-        J_dir = _select_dir_slice(J_diag, dir_idx)  # (nAnt, nChan)
+        J_dir = J_diag[:, :, dir_idx]  # (nAnt, nChan)
         # Use advanced indexing on antenna axis to select per-row antennas
         # J_dir[A0s, :] -> (nRow, nChan)
         J0 = J_dir[A0s, :]
