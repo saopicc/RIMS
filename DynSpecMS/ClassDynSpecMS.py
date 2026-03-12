@@ -621,9 +621,9 @@ class ClassDynSpecMS(object):
             npol=tp.getcol("NUM_CORR").flat[0]
             CorrType=tp.getcol("CORR_TYPE").ravel().tolist()
             if CorrType==[9,10,11,12]:
-                self.slicePol=slice(None)
+                self.slicePol=(0,1,2,3)
             elif CorrType==[9,12]:
-                self.slicePol=slice(0,4,3)
+                self.slicePol=(0,3)
             else:
                 raise ValueError("Pols should be XX, XY, YX, YY or XX, YY")
             tp.close()
@@ -1200,9 +1200,9 @@ class ClassDynSpecMS(object):
             )
             
             # 4. Fill to final arrays
-            self.DicoGrids["GridLinPol"][iDir,ich0:ich0+nch, iTimeGrid, self.slicePol] = ds
-            self.DicoGrids["GridWeight"][iDir,ich0:ich0+nch, iTimeGrid, self.slicePol] = np.float32(ws)
-            self.DicoGrids["GridWeight2"][iDir,ich0:ich0+nch, iTimeGrid, self.slicePol] = np.float32(w2s)
+            self.DicoGrids["GridLinPol"][iDir,ich0:ich0+nch, iTimeGrid][:,self.slicePol] = ds
+            self.DicoGrids["GridWeight"][iDir,ich0:ich0+nch, iTimeGrid][:,self.slicePol] = np.float32(ws)
+            self.DicoGrids["GridWeight2"][iDir,ich0:ich0+nch, iTimeGrid][:,self.slicePol] = np.float32(w2s)
             
             T.timeit("Write")
             

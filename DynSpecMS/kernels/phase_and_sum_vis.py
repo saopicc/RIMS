@@ -19,6 +19,7 @@ import jax.numpy as jnp
 from jax import jit
 JAX_AVAILABLE = True
 from typing import Optional
+from functools import partial
 
 import numpy as np
 
@@ -67,10 +68,10 @@ def _compute_phase(chfreq : jnp.ndarray, u: jnp.ndarray, v: jnp.ndarray, w: jnp.
     uvw_dot = u * l + v * m + w * (n - 1.0)
     return jnp.exp(kterm * uvw_dot)
 
-
+@jit
 def phase_and_sum_direction(vis : jnp.ndarray, flag : jnp.ndarray, weights : jnp.ndarray, u : jnp.ndarray, v : jnp.ndarray, w : jnp.ndarray, A0s : jnp.ndarray, A1s : jnp.ndarray,
                             chan_freqs : jnp.ndarray, ra : float, dec : float, ra0 : float, dec0 : float,
-                            slicePol=slice(None), Jones=Optional[dict])-> tuple[np.ndarray, np.ndarray, np.ndarray]:
+                            slicePol=(0,1,2,3), Jones=Optional[dict])-> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """
     Phase visibilities to a direction, apply optional Jones corrections, and sum.
 
@@ -148,4 +149,4 @@ def phase_and_sum_direction(vis : jnp.ndarray, flag : jnp.ndarray, weights : jnp
         ws_out = ws[:, idx]
         w2s_out = w2s[:, idx]
 
-    return np.array(ds_out), np.array(ws_out), np.array(w2s_out)
+    return ds_out, ws_out, w2s_out
