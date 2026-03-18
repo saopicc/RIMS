@@ -18,6 +18,7 @@ setup(
         'jax',
         'jaxlib',
         'pydantic>=2.0.0',
+        'pydantic[email]',
         'requests',
         'kronicle_sdk'
         # other dependencies

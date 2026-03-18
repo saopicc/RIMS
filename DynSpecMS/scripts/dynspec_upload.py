@@ -1,3 +1,4 @@
+import json
 import os
 import glob
 import requests
@@ -9,7 +10,12 @@ from datetime import datetime, timezone
 from ..schema.kronicle_rims_schema import (
     ObservationPayload, 
     DataDimensions, 
-    BatchAccessPolicy
+    AccessPolicy,
+    RimsProduct,
+    RimsSource,
+    AppService,
+    RimsBatch,
+    IdentifiedPerson
 )
 
 def file_upload(filename, host, token):
@@ -25,10 +31,11 @@ def file_upload(filename, host, token):
     else:
         return r.json().get('url')
 
-def parse_dynspec_for_metadata(filename: str, file_url: str = None) -> ObservationPayload:
+def parse_dynspec_for_metadata(filename: str, run_metadata: dict, visibility: str, embargo_months: int, file_url: str = "") -> ObservationPayload:
     """
-    Given a fits filename (and optionally an uploaded file URL), parse the header 
-    information and return an ObservationPayload object.
+    Given a fits filename, parsed run_metadata, and an uploaded file URL, 
+    parse the header information and return an ObservationPayload object
+    composed of Source, App, Batch, and Product schemas.
     """
     header = fits.getheader(filename)
 
@@ -61,9 +68,9 @@ def parse_dynspec_for_metadata(filename: str, file_url: str = None) -> Observati
         stokes=stokes
     )
 
-    batch_access_policy = BatchAccessPolicy(
-        visibility="public",
-        embargo_months=0
+    access_policy = AccessPolicy(
+        visibility=visibility,
+        embargo_months=embargo_months
     )
 
     # Mimic inspect_dynspec.py by reading RA_RAD and DEC_RAD and converting to degrees
@@ -73,19 +80,49 @@ def parse_dynspec_for_metadata(filename: str, file_url: str = None) -> Observati
     ra_deg = float(np.rad2deg(ra_rad)) % 360.0  # modulus ensures [0, 360) range
     dec_deg = float(np.rad2deg(dec_rad))
     dec_deg = max(-90.0, min(90.0, dec_deg))
+    
+    sw_meta = run_metadata.get("software_metadata", {})
+    client_version = sw_meta.get("version", "1.0.0")
+    if client_version == "unknown" and sw_meta.get("git_hash") != "Unknown":
+        client_version = sw_meta.get("git_hash")
 
-    payload = ObservationPayload(
-        name=header.get("NAME", "Unknown Target").strip(), 
-        source_type=header.get("SRC-TYPE", "Unknown").strip(),
+    # Construct the component models
+    
+    app_service = AppService(
+        **{"RIMS client version": client_version},
+        maintainer=IdentifiedPerson(email="maintainer@kronicle.org"),
+        computing_infrastructure=sw_meta.get("os_platform", None)
+    )
+    
+    source = RimsSource(
+        added_by=IdentifiedPerson(email="community_user@kronicle.org"),
+        dataset_id=header.get("OBSID", os.path.basename(filename).replace(".fits", "")).strip(),
+        instrument_name=header.get("TEL_NAME", "MeerKAT").strip(),
+        data_format="FITS"
+    )
+    
+    batch = RimsBatch(
+        name=os.path.basename(run_metadata.get("arguments", {}).get("OutDirName", "unknown_batch")),
+        tags=[],
+        owner=IdentifiedPerson(email="community_user@kronicle.org"),
+        data_dimensions=data_dimensions,
+        batch_access_policy=access_policy
+    )
+    
+    product = RimsProduct(
+        name=header.get("NAME", "Unknown Target").strip(),
+        uri=file_url,
+        type=header.get("SRC-TYPE", "Unknown").strip(),
         ra_deg=ra_deg,
         dec_deg=dec_deg,
-        added_by="community_user",
-        dataset_id=header.get("OBSID", os.path.basename(filename).replace(".fits", "")).strip(),
-        instrument_name="MeerKAT", # Replace with dynamic check if you start using non-MeerKAT instruments
-        rims_client_version="1.0.0",
-        data_dimensions=data_dimensions,
-        batch_access_policy=batch_access_policy,
-        tags=[file_url] if file_url else [] # optionally track the URL
+        access_policy=access_policy
+    )
+
+    payload = ObservationPayload(
+        source=source,
+        batch=batch,
+        app=app_service,
+        product=product
     )
     
     return payload
@@ -100,10 +137,21 @@ def publish_to_kronicle(payload: ObservationPayload, kronicle_api_url: str, toke
     # response = requests.post(kronicle_api_url, headers=headers, data=payload.model_dump_json(by_alias=True))
     # response.raise_for_status()
 
-def process_dynspec_directory(root_dir: str, upload_host: str, upload_token: str, kronicle_api_url: str, kronicle_token: str):
+def process_dynspec_directory(root_dir: str, upload_host: str, upload_token: str, kronicle_api_url: str, kronicle_token: str, visibility: str, embargo_months: int):
     """
     Iterates through TARGET, TARGET_W, OFF, OFF_W directories under root_dir, processing FITS files.
     """
+    metadata_file = os.path.join(root_dir, "run_metadata.json")
+    run_metadata = {}
+    if os.path.isfile(metadata_file):
+        try:
+            with open(metadata_file, "r") as f:
+                run_metadata = json.load(f)
+        except Exception as e:
+            print(f"Warning: Failed to read {metadata_file}: {e}")
+    else:
+        print(f"Warning: No run_metadata.json found in {root_dir}")
+
     subdirs_to_check = ["TARGET", "TARGET_W", "OFF", "OFF_W"]
     
     for subdir in subdirs_to_check:
@@ -122,8 +170,13 @@ def process_dynspec_directory(root_dir: str, upload_host: str, upload_token: str
                 # print(f"Uploaded successfully. URL: {file_url}")
                 
                 # 2. Parse Metadata generation
-                # payload = parse_dynspec_for_metadata(fits_file, file_url=file_url)
-                payload = parse_dynspec_for_metadata(fits_file, file_url="test.fits")
+                payload = parse_dynspec_for_metadata(
+                    fits_file, 
+                    run_metadata, 
+                    visibility, 
+                    embargo_months, 
+                    file_url="test.fits"
+                )
                 
                 # 3. Publish to Kronicle
                 publish_to_kronicle(payload, kronicle_api_url, kronicle_token)
@@ -142,14 +195,22 @@ def main():
     parser.add_argument("--kronicle-api-url", required=True, help="Kronicle API URL for publishing metadata.")
     parser.add_argument("--kronicle-token", required=True, help="Authorization token for Kronicle API.")
     
+    parser.add_argument("--visibility", default="public", choices=["public", "private"], help="Visibility of the data (public or private).")
+    parser.add_argument("--embargo-months", type=int, default=0, help="Embargo period in months (0-24) after which data becomes public.")
+    
     args = parser.parse_args()
+    
+    if args.embargo_months < 0 or args.embargo_months > 24:
+        parser.error("--embargo-months must be between 0 and 24")
     
     process_dynspec_directory(
         root_dir=args.root_dir,
         upload_host=args.upload_host,
         upload_token=args.upload_token,
         kronicle_api_url=args.kronicle_api_url,
-        kronicle_token=args.kronicle_token
+        kronicle_token=args.kronicle_token,
+        visibility=args.visibility,
+        embargo_months=args.embargo_months
     )
 
 if __name__ == "__main__":
