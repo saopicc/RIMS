@@ -34,37 +34,21 @@ from DynSpecMS import ClassGiveCatalog
 =========================================================================
 """
 
-import sys
 import os
 import argparse
-from distutils.spawn import find_executable
-from matplotlib import rc
-#import matplotlib
-#matplotlib.rcParams['font.family'] = 'sans-serif'
-#fontsize=12
-#rc('font',**{'family':'serif','serif':['Times'],'size':fontsize})
-#if find_executable("latex") is not None:
-#    rc('text', usetex=True)
 from DDFacet.Other import Multiprocessing
 
 
 
 try:
-    import dask.array as da
     from daskms import xds_from_table as dasktable
     HAS_DASK=True
 except:
     HAS_DASK=False
     
 from pyrap.tables import table    
-from astropy.time import Time
-from astropy import units as uni
-from astropy.io import fits
-from astropy import coordinates as coord
-from astropy import constants as const
 import numpy as np
-import glob, os
-import pylab
+import os
 from DDFacet.Other import MyPickle
 from DynSpecMS import logo
 logo.PrintLogo(__version__)
