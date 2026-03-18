@@ -107,7 +107,7 @@ class RimsSource(KronicableSample):
         default=IdentifiedPerson(email="community@kronicle.org"),
         description="Identifier/email/name of the person or system adding the data to Kronicle",
     )
-    data_format: str = Field(default="FITS")
+    # data_format: str = Field(default="FITS")
 
 
 class RimsProduct(KronicableSample):
@@ -120,7 +120,7 @@ class RimsProduct(KronicableSample):
     uri: str
     source_type: Optional[str] = Field(None, alias="type", description="e.g., star, pulsar, or bright source"
     )
-    file_mime: Optional[str] = Field(default="application/fits"   , alias="mime", description="MIME type of the file"  )
+    file_extension: Optional[str] = Field(default="application/fits"   , alias="mime", description="MIME type of the file"  )
     # Coordinates & Motion
     ra_deg: float = Field(
         ..., ge=0.0, lt=360.0, description="Right ascension in degrees [0, 360)"
@@ -128,12 +128,12 @@ class RimsProduct(KronicableSample):
     dec_deg: float = Field(
         ..., ge=-90.0, le=90.0, description="Declination in degrees [-90, 90]"
     )
-    pmra: Optional[float] = Field(
-        None, description="Proper motion in RA (mas/yr). Can be positive or negative."
-    )
-    pmdec: Optional[float] = Field(
-        None, description="Proper motion in Dec (mas/yr). Can be positive or negative."
-    )
+    # pmra: Optional[float] = Field(
+    #     None, description="Proper motion in RA (mas/yr). Can be positive or negative."
+    # )
+    # pmdec: Optional[float] = Field(
+    #     None, description="Proper motion in Dec (mas/yr). Can be positive or negative."
+    # )
 
 
 class AppService(KronicableSample):
