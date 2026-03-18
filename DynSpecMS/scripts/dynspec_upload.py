@@ -8,7 +8,7 @@ from astropy.time import Time
 from datetime import datetime, timezone
 
 from ..schema.kronicle_rims_schema import (
-    ObservationPayload, 
+    RimsObservationPayload, 
     DataDimensions, 
     AccessPolicy,
     RimsProduct,
@@ -17,6 +17,10 @@ from ..schema.kronicle_rims_schema import (
     RimsBatch,
     IdentifiedPerson
 )
+
+from kronicle_sdk.models.data.kronicle_payload import KroniclePayload
+from kronicle_sdk.connectors.channel.channel_writer import KronicleWriter
+from kronicle_sdk.utils.conf_utils import read_ini_conf
 
 def file_upload(filename, host, token):
     """ Upload file filename to host host using authorization token token.
@@ -31,10 +35,23 @@ def file_upload(filename, host, token):
     else:
         return r.json().get('url')
 
-def parse_dynspec_for_metadata(filename: str, run_metadata: dict, visibility: str, embargo_months: int, file_url: str = "") -> ObservationPayload:
+def parse_dynspec_for_metadata(
+    filename: str, 
+    run_metadata: dict, 
+    visibility: str, 
+    embargo_months: int, 
+    publishing_info: str = None,
+    publisher_name: str = None,
+    publisher_email: str = None,
+    publisher_orcid: str = None,
+    maintainer_name: str = None,
+    maintainer_email: str = None,
+    maintainer_orcid: str = None,
+    file_url: str = ""
+) -> RimsObservationPayload:
     """
     Given a fits filename, parsed run_metadata, and an uploaded file URL, 
-    parse the header information and return an ObservationPayload object
+    parse the header information and return an RimsObservationPayload object
     composed of Source, App, Batch, and Product schemas.
     """
     header = fits.getheader(filename)
@@ -88,25 +105,37 @@ def parse_dynspec_for_metadata(filename: str, run_metadata: dict, visibility: st
 
     # Construct the component models
     
+    maintainer_person = IdentifiedPerson(
+        email=maintainer_email or "maintainer@kronicle.org",
+        name=maintainer_name,
+        orcid=maintainer_orcid
+    )
+    
     app_service = AppService(
         **{"RIMS client version": client_version},
-        maintainer=IdentifiedPerson(email="maintainer@kronicle.org"),
+        maintainer=maintainer_person,
         computing_infrastructure=sw_meta.get("os_platform", None)
     )
     
+    publisher_person = IdentifiedPerson(
+        email=publisher_email or "community_user@kronicle.org",
+        name=publisher_name,
+        orcid=publisher_orcid
+    )
+    
     source = RimsSource(
-        added_by=IdentifiedPerson(email="community_user@kronicle.org"),
         dataset_id=header.get("OBSID", os.path.basename(filename).replace(".fits", "")).strip(),
-        instrument_name=header.get("TEL_NAME", "MeerKAT").strip(),
-        data_format="FITS"
+        instrument_name=header.get("TEL_NAME", "Unknown").strip(),
+        observer=IdentifiedPerson(name=header.get("OBSERVER", "Unknown").strip())
     )
     
     batch = RimsBatch(
         name=os.path.basename(run_metadata.get("arguments", {}).get("OutDirName", "unknown_batch")),
         tags=[],
-        owner=IdentifiedPerson(email="community_user@kronicle.org"),
+        publisher=publisher_person,
         data_dimensions=data_dimensions,
-        batch_access_policy=access_policy
+        batch_access_policy=access_policy,
+        **({"publication details": publishing_info} if publishing_info else {})
     )
     
     product = RimsProduct(
@@ -115,10 +144,11 @@ def parse_dynspec_for_metadata(filename: str, run_metadata: dict, visibility: st
         type=header.get("SRC-TYPE", "Unknown").strip(),
         ra_deg=ra_deg,
         dec_deg=dec_deg,
-        access_policy=access_policy
+        access_policy=access_policy,
+        file_extension=filename.split(".")[-1].lower()
     )
 
-    payload = ObservationPayload(
+    payload = RimsObservationPayload(
         source=source,
         batch=batch,
         app=app_service,
@@ -127,17 +157,42 @@ def parse_dynspec_for_metadata(filename: str, run_metadata: dict, visibility: st
     
     return payload
 
-def publish_to_kronicle(payload: ObservationPayload, kronicle_api_url: str, token: str):
+def publish_to_kronicle(payload: RimsObservationPayload, kronicle_user: str, kronicle_pass: str, kronicle_host: str):
     """
-    Template function to publish the parsed ObservationPayload to Kronicle.
+    Template function to publish the parsed RimsObservationPayload to Kronicle.
     """
-    print(f"Publishing {payload} to Kronicle at {kronicle_api_url}...")
-    # TODO: Implement actual POST request to Kronicle
-    # headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-    # response = requests.post(kronicle_api_url, headers=headers, data=payload.model_dump_json(by_alias=True))
-    # response.raise_for_status()
+    print(payload.model_dump_json(indent=2))
 
-def process_dynspec_directory(root_dir: str, upload_host: str, upload_token: str, kronicle_api_url: str, kronicle_token: str, visibility: str, embargo_months: int):
+    kronicle_writer = KronicleWriter(kronicle_host, kronicle_user, kronicle_pass)
+    kronicle_payload = {
+        "channel_id" : 'bf88c5a1-6c6a-4766-b7c6-7c05b44702ec',
+        "channel_name" : "RIMS network",
+        "channel_schema" : payload.channel_schema,
+        "metadata": {"description": payload.get_field_descriptions()},
+        "rows" : [payload.to_row()]
+    }
+    
+
+    result= kronicle_writer.insert_rows_and_upsert_channel(kronicle_payload)
+    print(result)
+
+def process_dynspec_directory(
+    root_dir: str, 
+    upload_host: str, 
+    upload_token: str, 
+    kronicle_user: str,
+    kronicle_pass: str,
+    kronicle_host: str,
+    visibility: str, 
+    embargo_months: int,
+    publishing_info: str = None,
+    publisher_name: str = None,
+    publisher_email: str = None,
+    publisher_orcid: str = None,
+    maintainer_name: str = None,
+    maintainer_email: str = None,
+    maintainer_orcid: str = None
+):
     """
     Iterates through TARGET, TARGET_W, OFF, OFF_W directories under root_dir, processing FITS files.
     """
@@ -164,53 +219,92 @@ def process_dynspec_directory(root_dir: str, upload_host: str, upload_token: str
         
         for fits_file in fits_files:
             print(f"Processing: {fits_file}")
-            try:
-                # 1. Upload to host (file server)
-                # file_url = file_upload(fits_file, upload_host, upload_token)
-                # print(f"Uploaded successfully. URL: {file_url}")
+            # try:
+            # 1. Upload to host (file server)
+            # file_url = file_upload(fits_file, upload_host, upload_token)
+            file_url="https://rims.extragalactic.info/downloads/9ec9a5e7-6df8-4f9e-ba32-e293fa58f1d9"
+            print(f"Uploaded successfully. URL: {file_url}")
+            
+            # 2. Parse Metadata generation
+            payload = parse_dynspec_for_metadata(
+                fits_file, 
+                run_metadata, 
+                visibility, 
+                embargo_months, 
+                publishing_info=publishing_info,
+                publisher_name=publisher_name,
+                publisher_email=publisher_email,
+                publisher_orcid=publisher_orcid,
+                maintainer_name=maintainer_name,
+                maintainer_email=maintainer_email,
+                maintainer_orcid=maintainer_orcid,
+                file_url=file_url
+            )
+            
+            # 3. Publish to Kronicle
+            publish_to_kronicle(payload, kronicle_user, kronicle_pass, kronicle_host)
+            print(f"Successfully processed {fits_file}.\n")
                 
-                # 2. Parse Metadata generation
-                payload = parse_dynspec_for_metadata(
-                    fits_file, 
-                    run_metadata, 
-                    visibility, 
-                    embargo_months, 
-                    file_url="test.fits"
-                )
-                
-                # 3. Publish to Kronicle
-                publish_to_kronicle(payload, kronicle_api_url, kronicle_token)
-                print(f"Successfully processed {fits_file}.\n")
-                
-            except Exception as e:
-                print(f"Failed to process {fits_file}. Error: {e}")
+            # except Exception as e:
+            #     print(f"Failed to process {fits_file}. Error: {e}")
 
 import argparse
 
 def main():
     parser = argparse.ArgumentParser(description="Upload dynamic spectra FITS files and publish metadata to Kronicle.")
     parser.add_argument("root_dir", help="Root directory containing TARGET, TARGET_W, OFF, OFF_W subdirectories.")
-    parser.add_argument("--upload-host", required=True, help="Host URL for file upload.")
-    parser.add_argument("--upload-token", required=True, help="Authorization token for file upload.")
-    parser.add_argument("--kronicle-api-url", required=True, help="Kronicle API URL for publishing metadata.")
-    parser.add_argument("--kronicle-token", required=True, help="Authorization token for Kronicle API.")
-    
-    parser.add_argument("--visibility", default="public", choices=["public", "private"], help="Visibility of the data (public or private).")
-    parser.add_argument("--embargo-months", type=int, default=0, help="Embargo period in months (0-24) after which data becomes public.")
+    parser.add_argument("--server-conf", default="upload_server.ini", help="Path to server configuration INI file.")
+    parser.add_argument("--publisher-conf", default="upload_details.ini", help="Path to publisher details INI file.")
     
     args = parser.parse_args()
-    
-    if args.embargo_months < 0 or args.embargo_months > 24:
-        parser.error("--embargo-months must be between 0 and 24")
+
+    server_conf = read_ini_conf(args.server_conf)
+    upload_host = server_conf.get("upload", "host")
+    upload_token = server_conf.get("upload", "token")
+    kronicle_user = server_conf.get("kronicle", "username")
+    kronicle_pass = server_conf.get("kronicle", "password")
+    kronicle_host = server_conf.get("kronicle", "host")
+
+    print(f"Upload host: {upload_host}"
+          f"\nKronicle host: {kronicle_host}"
+          f"\nKronicle user: {kronicle_user}"
+          f"\nKronicle pass: {kronicle_pass}"
+          )
+
+    publisher_conf = read_ini_conf(args.publisher_conf)
+    visibility = publisher_conf.get("publishing_details", "visibility", fallback="private")
+    embargo_months = publisher_conf.getint("publishing_details", "embargo_months", fallback=0)
+    publshing_info = publisher_conf.get("publishing_details", "publishing_info", fallback=None)
+    publisher_name = publisher_conf.get("publishing_details", "publisher_name", fallback=None)
+    publisher_email = publisher_conf.get("publishing_details", "publisher_email", fallback=None)
+    publisher_orcid = publisher_conf.get("publishing_details", "publisher_orcid", fallback=None)
+    maintainer_name = publisher_conf.get("publishing_details", "maintainer_name", fallback=None)
+    maintainer_email = publisher_conf.get("publishing_details", "maintainer_email", fallback=None)
+    maintainer_orcid = publisher_conf.get("publishing_details", "maintainer_orcid", fallback=None)
+        
+    pub_details = None
+    if publshing_info and os.path.isfile(publshing_info):
+        with open(publshing_info, 'r') as f:
+            pub_details = f.read()
+    elif publshing_info:
+        print(f"Warning: publishing info file {publshing_info} not found.")
     
     process_dynspec_directory(
         root_dir=args.root_dir,
-        upload_host=args.upload_host,
-        upload_token=args.upload_token,
-        kronicle_api_url=args.kronicle_api_url,
-        kronicle_token=args.kronicle_token,
-        visibility=args.visibility,
-        embargo_months=args.embargo_months
+        upload_host=upload_host,
+        upload_token=upload_token,
+        kronicle_user=kronicle_user,
+        kronicle_pass=kronicle_pass,
+        kronicle_host=kronicle_host,
+        visibility=visibility,
+        embargo_months=embargo_months,
+        publishing_info=pub_details,
+        publisher_name=publisher_name,
+        publisher_email=publisher_email,
+        publisher_orcid=publisher_orcid,
+        maintainer_name=maintainer_name,
+        maintainer_email=maintainer_email,
+        maintainer_orcid=maintainer_orcid
     )
 
 if __name__ == "__main__":

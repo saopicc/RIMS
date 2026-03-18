@@ -162,7 +162,7 @@ def get_run_metadata():
         "git_hash": git_hash,
         "git_remote": git_remote,
         "python_version": sys.version.split()[0], # e.g., '3.9.10'
-        "os_platform": platform.platform()
+        "os_platform": f"{platform.system()} {platform.machine()}"
     }
 
 def save_run_metadata(args, out_dir):
