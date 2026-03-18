@@ -530,17 +530,14 @@ class ClassDynSpecMS(object):
         DicoMSInfos = {}
 
         MSName=self.ListMSName[0]
-        t0  = table(MSName, ack=False)
-        tf0 = table("%s::SPECTRAL_WINDOW"%self.ListMSName[0], ack=False)
+        tf0 = table("%s::SPECTRAL_WINDOW"%self.ListMSName[0], ack=False,  readonly=True)
         self.ChanWidth = abs(tf0.getcol("CHAN_WIDTH").ravel()[0])
         tf0.close()
 
+        t0  = table(MSName, ack=False, readonly=True)
         times = np.unique(t0.getcol("TIME"))
-        
         dt=times[1:]-times[:-1]
-        if np.any(dt<0): stop
-
-        
+        if np.any(dt<0): raise RuntimeError('Data not in time order')
         t0.close()
 
         tField = table("%s::FIELD"%MSName, ack=False)
@@ -549,14 +546,12 @@ class ClassDynSpecMS(object):
             if self.ra0<0.: self.ra0+=2.*np.pi
         tField.close()
 
-        tObs = table("%s::OBSERVATION"%MSName, ack=False)
+        tObs = table("%s::OBSERVATION"%MSName, ack=False, readonly=True)
         self.TELESCOPE_NAME=tObs.getcol("TELESCOPE_NAME")[0]
         self.OBSERVER=tObs.getcol("OBSERVER")[0]
         self.PROJECT=tObs.getcol("PROJECT")[0]
         tObs.close()
 
-
-        
         self.CoordMachine = ModCoord.ClassCoordConv(self.ra0, self.dec0)
 
         pBAR = ProgressBar(Title="Reading metadata")
