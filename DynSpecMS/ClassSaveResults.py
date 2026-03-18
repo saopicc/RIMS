@@ -180,7 +180,7 @@ class ClassSaveResults(object):
         prihdr.set('CDELT3', 1., 'Delta stokes')
         prihdr.set('CUNIT3', '', 'unit')
         prihdr.set('DATE-CRE', Time.now().iso.split()[0], 'Date of file generation')
-        prihdr.set('OBSID', self.DynSpecMS.OutName, 'LOFAR Observation ID')
+        prihdr.set('OBSID', self.DynSpecMS.OutName, 'Observation ID')
         prihdr.set('CHAN-WID', self.DynSpecMS.ChanWidth, 'Frequency channel width')
         prihdr.set('FRQ-MIN', self.DynSpecMS.fMin, 'Minimal frequency')
         prihdr.set('FRQ-MAX', self.DynSpecMS.fMax, 'Maximal frequency')
@@ -189,6 +189,8 @@ class ClassSaveResults(object):
         prihdr.set('RA_RAD', ra, 'Pixel right ascension')
         prihdr.set('DEC_RAD', dec, 'Pixel declination')
         prihdr.set('TEL_NAME', self.DynSpecMS.TELESCOPE_NAME, 'Telescope Name')
+        prihdr.set('PROJECT', self.DynSpecMS.PROJECT, 'Project ID')
+        prihdr.set('OBSERVER', self.DynSpecMS.OBSERVER, 'Observer')
         
         name=self.DynSpecMS.PosArray.Name[iDir]
         if not isinstance(name,str):

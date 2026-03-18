@@ -551,6 +551,8 @@ class ClassDynSpecMS(object):
 
         tObs = table("%s::OBSERVATION"%MSName, ack=False)
         self.TELESCOPE_NAME=tObs.getcol("TELESCOPE_NAME")[0]
+        self.OBSERVER=tObs.getcol("OBSERVER")[0]
+        self.PROJECT=tObs.getcol("PROJECT")[0]
         tObs.close()
 
 
