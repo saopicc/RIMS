@@ -3,15 +3,11 @@ from __future__ import print_function
 from __future__ import absolute_import
 from builtins import range
 from builtins import object
-from distutils.spawn import find_executable
 from astropy.time import Time
-from astropy import units as uni
 from astropy.io import fits
 from astropy.wcs import WCS
-from astropy import coordinates as coord
-from astropy import constants as const
 import numpy as np
-import glob, os
+import os
 #import pylab
 from DDFacet.Other import logger
 log=logger.getLogger("ClassSaveResults")
@@ -288,11 +284,6 @@ class ClassSaveResults(object):
         label = ["I", "Q", "U", "V"]
 
         pylab.clf()
-        
-        # if find_executable("latex") is not None:
-        #     pylab.rc('text', usetex=True)
-        # font = {'family':'serif', 'serif': ['Times']}
-        # pylab.rc('font', **font)
         
 
         # Figure properties
