@@ -82,7 +82,7 @@ class ObservationPayload(BaseModel):
     rims_client_version: str = Field(..., alias="RIMS client version", description="Version of the RIMS client used to generate this payload, ideally a commit hash for reproducibility")
 
     # Data Characteristics
-    data_dimensions: DataDimensions = Field(..., alias="data dimensions", description="This will be the time, frequency and polarization coverage") #and antenna/baseline?
+    data_dimensions: DataDimensions = Field(..., alias="data dimensions", description="This will be the time, frequency and polarization coverage")
     data_format: str = Field(default="FITS")
     
     # Access Policy

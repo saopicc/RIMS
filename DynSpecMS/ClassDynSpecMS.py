@@ -19,7 +19,6 @@ from astropy.time import Time
 from DDFacet.Other import ClassTimeIt
 from astropy import constants as const
 import os
-from killMS.Other import reformat
 from DDFacet.Other import AsyncProcessPool
 from .dynspecms_version import version
 import glob
@@ -354,16 +353,10 @@ class ClassDynSpecMS(object):
         if self.BeamModel is not None or self.DDFParset!="":
             self.DoJonesCorr_Beam=True
 
-        AsyncProcessPool.APP=None
-        # AsyncProcessPool.init(ncpu=self.NCPU,
-        #                       num_io_processes=1,
-        #                       affinity="disable")
-        AsyncProcessPool._init_default()
-        AsyncProcessPool.init((self.NCPU or psutil.cpu_count(logical=False)-2),
+        self.APP=AsyncProcessPool.init((self.NCPU or psutil.cpu_count(logical=False)-2),
                               affinity=0,
                               num_io_processes=1,
                               verbose=0)
-        self.APP=AsyncProcessPool.APP
     
         self.APP.registerJobHandlers(self)
         self.APP.startWorkers()
