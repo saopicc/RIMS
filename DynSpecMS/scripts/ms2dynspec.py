@@ -126,6 +126,86 @@ def angSep(ra1, dec1, ra2, dec2):
         temp = 1.0 * cmp(temp, 0)
     return np.degrees(np.arccos(temp))
 
+import sys
+import platform
+import subprocess
+import DynSpecMS
+import json
+
+def get_run_metadata():
+    """Attempt to get hardware, Python, and Git information."""
+    try:
+        package_dir = os.path.dirname(DynSpecMS.__file__)
+    except Exception:
+        package_dir = os.path.dirname(os.path.abspath(__file__))
+        
+    git_hash = "Unknown"
+    git_remote = "Unknown"
+    
+    try:
+        git_hash = subprocess.check_output(
+            ['git', 'rev-parse', '--short', 'HEAD'], 
+            cwd=package_dir, 
+            stderr=subprocess.DEVNULL
+        ).decode('utf-8').strip()
+        
+        git_remote = subprocess.check_output(
+            ['git', 'config', '--get', 'remote.origin.url'], 
+            cwd=package_dir, 
+            stderr=subprocess.DEVNULL
+        ).decode('utf-8').strip()
+    except (subprocess.CalledProcessError, OSError, FileNotFoundError):
+        pass
+        
+    return {
+        "version": __version__,
+        "git_hash": git_hash,
+        "git_remote": git_remote,
+        "python_version": sys.version.split()[0], # e.g., '3.9.10'
+        "os_platform": platform.platform()
+    }
+
+def save_run_metadata(args, out_dir):
+    """Saves the software metadata and argument list to a JSON file, masking absolute paths."""
+    meta = get_run_metadata()
+    
+    args_dict = dict(vars(args))
+    path_keys = [
+        'ms', 'srclist', 'FitsCatalog', 'DicoFacet', 'imageI', 
+        'imageV', 'BaseDirSpecs', 'SolsDir', 'CacheDir', 
+        'DDFParset', 'OutDirName'
+    ]
+    
+    for k in path_keys:
+        val = args_dict.get(k)
+        if isinstance(val, str) and val.strip():
+            safe_paths = []
+            for p in val.split(','):
+                p = p.strip()
+                if not p: continue
+                
+                basename = os.path.basename(p.rstrip('/\\'))
+                if basename:
+                    safe_paths.append(f"<{k.lower()}_path>/{basename}")
+                else:
+                    safe_paths.append(f"<{k.lower()}_path>")
+            
+            if safe_paths:
+                args_dict[k] = ",".join(safe_paths)
+    
+    run_info = {
+        "software_metadata": meta,
+        "arguments": args_dict
+    }
+    
+    os.makedirs(out_dir, exist_ok=True)
+    out_file = os.path.join(out_dir, "run_metadata.json")
+    try:
+        with open(out_file, "w") as f:
+            json.dump(run_info, f, indent=4)
+        log.print(f"Saved run metadata to {out_file}")
+    except Exception as e:
+        log.print(f"Failed to save run metadata: {e}")
 
 
 def ms2dynspec(args=None, messages=[]):
@@ -246,6 +326,9 @@ def ms2dynspec(args=None, messages=[]):
             if D.Mode=="Spec": D.StackAll()
         
             SaveMachine=ClassSaveResults.ClassSaveResults(D,DIRNAME=DIRNAME)
+            
+            save_run_metadata(args, SaveMachine.DIRNAME)
+            
             if D.Mode=="Spec":
                 SaveMachine.WriteFits()
                 SaveMachine.SaveCatalog()
