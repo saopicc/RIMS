@@ -16,12 +16,16 @@ setup(
         'future',
         'scipy',
         'jax',
-        'jaxlib'
+        'jaxlib',
+        'pydantic>=2.0.0',
+        'requests',
+        'kronicle_sdk'
         # other dependencies
     ],
     entry_points={
         'console_scripts': [
-            'ms2dynspec=DynSpecMS.scripts.ms2dynspec:main', 
+            'rims_run=DynSpecMS.scripts.ms2dynspec:main',
+            'rims_publish=DynSpecMS.scripts.dynspec_upload:main' 
         ],
     },
     author='Cyril Tasse',
