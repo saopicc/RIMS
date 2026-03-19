@@ -393,3 +393,18 @@ if __name__ == "__main__":  # pragma: no-cover
     }
 
     log_d(here, "Final payload for KronicleWriter", payload)
+
+    # channel_id = "ab0508ea-1312-4b7b-8da1-d6ecd9238284"
+
+    # co = Settings(ini_file="").connection
+    # kronicle_writer = KronicleWriter(co.url, co.usr, co.pwd)
+    # payload = KroniclePayload.from_json({
+    #     # "channel_id": channel_id,
+    #     "channel_name": "RIMS batch info",
+    #     "channel_schema": obs_payload.channel_schema,
+    #     "metadata": {"description": obs_payload.get_field_descriptions()},
+    #     "tags": {"test": True},
+    #     "rows": [obs_payload.to_row()],
+    # })
+    # # result = kronicle_writer.insert_rows_and_upsert_channel(payload)
+    # # print(result)
