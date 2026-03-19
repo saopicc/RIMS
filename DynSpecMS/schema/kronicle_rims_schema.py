@@ -2,6 +2,9 @@ import re
 from datetime import datetime, timezone
 from typing import Any, Literal, Optional
 
+from kronicle_sdk.conf.read_conf import Settings
+from kronicle_sdk.connectors.abc_connector import KroniclePayload
+from kronicle_sdk.connectors.channel.channel_setup import KronicleSetup
 from kronicle_sdk.models.data.kronicable_sample import KronicableSample
 from kronicle_sdk.utils.log import log_d
 from pydantic import (
@@ -59,16 +62,16 @@ class AccessPolicy(BaseModel):
 
 
 class IdentifiedPerson(BaseModel):
-    email: Optional[EmailStr]=None
+    email: Optional[EmailStr] = None
     orcid: Optional[str] = None
     name: Optional[str] = None
 
     @field_validator("orcid")
     @classmethod
     def validate_orcid(cls, v: Optional[str]) -> Optional[str]:
-        if v is None or v.strip() is None:
+        if v is None or v.strip(' "\'`') is None:
             return None
-        v = v.strip()
+        v = v.strip(' "\'`')
 
         # Match optional https://, optional http://, then orcid.org/,
         # then the 4-digit groups
@@ -81,18 +84,24 @@ class IdentifiedPerson(BaseModel):
     @field_validator("email")
     @classmethod
     def normalize_email(cls, v: str) -> str:
-        v = v.strip().lower()
+        v = v.strip(' "\'`').lower()
+        return v
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, v: str) -> str:
+        v = v.strip(' "\'`')
         return v
 
     def model_dump(self, **params):
         d = super().model_dump(**params)
         return {k: v for k, v in d.items() if v is not None}
 
-
 class RimsSource(KronicableSample):
     """
     Details about the dataset used as a source of the computation
     """
+
     model_config = ConfigDict(populate_by_name=True, alias_generator=None)
 
     instrument_name: str = Field(
@@ -114,13 +123,17 @@ class RimsProduct(KronicableSample):
     """
     One of the files produced by the computation
     """
+
     model_config = ConfigDict(populate_by_name=True, alias_generator=None)
 
     name: str
     uri: str
-    source_type: Optional[str] = Field(None, alias="type", description="e.g., star, pulsar, or bright source"
+    source_type: Optional[str] = Field(
+        None, alias="type", description="e.g., star, pulsar, or bright source"
     )
-    file_extension: Optional[str] = Field(default="application/fits"   , alias="mime", description="MIME type of the file"  )
+    file_extension: Optional[str] = Field(
+        default="application/fits", alias="mime", description="MIME type of the file"
+    )
     # Coordinates & Motion
     ra_deg: float = Field(
         ..., ge=0.0, lt=360.0, description="Right ascension in degrees [0, 360)"
@@ -140,6 +153,7 @@ class AppService(KronicableSample):
     """
     Details about the app used for the computation
     """
+
     model_config = ConfigDict(populate_by_name=True, alias_generator=None)
 
     hash: str = Field(
@@ -196,18 +210,18 @@ class RimsObservationPayload(KronicableSample):
     """
     Gathers all the different information about the computation
     """
-    source:RimsSource
-    app:AppService
-    batch:RimsBatch
-    product:RimsProduct
 
+    source: RimsSource
+    app: AppService
+    batch: RimsBatch
+    product: RimsProduct
 
-    def get_fields(self)-> list[KronicableSample]:
-        return [self.source,  self.app, self.batch, self.product]
+    def get_fields(self) -> list[KronicableSample]:
+        return [self.source, self.app, self.batch, self.product]
 
     @classmethod
-    def get_field_classes(cls)-> list[type[KronicableSample]]:
-        return [RimsSource,  AppService, RimsBatch, RimsProduct]
+    def get_field_classes(cls) -> list[type[KronicableSample]]:
+        return [RimsSource, AppService, RimsBatch, RimsProduct]
 
     @classmethod
     def get_all_fields(cls):
@@ -237,14 +251,15 @@ class RimsObservationPayload(KronicableSample):
                 aggregated.update(component.get_field_descriptions())
         return aggregated
 
-    def to_row(self)-> dict[str, Any]:
+    def to_row(self) -> dict[str, Any]:
         aggregated: dict[str, Any] = {}
         for component in self.get_fields():
             if component is not None:
                 aggregated.update(component.to_row())
         return aggregated
 
-def get_field_descriptions(obj:KronicableSample) -> dict[str, str]:
+
+def get_field_descriptions(obj: KronicableSample) -> dict[str, str]:
     """
     Return a dict mapping field names to their description, if a description was provided.
     Works safely for both ModelField and FieldInfo.
@@ -310,14 +325,14 @@ def get_field_descriptions(obj:KronicableSample) -> dict[str, str]:
 #         "rows": [obs.to_row()],
 #     }
 
-    # desc_snake = obs.get_field_descriptions()
-    # log_d(here, "desc_snake", desc_snake)
-    # log_d(here, "payload", payload)
-    # result = kronicle_writer.insert_rows_and_upsert_channel(payload)
-    # log_d(here, "result", result)
-    # log_d(here, "channels", kronicle_writer.get_all_channels(should_log=True))
-    # log_d(here, "channels", kronicle_writer.get_channel(id=channel_id))
-    # log_d(here, "channels", kronicle_writer.get_rows_for_channel(id=channel_id))
+# desc_snake = obs.get_field_descriptions()
+# log_d(here, "desc_snake", desc_snake)
+# log_d(here, "payload", payload)
+# result = kronicle_writer.insert_rows_and_upsert_channel(payload)
+# log_d(here, "result", result)
+# log_d(here, "channels", kronicle_writer.get_all_channels(should_log=True))
+# log_d(here, "channels", kronicle_writer.get_channel(id=channel_id))
+# log_d(here, "channels", kronicle_writer.get_rows_for_channel(id=channel_id))
 
 if __name__ == "__main__":  # pragma: no-cover
     from datetime import datetime, timezone
@@ -332,15 +347,16 @@ if __name__ == "__main__":  # pragma: no-cover
     )
 
     app = AppService(
-        hash="v1.0.0",# type: ignore[arg-type]
+        hash="v1.0.0",  # type: ignore[arg-type]
         maintainer=IdentifiedPerson(email="maintainer@kronicle.org"),
         computing_infrastructure="SURF",
     )
 
     batch = RimsBatch(
-        tags=["fast radio burst", "test"],
+        tags=[],
+        # tags=["fast radio burst", "test"],
         publisher=IdentifiedPerson(email="owner@kronicle.org"),
-        data_dimensions=DataDimensions(# type: ignore[arg-type]
+        data_dimensions=DataDimensions(  # type: ignore[arg-type]
             time_start_utc=datetime.now(timezone.utc),
             time_end_utc=datetime.now(timezone.utc),
             time_resolution_s=1.0,
@@ -349,16 +365,16 @@ if __name__ == "__main__":  # pragma: no-cover
             frequency_resolution_khz=10.0,
             stokes=["I", "Q", "U", "V"],
         ),
-        batch_access_policy=AccessPolicy(visibility="public", embargo_months=0),# type: ignore[arg-type]
+        batch_access_policy=AccessPolicy(visibility="public", embargo_months=0),  # type: ignore[arg-type]
     )
 
-    product = RimsProduct(# type: ignore[arg-type]
+    product = RimsProduct(  # type: ignore[arg-type]
         name="Test Pulsar",
         uri="http://example.com/product1.fits",
         ra_deg=123.456,
         dec_deg=-22.5,
-        source_type="pulsar",# type: ignore[arg-type]
-        mime="application/fits"
+        source_type="pulsar",  # type: ignore[arg-type]
+        mime="application/fits",
     )
 
     # --- Instantiate aggregated observation payload ---
@@ -408,3 +424,117 @@ if __name__ == "__main__":  # pragma: no-cover
     # })
     # # result = kronicle_writer.insert_rows_and_upsert_channel(payload)
     # # print(result)
+    co = Settings().connection
+    kronicle_setup = KronicleSetup(co.url, co.usr, co.pwd)
+
+    channel_id = "ab0508ea-1312-4b7b-8da1-d6ecd9238284"
+    # payload = {
+    #     "channel_id": channel_id,
+    #     "channel_name": "RIMS test 4",
+    #     "channel_schema": obs.channel_schema,
+    #     "metadata": {"description": RimsBatch.get_field_descriptions()},
+    #     "tags": {"test": True},
+    #     "rows": [obs.to_row()],
+    # }
+
+    # desc_snake = obs.get_field_descriptions()
+    # log_d(here, "desc_snake", desc_snake)
+    # log_d(here, "payload", payload)
+    # result = kronicle_writer.insert_rows_and_upsert_channel(payload)
+    # log_d(here, "result", result)
+    # log_d(here, "channels", kronicle_writer.get_all_channels(should_log=True))
+    # log_d(here, "channels", kronicle_writer.get_channel(id=channel_id))
+    # log_d(here, "channels", kronicle_writer.get_rows_for_channel(id=channel_id))
+
+    payload_json = {
+        "channel_id": "bf88c5a1-6c6a-4766-b7c6-7c05b44702ec",
+        "channel_name": "RIMS network",
+        "channel_schema": {
+            "instrument_name": "str",
+            "dataset_id": "str",
+            "observer": "optional[dict]",
+            "hash": "str",
+            "maintainer": "optional[dict]",
+            "computing_infrastructure": "optional[str]",
+            "tags": "list",
+            "publisher": "dict",
+            "catalog_key": "optional[str]",
+            "catalog_name": "optional[str]",
+            "data_dimensions": "dict",
+            "publication_details": "optional[str]",
+            "batch_access_policy": "dict",
+            "name": "str",
+            "uri": "str",
+            "source_type": "optional[str]",
+            "file_extension": "optional[str]",
+            "ra_deg": "float",
+            "dec_deg": "float",
+        },
+        "metadata": {
+            "description": {
+                "instrument_name": "Name of the instrument used for the observation i.e. MeerKAT, LOFAR, etc.",
+                "dataset_id": "Unique identifier for the dataset - may just be the measurement set name if unknown",
+                "observer": "Identifier/email/name of the person or system adding the data to Kronicle",
+                "hash": "Version of the RIMS client used to generate this payload, ideally a commit hash for reproducibility",
+                "computing_infrastructure": "Name of the computing infrastructure used for data processing, e.g., 'SURF', 'AWS', 'Google Cloud', etc.",
+                "catalog_key": "Target catalog ID, if target is from a known catalog",
+                "catalog_name": "Catalog Name, if target is from a known catalog",
+                "data_dimensions": "This will be the time, frequency and polarization coverage",
+                "publication_details": "Free-form string for BibTeX entry or ORCID ID. Recommended if data result is used in a publication",
+                "source_type": "e.g., star, pulsar, or bright source",
+                "file_extension": "MIME type of the file",
+                "ra_deg": "Right ascension in degrees [0, 360)",
+                "dec_deg": "Declination in degrees [-90, 90]",
+            }
+        },
+        "rows": [
+            {
+                "instrument_name": "MeerKAT",
+                "dataset_id": "1666977074",
+                "observer": {"name": "Elizabeth Mahony"},
+                "hash": "v1.0-202-gb5b7f75",
+                "maintainer": {
+                    "email": "myburgh.talon@gmail.com",
+                    "orcid": "0000-0000-0000-0000",
+                    "name": '"Talon Myburgh"',
+                },
+                "computing_infrastructure": "Linux x86_64",
+                "tags": [],
+                "publisher": {
+                    "email": "myburgh.talon@gmail.com",
+                    "orcid": "0000-0003-0804-9362",
+                    "name": "Talon Myburgh",
+                },
+                "data_dimensions": {
+                    "time_start_utc": "2022-10-28 18:00:46.178000+00:00",
+                    "time_end_utc": "2022-10-28 21:48:40.596000+00:00",
+                    "time_resolution_s": 7.895160606130958,
+                    "frequency_min_mhz": 544.25732421875,
+                    "frequency_max_mhz": 1087.72607421875,
+                    "frequency_resolution_khz": 531.25,
+                    "stokes": ["I", "Q", "U", "V"],
+                },
+                "publication_details": "@article{smirnov2025mining,\n  title={Mining the time axis with TRON--II. MeerKAT detects a stellar radio flare from a distant RS CVn candidate},\n  author={Smirnov, Oleg M and Golden, Aaron and Myburgh, Talon and Ngcebetsha, Buntu and Tasse, Cyril and Heywood, Ian and Ramaila, Athanaseus JT and Thompson, Mark A and Kenyon, Jonathan S and Perkins, Simon J and others},\n  journal={Monthly Notices of the Royal Astronomical Society: Letters},\n  volume={538},\n  number={1},\n  pages={L89--L93},\n  year={2025},\n  publisher={Oxford University Press}\n}",
+                "batch_access_policy": {"visibility": "private", "embargo_months": 6},
+                "name": "dummy:U4",
+                "uri": "https://rims.extragalactic.info/downloads/9ec9a5e7-6df8-4f9e-ba32-e293fa58f1d9",
+                "source_type": "I",
+                "file_extension": "fits",
+                "ra_deg": 339.8136958876477,
+                "dec_deg": -23.90536179077666,
+            }
+        ],
+    }
+
+    kronp=KroniclePayload.from_json(payload_json)
+
+    # res=kronicle_writer.insert_rows_and_upsert_channel(payload_json)
+    # print(res)
+    res = kronicle_setup.get_rows_for_channel("bf88c5a1-6c6a-4766-b7c6-7c05b44702ec")
+    # res = kronicle_setup.get_all_channels()
+    print()
+    print()
+    print()
+    print(res)
+    # print(batch.to_row())
+
