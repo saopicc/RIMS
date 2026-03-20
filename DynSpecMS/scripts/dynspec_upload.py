@@ -5,7 +5,7 @@ import requests
 import numpy as np
 from astropy.io import fits
 from astropy.time import Time
-from datetime import datetime, timezone
+from datetime import timezone
 
 from ..schema.kronicle_rims_schema import (
     RimsObservationPayload, 
@@ -18,22 +18,32 @@ from ..schema.kronicle_rims_schema import (
     IdentifiedPerson
 )
 
-from kronicle_sdk.models.data.kronicle_payload import KroniclePayload
 from kronicle_sdk.connectors.channel.channel_writer import KronicleWriter
 from kronicle_sdk.utils.conf_utils import read_ini_conf
 
-def file_upload(filename, host, token):
+def file_upload(filename: str, host: str, token: str)-> str:
     """ Upload file filename to host host using authorization token token.
     If successful, returns the URL for the publicly visible uploaded data, else
     raises RuntimeError.
+
+    Args:
+        filename: Path to the file to upload
+        host: URL of the upload server
+        token: Authorization token for the upload server
+    Returns:
+        URL of the uploaded file if successful, False otherwise.
     """
-    with open(filename, 'rb') as infile:
-        r = requests.post(host, data={'auth':token}, files={'file': infile})
-    status = r.json().get('status')
-    if status != 'success':
-        raise RuntimeError(f'Upload failed with status {status}')
-    else:
-        return r.json().get('url')
+    try:
+        with open(filename, 'rb') as infile:
+            r = requests.post(host, data={'auth':token}, files={'file': infile})
+        status = r.json().get('status')
+        if status != 'success':
+            raise RuntimeError(f'Upload failed with status {status}')
+        else:
+            return r.json().get('url')
+    except Exception as e:
+        print(f"Error uploading {filename} to {host}: {e}")
+        return False
 
 def parse_dynspec_for_metadata(
     filename: str, 
@@ -53,6 +63,22 @@ def parse_dynspec_for_metadata(
     Given a fits filename, parsed run_metadata, and an uploaded file URL, 
     parse the header information and return an RimsObservationPayload object
     composed of Source, App, Batch, and Product schemas.
+
+    Args:
+        filename: Path to the FITS file to parse.
+        run_metadata: Dictionary containing metadata about the run, read from run_metadata.json.
+        visibility: "public" or "private" string for access policy.
+        embargo_months: Integer number of months for embargo in access policy.
+        publishing_info: Optional string with additional publishing information to include in batch metadata.
+        publisher_name: Optional name of the publisher to include in batch metadata.
+        publisher_email: Optional email of the publisher to include in batch metadata.
+        publisher_orcid: Optional ORCID of the publisher to include in batch metadata.
+        maintainer_name: Optional name of the maintainer to include in app metadata.
+        maintainer_email: Optional email of the maintainer to include in app metadata.
+        maintainer_orcid: Optional ORCID of the maintainer to include in app metadata.
+        file_url: URL of the uploaded FITS file to include in product metadata.
+    Returns:
+        RimsObservationPayload object containing the parsed metadata.
     """
     header = fits.getheader(filename)
 
@@ -90,7 +116,6 @@ def parse_dynspec_for_metadata(
         embargo_months=embargo_months
     )
 
-    # Mimic inspect_dynspec.py by reading RA_RAD and DEC_RAD and converting to degrees
     ra_rad = header.get("RA_RAD", 0.0)
     dec_rad = header.get("DEC_RAD", 0.0)
     
@@ -102,8 +127,6 @@ def parse_dynspec_for_metadata(
     client_version = sw_meta.get("version", "1.0.0")
     if client_version == "unknown" and sw_meta.get("git_hash") != "Unknown":
         client_version = sw_meta.get("git_hash")
-
-    # Construct the component models
     
     maintainer_person = IdentifiedPerson(
         email=maintainer_email or "maintainer@kronicle.org",
@@ -131,7 +154,7 @@ def parse_dynspec_for_metadata(
     
     batch = RimsBatch(
         name=os.path.basename(run_metadata.get("arguments", {}).get("OutDirName", "unknown_batch")),
-        tags=[],
+        tags=[''],
         publisher=publisher_person,
         data_dimensions=data_dimensions,
         batch_access_policy=access_policy,
@@ -157,12 +180,18 @@ def parse_dynspec_for_metadata(
     
     return payload
 
-def publish_to_kronicle(payload: RimsObservationPayload, kronicle_user: str, kronicle_pass: str, kronicle_host: str):
+def publish_to_kronicle(payload: RimsObservationPayload, kronicle_user: str, kronicle_pass: str, kronicle_host: str) -> bool:
     """
-    Template function to publish the parsed RimsObservationPayload to Kronicle.
-    """
-    print(payload.model_dump_json(indent=2))
+    Function to publish the parsed RimsObservationPayload to Kronicle.
 
+    Args:
+        payload: RimsObservationPayload object containing the metadata to publish.
+        kronicle_user: Username for Kronicle authentication.
+        kronicle_pass: Password for Kronicle authentication.
+        kronicle_host: URL of the Kronicle instance to publish to.
+    Returns:
+        True if publish is successful, False otherwise.
+    """
     kronicle_writer = KronicleWriter(kronicle_host, kronicle_user, kronicle_pass)
     kronicle_payload = {
         "channel_id" : 'bf88c5a1-6c6a-4766-b7c6-7c05b44702ec',
@@ -172,9 +201,14 @@ def publish_to_kronicle(payload: RimsObservationPayload, kronicle_user: str, kro
         "rows" : [payload.to_row()]
     }
     
-
-    result= kronicle_writer.insert_rows_and_upsert_channel(kronicle_payload)
-    print(result)
+    # #write payload to file:
+    # with open("kronicle_payload.json", "w") as f:
+    #     json.dump(kronicle_payload, f, indent=2, default=str)
+    try:
+        kronicle_writer.insert_rows_and_upsert_channel(kronicle_payload)
+        return True
+    except Exception as e:
+        return False
 
 def process_dynspec_directory(
     root_dir: str, 
@@ -219,10 +253,12 @@ def process_dynspec_directory(
         
         for fits_file in fits_files:
             print(f"Processing: {fits_file}")
-            # try:
+
             # 1. Upload to host (file server)
-            # file_url = file_upload(fits_file, upload_host, upload_token)
-            file_url="https://rims.extragalactic.info/downloads/9ec9a5e7-6df8-4f9e-ba32-e293fa58f1d9"
+            file_url = file_upload(fits_file, upload_host, upload_token)
+            if file_url is False:
+                print(f"Failed to upload {fits_file}. Skipping.")
+                continue
             print(f"Uploaded successfully. URL: {file_url}")
             
             # 2. Parse Metadata generation
@@ -242,11 +278,11 @@ def process_dynspec_directory(
             )
             
             # 3. Publish to Kronicle
-            publish_to_kronicle(payload, kronicle_user, kronicle_pass, kronicle_host)
-            print(f"Successfully processed {fits_file}.\n")
-                
-            # except Exception as e:
-            #     print(f"Failed to process {fits_file}. Error: {e}")
+            result = publish_to_kronicle(payload, kronicle_user, kronicle_pass, kronicle_host)
+            if result:
+                print(f"Successfully processed {fits_file}.\n")
+            else:
+                print(f"Failed to publish metadata for {fits_file}.")
 
 import argparse
 
