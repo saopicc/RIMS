@@ -94,7 +94,7 @@ maintainer_email=<email of the individual/team responsible for generating the ri
 maintainer_orcid=<orcid ID of the individual/team responsible for generating the rims products being uploaded>
 ```
 
-For details on locally creating an upload server to host your dynamic spectra products, visit (rims-upload-server)[https://github.com/mhardcastle/rims-upload-server]. Otherwise, contact authors for a server to which you may upload your dynamic spectra.
+For details on locally creating an upload server to host your dynamic spectra products, visit [rims-upload-server](https://github.com/mhardcastle/rims-upload-server). Otherwise, contact authors for a server to which you may upload your dynamic spectra.
 
 ### Licensing:
 MIT License
