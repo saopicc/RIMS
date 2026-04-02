@@ -3,7 +3,6 @@ from datetime import datetime, timezone
 from typing import Any, Literal, Optional
 
 from kronicle_sdk.models.data.kronicable_sample import KronicableSample
-from kronicle_sdk.utils.log import log_d
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -59,16 +58,16 @@ class AccessPolicy(BaseModel):
 
 
 class IdentifiedPerson(BaseModel):
-    email: Optional[EmailStr]=None
+    email: Optional[EmailStr] = None
     orcid: Optional[str] = None
     name: Optional[str] = None
 
     @field_validator("orcid")
     @classmethod
     def validate_orcid(cls, v: Optional[str]) -> Optional[str]:
-        if v is None or v.strip() is None:
+        if v is None or v.strip(' "\'`') is None:
             return None
-        v = v.strip()
+        v = v.strip(' "\'`')
 
         # Match optional https://, optional http://, then orcid.org/,
         # then the 4-digit groups
@@ -81,18 +80,24 @@ class IdentifiedPerson(BaseModel):
     @field_validator("email")
     @classmethod
     def normalize_email(cls, v: str) -> str:
-        v = v.strip().lower()
+        v = v.strip(' "\'`').lower()
+        return v
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, v: str) -> str:
+        v = v.strip(' "\'`')
         return v
 
     def model_dump(self, **params):
         d = super().model_dump(**params)
         return {k: v for k, v in d.items() if v is not None}
 
-
 class RimsSource(KronicableSample):
     """
     Details about the dataset used as a source of the computation
     """
+
     model_config = ConfigDict(populate_by_name=True, alias_generator=None)
 
     instrument_name: str = Field(
@@ -114,13 +119,17 @@ class RimsProduct(KronicableSample):
     """
     One of the files produced by the computation
     """
+
     model_config = ConfigDict(populate_by_name=True, alias_generator=None)
 
     name: str
     uri: str
-    source_type: Optional[str] = Field(None, alias="type", description="e.g., star, pulsar, or bright source"
+    source_type: Optional[str] = Field(
+        None, alias="type", description="e.g., star, pulsar, or bright source"
     )
-    file_extension: Optional[str] = Field(default="application/fits"   , alias="mime", description="MIME type of the file"  )
+    file_extension: Optional[str] = Field(
+        default="application/fits", alias="mime", description="MIME type of the file"
+    )
     # Coordinates & Motion
     ra_deg: float = Field(
         ..., ge=0.0, lt=360.0, description="Right ascension in degrees [0, 360)"
@@ -140,6 +149,7 @@ class AppService(KronicableSample):
     """
     Details about the app used for the computation
     """
+
     model_config = ConfigDict(populate_by_name=True, alias_generator=None)
 
     hash: str = Field(
@@ -196,18 +206,18 @@ class RimsObservationPayload(KronicableSample):
     """
     Gathers all the different information about the computation
     """
-    source:RimsSource
-    app:AppService
-    batch:RimsBatch
-    product:RimsProduct
 
+    source: RimsSource
+    app: AppService
+    batch: RimsBatch
+    product: RimsProduct
 
-    def get_fields(self)-> list[KronicableSample]:
-        return [self.source,  self.app, self.batch, self.product]
+    def get_fields(self) -> list[KronicableSample]:
+        return [self.source, self.app, self.batch, self.product]
 
     @classmethod
-    def get_field_classes(cls)-> list[type[KronicableSample]]:
-        return [RimsSource,  AppService, RimsBatch, RimsProduct]
+    def get_field_classes(cls) -> list[type[KronicableSample]]:
+        return [RimsSource, AppService, RimsBatch, RimsProduct]
 
     @classmethod
     def get_all_fields(cls):
@@ -237,14 +247,15 @@ class RimsObservationPayload(KronicableSample):
                 aggregated.update(component.get_field_descriptions())
         return aggregated
 
-    def to_row(self)-> dict[str, Any]:
+    def to_row(self) -> dict[str, Any]:
         aggregated: dict[str, Any] = {}
         for component in self.get_fields():
             if component is not None:
                 aggregated.update(component.to_row())
         return aggregated
 
-def get_field_descriptions(obj:KronicableSample) -> dict[str, str]:
+
+def get_field_descriptions(obj: KronicableSample) -> dict[str, str]:
     """
     Return a dict mapping field names to their description, if a description was provided.
     Works safely for both ModelField and FieldInfo.
@@ -256,140 +267,3 @@ def get_field_descriptions(obj:KronicableSample) -> dict[str, str]:
         if info.description is not None:
             descriptions[name] = info.description
     return descriptions
-
-
-# if __name__ == "__main__":  # pragma: no-cover
-#     from datetime import datetime, timezone
-
-#     here = "rims_paylaod"
-#     sample_payload = {
-#         "name": "Test Pulsar",
-#         "tags": ["fast radio burst", "test"],
-#         "type": "pulsar",
-#         "ra_deg": 123.456,
-#         "dec_deg": -22.5,
-#         "added_by": IdentifiedPerson(email="omartine@irisa.fr"),
-#         "dataset_id": "MS12345",
-#         "instrument_name": "MeerKAT",
-#         "RIMS client version": "v1.0.0",
-#         "data dimensions": {
-#             "time_start_utc": datetime.now(timezone.utc).isoformat(),
-#             "time_end_utc": (datetime.now(timezone.utc)).isoformat(),
-#             "time_resolution_s": 1.0,
-#             "frequency_min_mhz": 100.0,
-#             "frequency_max_mhz": 200.0,
-#             "frequency_resolution_khz": 10.0,
-#             "stokes": ["I", "Q", "U", "V"],
-#         },
-#         "batch access policy": {"visibility": "public", "embargo_months": 0},
-#         "products_uri": [
-#             "http://example.com/product1.fits",
-#             "http://example.com/product2.fits",
-#         ],
-#         "orcid": "0000-0001-2345-6789",  # optional
-#     }
-
-#     try:
-#         obs = RimsBatch.model_validate(sample_payload)
-#         log_d(here, "ObservationPayload parsed successfully!", obs)
-#         # log_d(here, obs.model_dump_json(indent=2, exclude_none=True))  # JSON output using snake_case internally
-#         # log_d(here, "obs.channel_schema:", obs.channel_schema)
-#     except Exception as e:
-#         log_d(here, f"Validation failed: {e}")
-#         raise
-#     co = Settings().connection
-#     kronicle_writer = KronicleWriter(co.url, co.usr, co.pwd)
-
-#     channel_id = "ab0508ea-1312-4b7b-8da1-d6ecd9238284"
-#     payload = {
-#         "channel_id": channel_id,
-#         "channel_name": "RIMS test 4",
-#         "channel_schema": obs.channel_schema,
-#         "metadata": {"description": RimsBatch.get_field_descriptions()},
-#         "tags": {"test": True},
-#         "rows": [obs.to_row()],
-#     }
-
-    # desc_snake = obs.get_field_descriptions()
-    # log_d(here, "desc_snake", desc_snake)
-    # log_d(here, "payload", payload)
-    # result = kronicle_writer.insert_rows_and_upsert_channel(payload)
-    # log_d(here, "result", result)
-    # log_d(here, "channels", kronicle_writer.get_all_channels(should_log=True))
-    # log_d(here, "channels", kronicle_writer.get_channel(id=channel_id))
-    # log_d(here, "channels", kronicle_writer.get_rows_for_channel(id=channel_id))
-
-if __name__ == "__main__":  # pragma: no-cover
-    from datetime import datetime, timezone
-
-    here = "rims_payload_test"
-
-    # --- Build sample subcomponents ---
-    source = RimsSource(
-        observer=IdentifiedPerson(email="omartine@irisa.fr"),
-        dataset_id="MS12345",
-        instrument_name="MeerKAT",
-    )
-
-    app = AppService(
-        hash="v1.0.0",# type: ignore[arg-type]
-        maintainer=IdentifiedPerson(email="maintainer@kronicle.org"),
-        computing_infrastructure="SURF",
-    )
-
-    batch = RimsBatch(
-        tags=["fast radio burst", "test"],
-        publisher=IdentifiedPerson(email="owner@kronicle.org"),
-        data_dimensions=DataDimensions(# type: ignore[arg-type]
-            time_start_utc=datetime.now(timezone.utc),
-            time_end_utc=datetime.now(timezone.utc),
-            time_resolution_s=1.0,
-            frequency_min_mhz=100.0,
-            frequency_max_mhz=200.0,
-            frequency_resolution_khz=10.0,
-            stokes=["I", "Q", "U", "V"],
-        ),
-        batch_access_policy=AccessPolicy(visibility="public", embargo_months=0),# type: ignore[arg-type]
-    )
-
-    product = RimsProduct(# type: ignore[arg-type]
-        name="Test Pulsar",
-        uri="http://example.com/product1.fits",
-        ra_deg=123.456,
-        dec_deg=-22.5,
-        source_type="pulsar",# type: ignore[arg-type]
-        mime="application/fits"
-    )
-
-    # --- Instantiate aggregated observation payload ---
-    obs_payload = RimsObservationPayload(
-        source=source,
-        app=app,
-        batch=batch,
-        product=product,
-    )
-
-    # --- Test channel_schema aggregation ---
-    aggregated_schema = obs_payload.channel_schema
-    log_d(here, "Aggregated channel_schema", aggregated_schema)
-
-    # --- Test field descriptions aggregation ---
-    field_descriptions = obs_payload.get_field_descriptions()
-    log_d(here, "Aggregated field descriptions", field_descriptions)
-
-    # --- Test row serialization ---
-    row = obs_payload.to_row()
-    log_d(here, "Serialized row", row)
-
-    # --- Example payload for KronicleWriter ---
-    channel_id = "ab0508ea-1312-4b7b-8da1-d6ecd9238284"
-    payload = {
-        "channel_id": channel_id,
-        "channel_name": "RIMS test 4",
-        "channel_schema": aggregated_schema,
-        "metadata": {"description": field_descriptions},
-        "tags": {"test": True},
-        "rows": [row],
-    }
-
-    log_d(here, "Final payload for KronicleWriter", payload)
