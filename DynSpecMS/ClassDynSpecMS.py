@@ -11,14 +11,12 @@ log=logger.getLogger("DynSpecMS")
 from DDFacet.Array import shared_dict
 from DDFacet.Other import AsyncProcessPool
     
-from DDFacet.Other import Multiprocessing
 from DDFacet.Other import ModColor
 from DDFacet.Other.progressbar import ProgressBar
 import numpy as np
 from astropy.time import Time
 from DDFacet.Other import ClassTimeIt
 from astropy import constants as const
-import os
 from DDFacet.Other import AsyncProcessPool
 from .dynspecms_version import version
 import glob
@@ -39,6 +37,7 @@ from . import ClassGiveCatalog
 from DynSpecMS.kernels.phase_and_sum_vis import phase_and_sum_direction
 from DynSpecMS.kernels.t_idx_jones import compute_jones_diag_for_time, extract_row_jones_jax
 from jax import jit, vmap
+import jax.numpy as jnp
 
 def print_memory_info():
     mem_info = psutil.virtual_memory()
@@ -837,7 +836,8 @@ class ClassDynSpecMS(object):
                     "At":"tessel",
                     "DtBeamMin":5.,
                     "NBand":self.BeamNBand,
-                    "CenterNorm":1}
+                    "CenterNorm":1,
+                    "ForceScalar": False}
 
         SolsName=self.SolsName
         if SolsName is not None and "[" in SolsName:
@@ -850,7 +850,8 @@ class ClassDynSpecMS(object):
                             "SolsDir":self.SolsDir,
                             "GlobalNorm":None,
                             "JonesNormList":"AP"},
-            "Cache":{"Dir":self.CacheDir}
+            "Cache":{"Dir":self.CacheDir},
+            "Parallel":{"NCPU": self.NCPU}
             }
         print("Reading Jones matrices solution file:", file=log)
         
