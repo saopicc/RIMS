@@ -120,7 +120,7 @@ def phase_and_sum_direction(vis : jnp.ndarray, flag : jnp.ndarray, weights : jnp
 
     # compute l,m,n
     l, m = radec2lm(ra, dec, ra0, dec0)
-    n = jnp.sqrt(jnp.clip(1.0 - l * l - m * m, a_min=0.0))
+    n = jnp.sqrt(jnp.clip(1.0 - l * l - m * m))
 
     # compute phasing
     phase = _compute_phase(chan_freqs, u, v, w, l, m, n)
