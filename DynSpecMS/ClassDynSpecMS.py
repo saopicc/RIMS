@@ -326,15 +326,13 @@ class ClassDynSpecMS(object):
         print_memory_info()
 
         try:
-            shape = (self.NDir, self.NChan, self.NTimesGrid, 4)
+            shape = (self.NDir, self.NChan, self.NTimesGrid, self.npol_grid)
             log.print(f"Allocating GridLinPol with shape {shape}, memory usage: {compute_memory_usage_gb(shape):.2f} GB")
             self.DicoGrids["GridLinPol"] = np.zeros(shape, np.complex128)
 
-            shape = (self.NDir, self.NChan, self.NTimesGrid, 4)
             log.print(f"Allocating GridWeight with shape {shape}, memory usage: {compute_memory_usage_gb(shape):.2f} GB")
             self.DicoGrids["GridWeight"] = np.zeros(shape, np.complex128)
 
-            shape = (self.NDir, self.NChan, self.NTimesGrid, 4)
             log.print(f"Allocating GridWeight2 with shape {shape}, memory usage: {compute_memory_usage_gb(shape):.2f} GB")
             self.DicoGrids["GridWeight2"] = np.zeros(shape, np.complex128)
         except Exception as e:
@@ -612,12 +610,32 @@ class ClassDynSpecMS(object):
             tp = table("%s::POLARIZATION"%MSName, ack=False)
             npol=tp.getcol("NUM_CORR").flat[0]
             CorrType=tp.getcol("CORR_TYPE").ravel().tolist()
-            if CorrType==[9,10,11,12]:
-                self.slicePol=(0,1,2,3)
-            elif CorrType==[9,12]:
-                self.slicePol=(0,3)
+            
+# Remove duplicates while preserving order (e.g., "IQI" -> ["I", "Q"])
+            raw_stokes = list(self.options.stokes.upper()) if hasattr(self.options, 'stokes') else ["I", "Q", "U", "V"]
+            self.stokes_list = list(dict.fromkeys([s for s in raw_stokes if s in "IQUV"]))
+            
+            if not self.stokes_list:
+                raise ValueError("No valid Stokes parameters requested. Use combinations of I, Q, U, V.")
+
+            if CorrType == [9, 10, 11, 12]:
+                if set(self.stokes_list).issubset({'I', 'Q'}):
+                    self.ms_pol_indices = (0, 3) 
+                else:
+                    self.ms_pol_indices = (0, 1, 2, 3)
+            elif CorrType == [9, 12]:
+                self.ms_pol_indices = (0, 1)
+                if 'U' in self.stokes_list or 'V' in self.stokes_list:
+                    raise ValueError(f"Requested {self.stokes_list} but MS only has XX and YY.")
             else:
                 raise ValueError("Pols should be XX, XY, YX, YY or XX, YY")
+            
+            # The new grid size is based on exactly what we keep
+            self.npol_grid = len(self.ms_pol_indices)
+            
+            # For the JAX kernel, it will now process a densely packed array of either 2 or 4 pols
+            self.kernel_pol_indices = tuple(range(self.npol_grid))
+
             tp.close()
 
             chFreq=tf.getcol("CHAN_FREQ").ravel()
@@ -742,13 +760,15 @@ class ClassDynSpecMS(object):
         data = np.zeros((NROW,nch,npol),np.complex64)
         t.getcolnp(self.ColName,data,ROW0,NROW)
         if RevertChans: data=data[:,::-1,:]
+
+        data = data[:, :, self.ms_pol_indices] # keep only the pols we need
         
         if self.ModelName:
             print("  Substracting %s from %s"%(self.ModelName,self.ColName), file=log)
             model=np.zeros((NROW,nch,npol),np.complex64)
             t.getcolnp(self.ModelName,model,ROW0,NROW)
             if RevertChans: model=model[:,::-1,:]
-
+            model = model[:, :, self.ms_pol_indices] # Slice model
             data-=model
             del(model)
 
@@ -774,6 +794,7 @@ class ClassDynSpecMS(object):
         flag=np.zeros((NROW,nch,npol),bool)
         t.getcolnp("FLAG",flag,ROW0,NROW)
         if RevertChans: flag=flag[:,::-1]
+        flag = flag[:, :, self.ms_pol_indices] # Slice flag
             
 
         # data[:,:,:]=0
@@ -1058,18 +1079,31 @@ class ClassDynSpecMS(object):
 
 
     def Finalise(self):
-
         G=self.DicoGrids["GridLinPol"]
         W=self.DicoGrids["GridWeight"].copy()
         W[W == 0] = 1
         Gn = G/W 
         self.Gn=Gn
 
-        GOut=np.zeros_like(G)
-        GOut[..., 0] =   0.5*(Gn[..., 0] + Gn[..., 3]) # I = 0.5(XX + YY)
-        GOut[..., 1] =   0.5*(Gn[..., 0] - Gn[..., 3]) # Q = 0.5(XX - YY) 
-        GOut[..., 2] =   0.5*(Gn[..., 1] + Gn[..., 2]) # U = 0.5(XY + YX)
-        GOut[..., 3] = -0.5j*(Gn[..., 1] - Gn[..., 2]) # V = -0.5i(XY - YX)
+        # Allocate GOut specifically to the number of requested Stokes parameters
+        GOut = np.zeros(G.shape[:-1] + (len(self.stokes_list),), dtype=np.complex128)
+        
+        for i, s in enumerate(self.stokes_list):
+            if s == 'I':
+                if self.npol_grid == 4:
+                    GOut[..., i] = 0.5 * (Gn[..., 0] + Gn[..., 3]) # I = 0.5(XX + YY)
+                else: 
+                    GOut[..., i] = 0.5 * (Gn[..., 0] + Gn[..., 1]) # Tight-packed XX, YY
+            elif s == 'Q':
+                if self.npol_grid == 4:
+                    GOut[..., i] = 0.5 * (Gn[..., 0] - Gn[..., 3]) # Q = 0.5(XX - YY) 
+                else:
+                    GOut[..., i] = 0.5 * (Gn[..., 0] - Gn[..., 1]) 
+            elif s == 'U':
+                GOut[..., i] = 0.5 * (Gn[..., 1] + Gn[..., 2]) # U = 0.5(XY + YX)
+            elif s == 'V':
+                GOut[..., i] = -0.5j * (Gn[..., 1] - Gn[..., 2]) # V = -0.5i(XY - YX)
+                
         self.GOut = GOut
 
     # def Stack_SingleTime(self,DicoDATA,iTime):
@@ -1090,21 +1124,19 @@ class ClassDynSpecMS(object):
         if indRow.size==0: return
         ThisTime=self.DicoMSInfos[iMS]["times"][iTime]
         
-        nrow,nch,npol=DicoDATA["data"].shape
-        indCh=np.int64(np.arange(nch)).reshape((1,nch,1))
-        indPol=np.int64(np.arange(npol)).reshape((1,1,npol))
-        indR=indRow.reshape((indRow.size,1,1))
-        nRowOut=indRow.size
-        indArr=nch*npol*np.int64(indR)+npol*np.int64(indCh)+np.int64(indPol)
+        nrow, nch, npol_grid = DicoDATA["data"].shape
+        indCh = np.int64(np.arange(nch)).reshape((1,nch,1))
+        indPol = np.int64(np.arange(npol_grid)).reshape((1,1,npol_grid))
+        indR = indRow.reshape((indRow.size,1,1))
+        nRowOut = indRow.size
+        indArr = nch*npol_grid*np.int64(indR) + npol_grid*np.int64(indCh) + np.int64(indPol)
         
-        #indRow = np.where(DicoDATA["times"]>0)[0]
-        #f   = DicoDATA["flag"][indRow, :, :]
-        #d   = DicoDATA["data"][indRow, :, :]
-
-        T=ClassTimeIt.ClassTimeIt("SingleTimeAllDir")
+        T = ClassTimeIt.ClassTimeIt("SingleTimeAllDir")
         T.disable()
-        d   = np.array((DicoDATA["data"].flat[indArr.flat[:]]).reshape((nRowOut,nch,npol))).copy()
-        f   = np.array((DicoDATA["flag"].flat[indArr.flat[:]]).reshape((nRowOut,nch,npol))).copy()
+        
+        # FIX HERE: Replace 'npol' with 'npol_grid' in the reshape tuples
+        d = np.array((DicoDATA["data"].flat[indArr.flat[:]]).reshape((nRowOut, nch, npol_grid))).copy()
+        f = np.array((DicoDATA["flag"].flat[indArr.flat[:]]).reshape((nRowOut, nch, npol_grid))).copy()
         T.timeit("first")
         
         # for i in range(10):
@@ -1188,13 +1220,13 @@ class ClassDynSpecMS(object):
 
         # execue kernel
         ds_all, ws_all, w2s_all = vmapped_kernel(
-            d, f, w_scalar, u0, v0, w0, A0s, A1s, chfreq_1d, ra_all, dec_all, ra0, dec0, self.slicePol, Jones_tuple_all
+            d, f, w_scalar, u0, v0, w0, A0s, A1s, chfreq_1d, ra_all, dec_all, ra0, dec0, self.kernel_pol_indices, Jones_tuple_all
         )
         
-        # fill all arrays all at once
-        self.DicoGrids["GridLinPol"][:, ich0:ich0+nch, iTimeGrid][:, :, self.slicePol] = ds_all
-        self.DicoGrids["GridWeight"][:, ich0:ich0+nch, iTimeGrid][:, :, self.slicePol] = np.float32(ws_all)
-        self.DicoGrids["GridWeight2"][:, ich0:ich0+nch, iTimeGrid][:, :, self.slicePol] = np.float32(w2s_all)
+        # The arrays are now perfectly sized for stokes, fill at once
+        self.DicoGrids["GridLinPol"][:, ich0:ich0+nch, iTimeGrid][:, :, :] = ds_all
+        self.DicoGrids["GridWeight"][:, ich0:ich0+nch, iTimeGrid][:, :, :] = np.float32(ws_all)
+        self.DicoGrids["GridWeight2"][:, ich0:ich0+nch, iTimeGrid][:, :, :] = np.float32(w2s_all)
             
         T.timeit("rest")
 

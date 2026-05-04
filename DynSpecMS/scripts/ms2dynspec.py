@@ -386,6 +386,7 @@ def main():
     parser.add_argument("--SourceCatOff", type=str, default="", help="Read the code", required=False)
     parser.add_argument("--SourceCatOff_FluxMean", type=float, default=0, help="Read the code", required=False)
     parser.add_argument("--SourceCatOff_dFluxMean", type=float, default=0, help="Read the code", required=False)
+    parser.add_argument("--stokes", type=str, default="IQUV", help="Stokes params to compute, e.g., I, IV, IQUV")
     parser.add_argument("--NMaxTargets", type=int, default=0, help="Read the code", required=False)
     
     args = parser.parse_args()

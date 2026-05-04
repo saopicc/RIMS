@@ -171,7 +171,12 @@ class ClassSaveResults(object):
         prihdr.set('CRVAL2', self.DynSpecMS.fMin*1e-6, 'Frequency at the reference pixel (MHz)')
         prihdr.set('CDELT2', self.DynSpecMS.ChanWidth*1e-6, 'Delta freq (MHz)')
         prihdr.set('CUNIT2', 'MHz', 'unit')
-        prihdr.set('CTYPE3', 'Stokes parameter', '1=I, 2=Q, 3=U, 4=V')
+        stokes_labels = []
+        if hasattr(self.DynSpecMS, 'stokes_list'):
+            stokes_labels = [f"{i+1}={s}" for i, s in enumerate(self.DynSpecMS.stokes_list)]
+        else:
+            stokes_labels = ['1=I', '2=Q', '3=U', '4=V']
+        prihdr.set('CTYPE3', 'Stokes parameter', ', '.join(stokes_labels))
         prihdr.set('CRPIX3', 1., 'Reference')
         prihdr.set('CRVAL3', 1., 'frequence at the reference pixel')
         prihdr.set('CDELT3', 1., 'Delta stokes')
@@ -217,7 +222,7 @@ class ClassSaveResults(object):
             # Gn=np.sqrt(Gn0)/Gn1
             # Gn[Gn0==0]=0
         else:
-            Gn = self.DynSpecMS.GOut[iDir,:, :, :].real
+            Gn = self.DynSpecMS.GOut[iDir, :, :, :].real
 
         hdu = fits.PrimaryHDU(np.rollaxis(Gn, 2), header=prihdr)
         #print(f"Fits being written: {fitsname}")
