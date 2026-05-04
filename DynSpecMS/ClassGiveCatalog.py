@@ -166,6 +166,16 @@ class ClassGiveCatalog():
         Radius=self.Radius
         self.NOrig=self.PosArray.Name.shape[0]
         Dist=AngDist(self.ra0,self.PosArray.ra,self.dec0,self.PosArray.dec)
+        
+        # Log excluded targets
+        ind_out = np.where(Dist >= (Radius*np.pi/180))[0]
+        for i_out in ind_out:
+            name_str = self.PosArray.Name[i_out] if hasattr(self.PosArray, 'Name') else "Target"
+            if isinstance(name_str, bytes):
+                name_str = name_str.decode('utf-8', errors='ignore')
+            dist_deg = Dist[i_out] * 180 / np.pi
+            log.print(f"Skipping {name_str}: distance from phase center ({dist_deg:.3f} deg) > radius ({Radius} deg)")
+
         ind=np.where(Dist<(Radius*np.pi/180))[0]
         self.PosArray=self.PosArray[ind]
         

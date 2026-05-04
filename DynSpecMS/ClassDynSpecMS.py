@@ -256,7 +256,7 @@ class ClassDynSpecMS(object):
 
         print("Selected %i target [out of the %i in the original list]"%(self.NDirSelected,CGC.NOrig), file=log)
         if self.NDirSelected==0:
-            print(ModColor.Str("   Have found no sources - returning"), file=log)
+            print(ModColor.Str(f"   Have found no sources within the specified {self.Radius}-degree radius - returning without executing"), file=log)
             return
         
         NOff=self.NOff
@@ -507,21 +507,17 @@ class ClassDynSpecMS(object):
             CatOff=CatOff[CatOff.ra!=0]
 
         else:
-            while NDone<NOff:
-                # dx=np.random.rand(1)[0]*self.Radius*np.pi/180
-                # dy=np.random.rand(1)[0]*self.Radius*np.pi/180
+            R_rad = self.Radius * np.pi / 180
+            while NDone < NOff:
+                l_val = (np.random.rand(1)[0] - 0.5) * 2 * R_rad
+                m_val = (np.random.rand(1)[0] - 0.5) * 2 * R_rad
                 
-                dx=(np.random.rand(1)[0]-0.5)*2*self.Radius*np.pi/180/np.cos(self.dec0)
-                dy=(np.random.rand(1)[0]-0.5)*2*self.Radius*np.pi/180
-                
-                ra=self.ra0+dx
-                dec=self.dec0+dy
-                d=AngDist(self.ra0,ra,self.dec0,dec)
-                if d<self.Radius*np.pi/180:
-                    CatOff.ra[NDone]=ra
-                    CatOff.dec[NDone]=dec
-                    CatOff.Name[NDone]="Off%4.4i"%NDone
-                    NDone+=1
+                if (l_val**2 + m_val**2) <= R_rad**2:
+                    ra, dec = self.CoordMachine.lm2radec(np.array([l_val]), np.array([m_val]))
+                    CatOff.ra[NDone] = ra[0]
+                    CatOff.dec[NDone] = dec[0]
+                    CatOff.Name[NDone] = "Off%4.4i" % NDone
+                    NDone += 1
                     
         return CatOff
 
