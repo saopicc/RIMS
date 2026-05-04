@@ -289,11 +289,14 @@ def ms2dynspec(args=None, messages=[]):
         for ik,k in enumerate(sorted(list(DT.keys()))):
             MSList=DT[k]
             if args.OutDirName=="MSName":
+                # Old behaviour: exact folder name, no _T splits
                 DIRNAME=os.path.abspath("DynSpecs_%s"%args.ms)
             else:
                 DIRNAME=os.path.abspath(args.OutDirName)
-            if len(DT)>1:
-                DIRNAME = "%s_T%i"%(DIRNAME,ik)
+                # Elegantly split custom folders ONLY if multiple MSs exist
+                if len(DT)>1:
+                    DIRNAME = "%s_T%i"%(DIRNAME,ik)
+                    
             if NChunk>1:
                 DIRNAME = "%s_RandChunk%i"%(DIRNAME,iChunk)
             D = ClassDynSpecMS(ListMSName=MSList, 

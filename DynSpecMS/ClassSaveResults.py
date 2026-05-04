@@ -26,17 +26,14 @@ def GiveMAD(X):
     return np.median(np.abs(X-np.median(X)))
 
 class ClassSaveResults(object):
-    def __init__(self, DynSpecMS,DIRNAME=None):
+    def __init__(self, DynSpecMS, DIRNAME=None):
         self.DynSpecMS=DynSpecMS
-        self.DIRNAME=DIRNAME
-        if self.DIRNAME is None or self.DIRNAME=="MSName":
+        
+        # Respect the DIRNAME handed down from the ms2dynspec cleanly
+        if DIRNAME is None or DIRNAME=="MSName":
             self.DIRNAME="DynSpecs_%s"%self.DynSpecMS.OutName
         else:
-            self.DIRNAME=os.path.join(self.DIRNAME,"_DynSpecs_%s"%(self.DynSpecMS.OutName))
-            
-            
-        #image  = self.DynSpecMS.Image
-        #self.ImageData=np.squeeze(fits.getdata(image, ext=0))
+            self.DIRNAME=DIRNAME
 
         self.ImageI=self.DynSpecMS.ImageI
         if self.ImageI and os.path.isfile(self.DynSpecMS.ImageI):
