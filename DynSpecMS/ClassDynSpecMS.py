@@ -557,34 +557,40 @@ class ClassDynSpecMS(object):
         pBAR.render(0, self.nMS)
    
         #for iMS, MSName in enumerate(sorted(self.ListMSName)):
-        tmin,tmax=None,None
+        tmin, tmax = None, None
         for iMS, MSName in enumerate(self.ListMSName):
             try:
                 t = table(MSName, ack=False)
-            except Exception as e:
+            except (FileNotFoundError, RuntimeError) as e:
                 s = str(e)
+                pBAR.render(iMS+1, self.nMS)
+                print("\n" + ModColor.Str("Problem reading %s: %s" % (MSName, s)))
                 DicoMSInfos[iMS] = {"Readable": False,
                                     "Exception": s}
-                pBAR.render(iMS+1, self.nMS)
                 continue
 
             if self.ColName not in t.colnames():
-                DicoMSInfos[iMS] = {"Readable": False,
-                                    "Exception": "Missing Data colname %s"%self.ColName}
+                msg = "Missing Data colname %s" % self.ColName
                 pBAR.render(iMS+1, self.nMS)
+                print("\n" + ModColor.Str("Problem reading %s: %s" % (MSName, msg)))
+                DicoMSInfos[iMS] = {"Readable": False,
+                                    "Exception": msg}
                 continue
 
             if self.ColWeights and (self.ColWeights not in t.colnames()):
-                DicoMSInfos[iMS] = {"Readable": False,
-                                    "Exception": "Missing Weights colname %s"%self.ColWeights}
+                msg = "Missing Weights colname %s" % self.ColWeights
                 pBAR.render(iMS+1, self.nMS)
+                print("\n" + ModColor.Str("Problem reading %s: %s" % (MSName, msg)))
+                DicoMSInfos[iMS] = {"Readable": False,
+                                    "Exception": msg}
                 continue
 
-            
-            if  self.ModelName and (self.ModelName not in t.colnames()):
-                DicoMSInfos[iMS] = {"Readable": False,
-                                    "Exception": "Missing Model colname %s"%self.ModelName}
+            if self.ModelName and (self.ModelName not in t.colnames()):
+                msg = "Missing Model colname %s" % self.ModelName
                 pBAR.render(iMS+1, self.nMS)
+                print("\n" + ModColor.Str("Problem reading %s: %s" % (MSName, msg)))
+                DicoMSInfos[iMS] = {"Readable": False,
+                                    "Exception": msg}
                 continue
             
             tField = table("%s::FIELD"%MSName, ack=False)
@@ -652,15 +658,13 @@ class ClassDynSpecMS(object):
                 raise ValueError("should have the same chan width")
             pBAR.render(iMS+1, self.nMS)
             
+        if tmin is None or tmax is None:
+            raise RuntimeError("None of the provided MS files could be read. Please check the logs above for specific errors.")
+
         self.NTimesGrid=int(np.ceil((tmax-tmin)/dtBin))
         self.timesGrid=tmin+np.arange(self.NTimesGrid)*dtBin
         self.tmin=tmin
         self.tmax=tmax
-        
-        for iMS in range(self.nMS):
-            if not DicoMSInfos[iMS]["Readable"]:
-                print(ModColor.Str("Problem reading %s"%MSName), file=log)
-                print(ModColor.Str("   %s"%DicoMSInfos[iMS]["Exception"]), file=log)
                 
 
         t.close()
