@@ -34,37 +34,21 @@ from DynSpecMS import ClassGiveCatalog
 =========================================================================
 """
 
-import sys
 import os
 import argparse
-from distutils.spawn import find_executable
-from matplotlib import rc
-#import matplotlib
-#matplotlib.rcParams['font.family'] = 'sans-serif'
-#fontsize=12
-#rc('font',**{'family':'serif','serif':['Times'],'size':fontsize})
-#if find_executable("latex") is not None:
-#    rc('text', usetex=True)
 from DDFacet.Other import Multiprocessing
 
 
 
 try:
-    import dask.array as da
-    from daskms import xds_from_table as table
+    from daskms import xds_from_table as dasktable
     HAS_DASK=True
 except:
     HAS_DASK=False
     
 from pyrap.tables import table    
-from astropy.time import Time
-from astropy import units as uni
-from astropy.io import fits
-from astropy import coordinates as coord
-from astropy import constants as const
 import numpy as np
-import glob, os
-import pylab
+import os
 from DDFacet.Other import MyPickle
 from DynSpecMS import logo
 logo.PrintLogo(__version__)
@@ -142,6 +126,86 @@ def angSep(ra1, dec1, ra2, dec2):
         temp = 1.0 * cmp(temp, 0)
     return np.degrees(np.arccos(temp))
 
+import sys
+import platform
+import subprocess
+import DynSpecMS
+import json
+
+def get_run_metadata():
+    """Attempt to get hardware, Python, and Git information."""
+    try:
+        package_dir = os.path.dirname(DynSpecMS.__file__)
+    except Exception:
+        package_dir = os.path.dirname(os.path.abspath(__file__))
+        
+    git_hash = "Unknown"
+    git_remote = "Unknown"
+    
+    try:
+        git_hash = subprocess.check_output(
+            ['git', 'rev-parse', '--short', 'HEAD'], 
+            cwd=package_dir, 
+            stderr=subprocess.DEVNULL
+        ).decode('utf-8').strip()
+        
+        git_remote = subprocess.check_output(
+            ['git', 'config', '--get', 'remote.origin.url'], 
+            cwd=package_dir, 
+            stderr=subprocess.DEVNULL
+        ).decode('utf-8').strip()
+    except (subprocess.CalledProcessError, OSError, FileNotFoundError):
+        pass
+        
+    return {
+        "version": __version__,
+        "git_hash": git_hash,
+        "git_remote": git_remote,
+        "python_version": sys.version.split()[0], # e.g., '3.9.10'
+        "os_platform": f"{platform.system()} {platform.machine()}"
+    }
+
+def save_run_metadata(args, out_dir):
+    """Saves the software metadata and argument list to a JSON file, masking absolute paths."""
+    meta = get_run_metadata()
+    
+    args_dict = dict(vars(args))
+    path_keys = [
+        'ms', 'srclist', 'FitsCatalog', 'DicoFacet', 'imageI', 
+        'imageV', 'BaseDirSpecs', 'SolsDir', 'CacheDir', 
+        'DDFParset', 'OutDirName'
+    ]
+    
+    for k in path_keys:
+        val = args_dict.get(k)
+        if isinstance(val, str) and val.strip():
+            safe_paths = []
+            for p in val.split(','):
+                p = p.strip()
+                if not p: continue
+                
+                basename = os.path.basename(p.rstrip('/\\'))
+                if basename:
+                    safe_paths.append(f"<{k.lower()}_path>/{basename}")
+                else:
+                    safe_paths.append(f"<{k.lower()}_path>")
+            
+            if safe_paths:
+                args_dict[k] = ",".join(safe_paths)
+    
+    run_info = {
+        "software_metadata": meta,
+        "arguments": args_dict
+    }
+    
+    os.makedirs(out_dir, exist_ok=True)
+    out_file = os.path.join(out_dir, "run_metadata.json")
+    try:
+        with open(out_file, "w") as f:
+            json.dump(run_info, f, indent=4)
+        log.print(f"Saved run metadata to {out_file}")
+    except Exception as e:
+        log.print(f"Failed to save run metadata: {e}")
 
 
 def ms2dynspec(args=None, messages=[]):
@@ -159,7 +223,8 @@ def ms2dynspec(args=None, messages=[]):
         DT={}
         for MSName in MSList:
             if HAS_DASK:
-                t = table(MSName)
+                t = dasktable(MSName)
+                print(type(t[0]["TIME"].values))
                 Times=np.unique((t[0]["TIME"].values))
             else:
                 t = table(MSName,ack=False)
@@ -183,7 +248,7 @@ def ms2dynspec(args=None, messages=[]):
     field_decs=[]
     for MSName in MSList:
         if HAS_DASK:
-            tField = table(f"{MSName}::FIELD")
+            tField = dasktable(f"{MSName}::FIELD")
             ra0, dec0 = np.ravel(tField[0]["PHASE_DIR"].values)
         else:
             tField = table(f"{MSName}::FIELD",ack=False)
@@ -192,12 +257,6 @@ def ms2dynspec(args=None, messages=[]):
         if ra0<0.: ra0+=2.*np.pi
         field_ras.append(ra0)
         field_decs.append(dec0)
-        tField.close()
-        
-    # L_radec=list(set(L_radec))
-    # if len(L_radec)>1: stop
-    # ra0,dec0=L_radec[0]
-    
     field_ras=np.array(field_ras)
     field_decs=np.array(field_decs)
     ra_different=np.any(np.abs(field_ras-np.mean(field_ras))>args.tolerance*np.pi/(180*3600))
@@ -229,14 +288,15 @@ def ms2dynspec(args=None, messages=[]):
             SubSet=(iChunk,NChunk)
         for ik,k in enumerate(sorted(list(DT.keys()))):
             MSList=DT[k]
-            OutDirName=args.OutDirName
-            if OutDirName=="MSName":
-                OutDirName=args.ms
+            if args.OutDirName=="MSName":
+                # Old behaviour: exact folder name, no _T splits
+                DIRNAME=os.path.abspath("DynSpecs_%s"%args.ms)
             else:
-                OutDirName=os.path.basename(os.path.abspath(OutDirName))
-            DIRNAME=os.path.abspath("DynSpecs_%s"%OutDirName)
-            if len(DT)>1:
-                DIRNAME = "%s_T%i"%(DIRNAME,ik)
+                DIRNAME=os.path.abspath(args.OutDirName)
+                # Elegantly split custom folders ONLY if multiple MSs exist
+                if len(DT)>1:
+                    DIRNAME = "%s_T%i"%(DIRNAME,ik)
+                    
             if NChunk>1:
                 DIRNAME = "%s_RandChunk%i"%(DIRNAME,iChunk)
             D = ClassDynSpecMS(ListMSName=MSList, 
@@ -269,6 +329,9 @@ def ms2dynspec(args=None, messages=[]):
             if D.Mode=="Spec": D.StackAll()
         
             SaveMachine=ClassSaveResults.ClassSaveResults(D,DIRNAME=DIRNAME)
+            
+            save_run_metadata(args, SaveMachine.DIRNAME)
+            
             if D.Mode=="Spec":
                 SaveMachine.WriteFits()
                 SaveMachine.SaveCatalog()
@@ -323,6 +386,7 @@ def main():
     parser.add_argument("--SourceCatOff", type=str, default="", help="Read the code", required=False)
     parser.add_argument("--SourceCatOff_FluxMean", type=float, default=0, help="Read the code", required=False)
     parser.add_argument("--SourceCatOff_dFluxMean", type=float, default=0, help="Read the code", required=False)
+    parser.add_argument("--stokes", type=str, default="IQUV", help="Stokes params to compute, e.g., I, IV, IQUV")
     parser.add_argument("--NMaxTargets", type=int, default=0, help="Read the code", required=False)
     
     args = parser.parse_args()
