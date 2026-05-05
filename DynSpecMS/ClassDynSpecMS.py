@@ -34,10 +34,8 @@ from Polygon.Utils import convexHull
 import DDFacet.Other.ClassJonesDomains
 import psutil
 from . import ClassGiveCatalog
-from DynSpecMS.kernels.phase_and_sum_vis import phase_and_sum_direction
-from DynSpecMS.kernels.t_idx_jones import compute_jones_diag_for_time, extract_row_jones_jax
-from jax import jit, vmap
-import jax.numpy as jnp
+from DynSpecMS.kernels.phase_and_sum_vis import phase_and_sum_direction_numba
+from DynSpecMS.kernels.t_idx_jones import compute_jones_diag_for_time_numba
 
 def print_memory_info():
     mem_info = psutil.virtual_memory()
@@ -1173,7 +1171,7 @@ class ClassDynSpecMS(object):
         chfreq_1d = self.DicoMSInfos[iMS]["ChanFreq"].ravel()
 
         # evaluate domain-wide Jones diagnostics EXACTLY ONCE prior to direction iteration
-        J_diag, J_ch_domain_idx = None, None
+        J_diag, iDJones_all = None, None
         if self.DoJonesCorr_kMS or self.DoJonesCorr_Beam:
             DicoJones = shared_dict.attach("DicoJones_%i"%iJob)
             DicoJones.reload()
@@ -1184,7 +1182,7 @@ class ClassDynSpecMS(object):
             fd_arr = DicoJones["FreqDomains"]
             
             # pass native primitives & memory arrays - not dicts
-            J_diag, iTJones, J_ch_domain_idx = compute_jones_diag_for_time(
+            J_diag, iTJones, J_ch_domain_idx = compute_jones_diag_for_time_numba(
                 G_arr, tm_arr, fd_arr, chfreq_1d, ThisTime
             )
 
@@ -1198,29 +1196,18 @@ class ClassDynSpecMS(object):
         dec_all = self.PosArray.dec
         ra0, dec0 = self.DicoMSInfos[iMS]["ra0dec0"]
 
-        Jones_tuple_all = None
         if self.DoJonesCorr_kMS or self.DoJonesCorr_Beam:
             # IDJones contains the closest Jones direction index for every target
-            iDJones_all = jnp.asarray(DicoJones['IDJones']) 
+            iDJones_all = np.asarray(DicoJones['IDJones'], dtype=np.int32)
             
-            # vmap the extraction over the directions
-            vmapped_extract = vmap(extract_row_jones_jax, in_axes=(None, None, None, 0))
-            J0_all, J1_all, ch_indices_all = vmapped_extract(J_diag, A0s, A1s, iDJones_all)
-            Jones_tuple_all = (J0_all, J1_all, ch_indices_all)
-
-            # Vmap the kernel, noting Jones is a tuple of 3 mapped arrays (0, 0, 0)
-            vmapped_kernel = jit(vmap(phase_and_sum_direction, 
-                                      in_axes=(None, None, None, None, None, None, None, None, None, 0, 0, None, None, None, (0, 0, 0))),
-                                 static_argnames=['slicePol'])
-        else:
-            # Vmap the kernel without Jones corrections
-            vmapped_kernel = jit(vmap(phase_and_sum_direction, 
-                                      in_axes=(None, None, None, None, None, None, None, None, None, 0, 0, None, None, None, None)),
-                                 static_argnames=['slicePol'])
+        kernel_pol_idx_arr = np.array(self.kernel_pol_indices, dtype=np.int32)
 
         # execue kernel
-        ds_all, ws_all, w2s_all = vmapped_kernel(
-            d, f, w_scalar, u0, v0, w0, A0s, A1s, chfreq_1d, ra_all, dec_all, ra0, dec0, self.kernel_pol_indices, Jones_tuple_all
+        ds_all, ws_all, w2s_all = phase_and_sum_direction_numba(
+            d, f, w_scalar, u0, v0, w0, A0s, A1s, chfreq_1d, 
+            ra_all, dec_all, ra0, dec0, 
+            kernel_pol_idx_arr, 
+            J_diag, iDJones_all
         )
         
         # The arrays are now perfectly sized for stokes, fill at once
