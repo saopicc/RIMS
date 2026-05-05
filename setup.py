@@ -15,8 +15,6 @@ setup(
         'astropy',
         'future',
         'scipy',
-        'jax',
-        'jaxlib',
         'pydantic>=2.0.0',
         'pydantic[email]',
         'requests',
