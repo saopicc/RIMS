@@ -17,7 +17,6 @@ import numpy as np
 from astropy.time import Time
 from DDFacet.Other import ClassTimeIt
 from astropy import constants as const
-from DDFacet.Other import AsyncProcessPool
 from .dynspecms_version import version
 import glob
 from astropy.io import fits
@@ -30,14 +29,9 @@ import DDFacet.Other.MyPickle
 import Polygon
 from Polygon.Utils import convexHull
 #import DynSpecMS.testLibBeam
-#from killMS.Data import ClassJonesDomains
 import DDFacet.Other.ClassJonesDomains
 import psutil
 from . import ClassGiveCatalog
-from DynSpecMS.kernels.phase_and_sum_vis import phase_and_sum_direction
-from DynSpecMS.kernels.t_idx_jones import compute_jones_diag_for_time, extract_row_jones_jax
-from jax import jit, vmap
-import jax.numpy as jnp
 
 def print_memory_info():
     mem_info = psutil.virtual_memory()
@@ -1166,67 +1160,85 @@ class ClassDynSpecMS(object):
         
         iTimeGrid=np.argmin(np.abs(self.timesGrid-self.DicoMSInfos[iMS]["times"][iTime]))
         
-        dcorr=d.copy()
+        dcorr = d.copy()
         f0, _ = self.Freq_minmax
-        ich0 = int( (ChanFreqs - f0)/self.ChanWidth )
-
-        chfreq_1d = self.DicoMSInfos[iMS]["ChanFreq"].ravel()
-
-        # evaluate domain-wide Jones diagnostics EXACTLY ONCE prior to direction iteration
-        J_diag, J_ch_domain_idx = None, None
-        if self.DoJonesCorr_kMS or self.DoJonesCorr_Beam:
-            DicoJones = shared_dict.attach("DicoJones_%i"%iJob)
-            DicoJones.reload()
-            
-            # kernel computes the full diagonal cube for the timestep
-            G_arr = DicoJones["G"]
-            tm_arr = DicoJones["tm"]
-            fd_arr = DicoJones["FreqDomains"]
-            
-            # pass native primitives & memory arrays - not dicts
-            J_diag, iTJones, J_ch_domain_idx = compute_jones_diag_for_time(
-                G_arr, tm_arr, fd_arr, chfreq_1d, ThisTime
-            )
-
-        # Simplify weights: phase_and_sum_direction casts to pols locally
-        w_scalar = weights[:, :, 0]
-
+        ich0 = int((ChanFreqs - f0) / self.ChanWidth)
+        
+        # Initialize Weights taking into account the dynamic Stokes polarization grid (npol_grid)
+        W = np.zeros((nRowOut, nch, npol_grid), np.float32)
+        for ipol in range(npol_grid):
+            W[:,:,ipol] = weights[:,:,0]
+        W[f] = 0
+        Wc = W.copy()
+        
+        kk = np.zeros_like(d)
         T.timeit("third")
         
-        # extract direction coordinates for all targets simultaneously
-        ra_all = self.PosArray.ra
-        dec_all = self.PosArray.dec
-        ra0, dec0 = self.DicoMSInfos[iMS]["ra0dec0"]
+        # Original Direction Iteration
+        for iDir in range(self.NDir):
+            ra = self.PosArray.ra[iDir]
+            dec = self.PosArray.dec[iDir]
+            ra0, dec0 = self.DicoMSInfos[iMS]["ra0dec0"]
+            l, m = self.radec2lm(ra, dec, ra0, dec0)
+            n = np.sqrt(1. - l**2. - m**2.)
 
-        Jones_tuple_all = None
-        if self.DoJonesCorr_kMS or self.DoJonesCorr_Beam:
-            # IDJones contains the closest Jones direction index for every target
-            iDJones_all = jnp.asarray(DicoJones['IDJones']) 
+            T.timeit("lmn")
+            kkk = np.exp(-2.*np.pi*1j * chfreq/const.c.value * (u0*l + v0*m + w0*(n-1))) # Phasing term
+            T.timeit("kkk")
+
+            for ipol in range(npol_grid):
+                kk[:,:,ipol] = kkk[:,:,0]
+            T.timeit("kkk copy")
             
-            # vmap the extraction over the directions
-            vmapped_extract = vmap(extract_row_jones_jax, in_axes=(None, None, None, 0))
-            J0_all, J1_all, ch_indices_all = vmapped_extract(J_diag, A0s, A1s, iDJones_all)
-            Jones_tuple_all = (J0_all, J1_all, ch_indices_all)
+            dcorr[:] = d[:]
+            W = Wc.copy()
+            dcorr *= W
+            
+            T.timeit("corr")
+            
+            if self.DoJonesCorr_kMS or self.DoJonesCorr_Beam:
+                T1 = ClassTimeIt.ClassTimeIt("  DoJonesCorr")
+                T1.disable()
+                DicoJones = shared_dict.attach("DicoJones_%i"%iJob)
+                DicoJones.reload()
+                T1.timeit("Load")
+                tm = DicoJones['tm']
+                iTJones = np.argmin(np.abs(tm - ThisTime))
+                
+                lJones, mJones = self.CoordMachine.radec2lm(DicoJones['ra'], DicoJones['dec'])
+                iDJones = np.argmin(np.sqrt((l - lJones)**2 + (m - mJones)**2))
 
-            # Vmap the kernel, noting Jones is a tuple of 3 mapped arrays (0, 0, 0)
-            vmapped_kernel = jit(vmap(phase_and_sum_direction, 
-                                      in_axes=(None, None, None, None, None, None, None, None, None, 0, 0, None, None, None, (0, 0, 0))),
-                                 static_argnames=['slicePol'])
-        else:
-            # Vmap the kernel without Jones corrections
-            vmapped_kernel = jit(vmap(phase_and_sum_direction, 
-                                      in_axes=(None, None, None, None, None, None, None, None, None, 0, 0, None, None, None, None)),
-                                 static_argnames=['slicePol'])
+                _, nchJones, _, _, _, _ = DicoJones['G'].shape
+                T1.timeit("argmin")
+                
+                for iFJones in range(nchJones):
+                    nu0, nu1 = DicoJones['FreqDomains'][iFJones]
+                    fData = self.DicoMSInfos[iMS]["ChanFreq"].ravel()
+                    indCh = np.where((fData >= nu0) & (fData < nu1))[0]
 
-        # execue kernel
-        ds_all, ws_all, w2s_all = vmapped_kernel(
-            d, f, w_scalar, u0, v0, w0, A0s, A1s, chfreq_1d, ra_all, dec_all, ra0, dec0, self.kernel_pol_indices, Jones_tuple_all
-        )
-        
-        # The arrays are now perfectly sized for stokes, fill at once
-        self.DicoGrids["GridLinPol"][:, ich0:ich0+nch, iTimeGrid][:, :, :] = ds_all
-        self.DicoGrids["GridWeight"][:, ich0:ich0+nch, iTimeGrid][:, :, :] = np.float32(ws_all)
-        self.DicoGrids["GridWeight2"][:, ich0:ich0+nch, iTimeGrid][:, :, :] = np.float32(w2s_all)
+                    J0 = DicoJones['G'][iTJones, iFJones, A0s, iDJones, 0, 0]
+                    J1 = DicoJones['G'][iTJones, iFJones, A1s, iDJones, 0, 0]
+
+                    J0 = J0.reshape((-1, 1, 1)) * np.ones((1, indCh.size, 1))
+                    J1 = J1.reshape((-1, 1, 1)) * np.ones((1, indCh.size, 1))
+                    T1.timeit("[%i] read J0J1"%iFJones)
+                    
+                    dcorr[:,indCh,:] = J0.conj() * dcorr[:,indCh,:] * J1
+                    W[:,indCh,:] *= (np.abs(J0) * np.abs(J1))**2
+                    T1.timeit("[%i] apply "%iFJones)
+
+            T.timeit("corr Beam")
+            dcorr *= kk
+            ds = np.sum(dcorr, axis=0) # with Jones
+            ws = np.sum(W, axis=0)
+            w2s = np.sum(W**2, axis=0)
+            T.timeit("Sum")
+
+            # Slice completely over the polarization axis since the arrays are precisely sized to npol_grid
+            self.DicoGrids["GridLinPol"][iDir, ich0:ich0+nch, iTimeGrid, :] = ds
+            self.DicoGrids["GridWeight"][iDir, ich0:ich0+nch, iTimeGrid, :] = np.float32(ws)
+            self.DicoGrids["GridWeight2"][iDir, ich0:ich0+nch, iTimeGrid, :] = np.float32(w2s)
+            T.timeit("Write")
             
         T.timeit("rest")
 
