@@ -344,10 +344,10 @@ class ClassDynSpecMS(object):
         if self.BeamModel is not None or self.DDFParset!="":
             self.DoJonesCorr_Beam=True
 
-        self.APP=AsyncProcessPool.init((self.NCPU or psutil.cpu_count(logical=False)-2),
-                              affinity=0,
-                              num_io_processes=1,
-                              verbose=0)
+        self.APP=AsyncProcessPool.init(ncpu=(self.NCPU or psutil.cpu_count(logical=False)-2),
+                                       #affinity=0,
+                                       num_io_processes=1,
+                                       verbose=0)
     
         self.APP.registerJobHandlers(self)
         self.APP.startWorkers()
