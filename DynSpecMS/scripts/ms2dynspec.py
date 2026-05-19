@@ -46,7 +46,9 @@ try:
 except:
     HAS_DASK=False
     
-from pyrap.tables import table    
+from pyrap.tables import table
+
+from astropy.table import Table    
 import numpy as np
 import os
 from DDFacet.Other import MyPickle
@@ -68,52 +70,78 @@ from DDFacet.Other import progressbar
 # # ##############################
 # =========================================================================
 
-def read_sources_from_ecsv(file_path):
-    with open(file_path, 'r') as f:
-        lines = f.readlines()
-    
-    # Find the header line containing "id did cid pid x y pos.ra pos.dec"
-    header_index = None
-    for i, line in enumerate(lines):
-        if line.startswith("id did cid pid x y pos.ra pos.dec"):
-            header_index = i
-            break
-    
-    if header_index is None:
-        raise ValueError("Header line not found in the file.")
-    
-    header = lines[header_index].strip().split()
-    source_lines = lines[header_index + 1:]
-    
-    sources = []
-    for line in source_lines:
-        parts = line.strip().split()
-        source_dict = {header[i]: parts[i] for i in range(len(header))}
-        sources.append(source_dict)
-    return sources
+def validate_and_convert_srclist(file_path):
+    """
+    Reads an ECSV or CSV file using astropy, validates that the required columns
+    exist, and writes out a simplified commma-separated file for the pipeline.
+    """
+    try:
+        if file_path.endswith('.ecsv'):
+            t = Table.read(file_path, format='ascii.ecsv')
+        else:
+            t = Table.read(file_path, format='ascii.csv')
+    except Exception as e:
+        raise ValueError(f"Could not read {file_path} as a table: {e}")
 
-def compose_srclist_from_ecsv(file_path, source_id=None):
-    source_dicts = read_sources_from_ecsv(file_path)
-    unique_sources = {}
-    for source_dict in source_dicts:
-        id = source_dict['id']
-        ra = float(source_dict['pos.ra'])
-        dec = float(source_dict['pos.dec'])
-        src_type = source_dict['stokes']
-        unique_sources[id] = (id, ra, dec, src_type)
-
-    if source_id:
-        filtered_sources = {id: source for id, source in unique_sources.items() if fnmatch.fnmatch(id.split(':')[1], source_id)}
+    valid_cols = [c.lower() for c in t.colnames]
+    
+    # check Name/ID column
+    if 'name' in valid_cols:
+        name_col = t.colnames[valid_cols.index('name')]
+    elif 'id' in valid_cols:
+        name_col = t.colnames[valid_cols.index('id')]
     else:
-        filtered_sources = unique_sources
+        raise ValueError(f"Source list '{file_path}' is missing a 'Name' or 'id' column.")
+        
+    # check RA column
+    pos_is_skycoord = False
+    if 'pos' in valid_cols:
+        pos_col = t.colnames[valid_cols.index('pos')]
+        pos_is_skycoord = True
+    else:
+        # check RA column separately
+        if 'ra' in valid_cols:
+            ra_col = t.colnames[valid_cols.index('ra')]
+        elif 'pos.ra' in valid_cols:
+            ra_col = t.colnames[valid_cols.index('pos.ra')]
+        else:
+            raise ValueError(f"Source list '{file_path}' is missing an 'RA' or 'pos.ra' column.")
+            
+        # check Dec column separately
+        if 'dec' in valid_cols:
+            dec_col = t.colnames[valid_cols.index('dec')]
+        elif 'pos.dec' in valid_cols:
+            dec_col = t.colnames[valid_cols.index('pos.dec')]
+        else:
+            raise ValueError(f"Source list '{file_path}' is missing a 'Dec' or 'pos.dec' column.")
+        
+    # check Type/Stokes column (Optional)
+    type_col = None
+    if 'type' in valid_cols:
+        type_col = t.colnames[valid_cols.index('type')]
+    elif 'stokes' in valid_cols:
+        type_col = t.colnames[valid_cols.index('stokes')]
+        
+    # Write to a standardized file format compatible with np.genfromtxt in ClassGiveCatalog
+    base_name, _ = os.path.splitext(file_path)
+    out_path = f"{base_name}_standardized.txt"
     
-    super_name = id.split(':')[0]
-    srclist_path = f'{super_name}_srclist.txt'
-    with open(srclist_path, 'w') as f:
-        for source in filtered_sources.values():
-            f.write(','.join(map(str, source)) + '\n')
-    
-    return srclist_path
+    with open(out_path, 'w') as f:
+        for row in t:
+            name_val = str(row[name_col]).strip()
+            if pos_is_skycoord:
+                # astropy SkyCoord exposes .ra.deg and .dec.deg
+                ra_val = row[pos_col].ra.deg
+                dec_val = row[pos_col].dec.deg
+            else:
+                ra_val = float(row[ra_col])
+                dec_val = float(row[dec_col])
+            type_val = str(row[type_col]).strip() if type_col else "Target"
+            
+            f.write(f"{name_val},{ra_val},{dec_val},{type_val}\n")
+            
+    log.print(f"Validated source list and wrote standardized catalog to {out_path}")
+    return out_path
 
 def angSep(ra1, dec1, ra2, dec2):
     """ Find the angular separation of two sources (ra# dec# in deg) in deg
@@ -392,8 +420,9 @@ def main():
     
     args = parser.parse_args()
 
-    if args.srclist.endswith('unified.ecsv') and os.path.isfile(args.srclist):
-        args.srclist = compose_srclist_from_ecsv(args.srclist)
+    if args.srclist and os.path.isfile(args.srclist):
+        if args.srclist.endswith('.ecsv') or args.srclist.endswith('.csv'):
+            args.srclist = validate_and_convert_srclist(args.srclist)
 
     MyPickle.Save(args, SaveFile)
 
