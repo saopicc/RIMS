@@ -304,7 +304,7 @@ def ms2dynspec(args=None, messages=[]):
                                SolsName=args.sols,
                                TChunkHours=args.TChunkHours,
                                ColWeights=args.WeightCol,
-                               UVRange=args.uv,
+                               UVRange=[args.uv_min, args.uv_max],
                                FileCoords=args.srclist,
                                Radius=args.rad,
                                NOff=args.noff,
@@ -399,7 +399,6 @@ def main():
 
     ModColor.silent = progressbar.ProgressBar.silent = args.LogBoring
 
-    args.UVRange = [args.uv_min, args.uv_max]
     ms2dynspec(args)
 
 if __name__ == "__main__":
