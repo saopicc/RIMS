@@ -803,7 +803,7 @@ class ClassDynSpecMS(object):
         u, v, w = t.getcol("UVW",ROW0,NROW).T
         t.close()
         d = np.sqrt(u**2 + v**2 + w**2)
-        uv0, uv1         = np.array(StrToList(self.UVRange)) * 1000
+        uv0, uv1         = np.array(self.UVRange) * 1000
         indUV = np.where( (d<uv0)|(d>uv1) )[0]
         flag[indUV, :, :] = 1 # flag according to UV selection
         data[flag] = 0 # put down to zeros flagged visibilities

@@ -367,7 +367,8 @@ def main():
     parser.add_argument("--imageI", type=str, default=None, help="Survey image to plot", required=False)
     parser.add_argument("--imageV", type=str, default=None, help="Survey image to plot", required=False)
     parser.add_argument("--BaseDirSpecs", type=str, default=None, help="Path to the precomputed specs", required=False)
-    parser.add_argument("--uv", type=str, default=[1., 1000.], help="UV range in km [UVmin, UVmax]", required=False)
+    parser.add_argument("--uv-min", type=float, default=1.0, help="UV minimum in km", required=False)
+    parser.add_argument("--uv-max", type=float, default=1000.0, help="UV maximum in km", required=False)
     parser.add_argument("--SolsDir", type=str, default="", help="Base directory for the DDE solutions", required=False)
     parser.add_argument("--CutGainsMinMax", type=str, default="None", help="Cut Jones min,max", required=False)
     parser.add_argument("--SplitNonContiguous", type=int, default=1, help="Split non time-contiguous MSs", required=False)
@@ -398,6 +399,7 @@ def main():
 
     ModColor.silent = progressbar.ProgressBar.silent = args.LogBoring
 
+    args.UVRange = [args.uv_min, args.uv_max]
     ms2dynspec(args)
 
 if __name__ == "__main__":
