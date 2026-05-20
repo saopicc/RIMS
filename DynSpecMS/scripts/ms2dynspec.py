@@ -70,79 +70,6 @@ from DDFacet.Other import progressbar
 # # ##############################
 # =========================================================================
 
-def validate_and_convert_srclist(file_path):
-    """
-    Reads an ECSV or CSV file using astropy, validates that the required columns
-    exist, and writes out a simplified commma-separated file for the pipeline.
-    """
-    try:
-        if file_path.endswith('.ecsv'):
-            t = Table.read(file_path, format='ascii.ecsv')
-        else:
-            t = Table.read(file_path, format='ascii.csv')
-    except Exception as e:
-        raise ValueError(f"Could not read {file_path} as a table: {e}")
-
-    valid_cols = [c.lower() for c in t.colnames]
-    
-    # check Name/ID column
-    if 'name' in valid_cols:
-        name_col = t.colnames[valid_cols.index('name')]
-    elif 'id' in valid_cols:
-        name_col = t.colnames[valid_cols.index('id')]
-    else:
-        raise ValueError(f"Source list '{file_path}' is missing a 'Name' or 'id' column.")
-        
-    # check RA column
-    pos_is_skycoord = False
-    if 'pos' in valid_cols:
-        pos_col = t.colnames[valid_cols.index('pos')]
-        pos_is_skycoord = True
-    else:
-        # check RA column separately
-        if 'ra' in valid_cols:
-            ra_col = t.colnames[valid_cols.index('ra')]
-        elif 'pos.ra' in valid_cols:
-            ra_col = t.colnames[valid_cols.index('pos.ra')]
-        else:
-            raise ValueError(f"Source list '{file_path}' is missing an 'RA' or 'pos.ra' column.")
-            
-        # check Dec column separately
-        if 'dec' in valid_cols:
-            dec_col = t.colnames[valid_cols.index('dec')]
-        elif 'pos.dec' in valid_cols:
-            dec_col = t.colnames[valid_cols.index('pos.dec')]
-        else:
-            raise ValueError(f"Source list '{file_path}' is missing a 'Dec' or 'pos.dec' column.")
-        
-    # check Type/Stokes column (Optional)
-    type_col = None
-    if 'type' in valid_cols:
-        type_col = t.colnames[valid_cols.index('type')]
-    elif 'stokes' in valid_cols:
-        type_col = t.colnames[valid_cols.index('stokes')]
-        
-    # Write to a standardized file format compatible with np.genfromtxt in ClassGiveCatalog
-    base_name, _ = os.path.splitext(file_path)
-    out_path = f"{base_name}_standardized.txt"
-    
-    with open(out_path, 'w') as f:
-        for row in t:
-            name_val = str(row[name_col]).strip()
-            if pos_is_skycoord:
-                # astropy SkyCoord exposes .ra.deg and .dec.deg
-                ra_val = row[pos_col].ra.deg
-                dec_val = row[pos_col].dec.deg
-            else:
-                ra_val = float(row[ra_col])
-                dec_val = float(row[dec_col])
-            type_val = str(row[type_col]).strip() if type_col else "Target"
-            
-            f.write(f"{name_val},{ra_val},{dec_val},{type_val}\n")
-            
-    log.print(f"Validated source list and wrote standardized catalog to {out_path}")
-    return out_path
-
 def angSep(ra1, dec1, ra2, dec2):
     """ Find the angular separation of two sources (ra# dec# in deg) in deg
         (Stolen from the LOFAR scripts), works --> compared with astropy (A. Loh)
@@ -419,10 +346,6 @@ def main():
     parser.add_argument("--NMaxTargets", type=int, default=0, help="Read the code", required=False)
     
     args = parser.parse_args()
-
-    if args.srclist and os.path.isfile(args.srclist):
-        if args.srclist.endswith('.ecsv') or args.srclist.endswith('.csv'):
-            args.srclist = validate_and_convert_srclist(args.srclist)
 
     MyPickle.Save(args, SaveFile)
 
