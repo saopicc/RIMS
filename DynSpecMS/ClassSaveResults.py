@@ -3,15 +3,11 @@ from __future__ import print_function
 from __future__ import absolute_import
 from builtins import range
 from builtins import object
-from distutils.spawn import find_executable
 from astropy.time import Time
-from astropy import units as uni
 from astropy.io import fits
 from astropy.wcs import WCS
-from astropy import coordinates as coord
-from astropy import constants as const
 import numpy as np
-import glob, os
+import os
 #import pylab
 from DDFacet.Other import logger
 log=logger.getLogger("ClassSaveResults")
@@ -30,17 +26,14 @@ def GiveMAD(X):
     return np.median(np.abs(X-np.median(X)))
 
 class ClassSaveResults(object):
-    def __init__(self, DynSpecMS,DIRNAME=None):
+    def __init__(self, DynSpecMS, DIRNAME=None):
         self.DynSpecMS=DynSpecMS
-        self.DIRNAME=DIRNAME
-        if self.DIRNAME is None or self.DIRNAME=="MSName":
+        
+        # Respect the DIRNAME handed down from the ms2dynspec cleanly
+        if DIRNAME is None or DIRNAME=="MSName":
             self.DIRNAME="DynSpecs_%s"%self.DynSpecMS.OutName
         else:
-            self.DIRNAME=os.path.join(self.DIRNAME,"_DynSpecs_%s"%(self.DynSpecMS.OutName))
-            
-            
-        #image  = self.DynSpecMS.Image
-        #self.ImageData=np.squeeze(fits.getdata(image, ext=0))
+            self.DIRNAME=DIRNAME
 
         self.ImageI=self.DynSpecMS.ImageI
         if self.ImageI and os.path.isfile(self.DynSpecMS.ImageI):
@@ -178,13 +171,18 @@ class ClassSaveResults(object):
         prihdr.set('CRVAL2', self.DynSpecMS.fMin*1e-6, 'Frequency at the reference pixel (MHz)')
         prihdr.set('CDELT2', self.DynSpecMS.ChanWidth*1e-6, 'Delta freq (MHz)')
         prihdr.set('CUNIT2', 'MHz', 'unit')
-        prihdr.set('CTYPE3', 'Stokes parameter', '1=I, 2=Q, 3=U, 4=V')
+        stokes_labels = []
+        if hasattr(self.DynSpecMS, 'stokes_list'):
+            stokes_labels = [f"{i+1}={s}" for i, s in enumerate(self.DynSpecMS.stokes_list)]
+        else:
+            stokes_labels = ['1=I', '2=Q', '3=U', '4=V']
+        prihdr.set('CTYPE3', 'Stokes parameter', ', '.join(stokes_labels))
         prihdr.set('CRPIX3', 1., 'Reference')
         prihdr.set('CRVAL3', 1., 'frequence at the reference pixel')
         prihdr.set('CDELT3', 1., 'Delta stokes')
         prihdr.set('CUNIT3', '', 'unit')
         prihdr.set('DATE-CRE', Time.now().iso.split()[0], 'Date of file generation')
-        prihdr.set('OBSID', self.DynSpecMS.OutName, 'LOFAR Observation ID')
+        prihdr.set('OBSID', self.DynSpecMS.OutName, 'Observation ID')
         prihdr.set('CHAN-WID', self.DynSpecMS.ChanWidth, 'Frequency channel width')
         prihdr.set('FRQ-MIN', self.DynSpecMS.fMin, 'Minimal frequency')
         prihdr.set('FRQ-MAX', self.DynSpecMS.fMax, 'Maximal frequency')
@@ -193,6 +191,8 @@ class ClassSaveResults(object):
         prihdr.set('RA_RAD', ra, 'Pixel right ascension')
         prihdr.set('DEC_RAD', dec, 'Pixel declination')
         prihdr.set('TEL_NAME', self.DynSpecMS.TELESCOPE_NAME, 'Telescope Name')
+        prihdr.set('PROJECT', self.DynSpecMS.PROJECT, 'Project ID')
+        prihdr.set('OBSERVER', self.DynSpecMS.OBSERVER, 'Observer')
         
         name=self.DynSpecMS.PosArray.Name[iDir]
         if not isinstance(name,str):
@@ -222,7 +222,7 @@ class ClassSaveResults(object):
             # Gn=np.sqrt(Gn0)/Gn1
             # Gn[Gn0==0]=0
         else:
-            Gn = self.DynSpecMS.GOut[iDir,:, :, :].real
+            Gn = self.DynSpecMS.GOut[iDir, :, :, :].real
 
         hdu = fits.PrimaryHDU(np.rollaxis(Gn, 2), header=prihdr)
         #print(f"Fits being written: {fitsname}")
@@ -288,11 +288,6 @@ class ClassSaveResults(object):
         label = ["I", "Q", "U", "V"]
 
         pylab.clf()
-        
-        # if find_executable("latex") is not None:
-        #     pylab.rc('text', usetex=True)
-        # font = {'family':'serif', 'serif': ['Times']}
-        # pylab.rc('font', **font)
         
 
         # Figure properties
