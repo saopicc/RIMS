@@ -1,157 +1,144 @@
 """
-JAX-enabled kernel to phase visibilities to directions and sum them.
+JAX kernel to phase the visibilities of one time step to every target
+direction and sum them.
 
-Behavior:
-- Phases visibilities to a target (ra,dec) given a phase centre (ra0,dec0).
-- Optionally applies Jones (gain) corrections (precomputed or via a callable).
-- Sums visibilities across rows -> returns per-channel, per-polarisation sums
-  and weight sums (and weight-squared sums) compatible with existing code.
+Behavior (identical to the per-direction loop of the non-jax implementation):
+- Weights the visibilities (flagged weights set to zero).
+- Optionally applies the diagonal Jones term: conj(J[A0]) * V * J[A1], with
+  the weights scaled by |J[A0]|^2 |J[A1]|^2.
+- Phases to each direction (l, m, n) and sums over rows, returning
+  per-direction, per-channel, per-polarisation sums of the visibilities,
+  the weights and the squared weights.
+
+The kernel loops over channels (lax.map) and does all directions at once for
+each channel, so the (ndir, nrow) phase and Jones terms of a channel stay in
+cache and the sum over rows is a small (ndir, nrow) x (nrow, npol) matmul.
 
 Usage sketch:
-  ds, ws, w2s = phase_and_sum_direction(vis, flag, weights,
-                                        u, v, w, A0s, A1s,
-                                        chan_freqs, ra, dec, ra0, dec0,
-                                        slicePol=slice(None),
-                                        Jones=None)
+  ds, ws, w2s = phase_and_sum_directions(vis, flag, weights, u, v, w,
+                                         chan_freqs, l, m, n,
+                                         J=None, A0s=None, A1s=None)
 """
 from __future__ import division
-import jax
-# 64-bit is needed for the phases: with JAX's default float32, u, v, w and the
-# frequencies lose enough precision to bias the sums at the 1e-3 level
-jax.config.update("jax_enable_x64", True)
-import jax.numpy as jnp
-from jax import jit
-JAX_AVAILABLE = True
-from typing import Optional
-from functools import partial
-
+import warnings
 import numpy as np
 
-# speed of light (m/s)
+# Importing DDFacet's AsyncProcessPool switches on flush-to-zero, so numpy
+# warns that the smallest subnormal is zero whenever finfo is first built for
+# a dtype. Build jax's finfo here, before the workers are forked, so the
+# workers don't each print this harmless warning on their first jax call.
+with warnings.catch_warnings():
+    warnings.filterwarnings("ignore", message="The value of the smallest subnormal")
+    import jax
+    # float64 is needed for the phase range reduction (and for u, v, w, freqs)
+    jax.config.update("jax_enable_x64", True)
+    import jax.numpy as jnp
+    from jax import jit
+    jnp.finfo(np.float32), jnp.finfo(np.float64)
+
+# speed of light (m/s), same value as astropy.constants.c
 C = 299792458.0
 
-
-def radec2lm(ra : jnp.ndarray, dec: jnp.ndarray, ra0: jnp.ndarray, dec0: jnp.ndarray) -> tuple[jnp.ndarray, jnp.ndarray]:
-    """
-    Convert RA/DEC to direction cosines l,m for a given phase centre.
-
-    Parameters
-    ----------
-    ra, dec, ra0, dec0 : scalar or array-like (radians)
-        Input coordinates.
-
-    Returns
-    -------
-    l, m : same array type as inputs (jnp or np)
-    """
-    # using the same formula as ClassDynSpecMS.radec2lm
-    l = jnp.cos(dec) * jnp.sin(ra - ra0)
-    m = jnp.sin(dec) * jnp.cos(dec0) - jnp.cos(dec) * jnp.sin(dec0) * jnp.cos(ra - ra0)
-    return l, m
+# rows are padded to a multiple of this so that time steps with a different
+# number of rows don't each trigger a recompilation
+ROW_BLOCK = 128
 
 
 @jit
-def _compute_phase(chfreq : jnp.ndarray, u: jnp.ndarray, v: jnp.ndarray, w: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray, n: jnp.ndarray):
-    """Compute phasor exp(-2pi i nu/c * (u*l + v*m + w*(n-1)))
-    
-    Parameters
-    ----------
-    chfreq : array_like, shape (nch,), float
-        Channel centre frequencies in Hz.
-    u, v, w : array_like, shape (nrow, 1, 1)
-        Baseline coordinates in metres.
-    l, m, n : scalar or array-like
-        Direction cosines.
-    Returns
-    -------
-    phase : array_like, shape (nrow, nch, 1), complex
-        Phasor values.
-    """
-    chf = chfreq.reshape((1, -1, 1))
-    kterm = -2.0 * jnp.pi * 1j * chf / C
-    uvw_dot = u * l + v * m + w * (n - 1.0)
-    return jnp.exp(kterm * uvw_dot)
+def _phase_and_sum(vis, flag, weights, u, v, w, chan_freqs, l, m, n, J, A0s, A1s):
+    nrow, nch, npol = vis.shape
+    ndir = l.shape[0]
 
-@jit
-def phase_and_sum_direction(vis : jnp.ndarray, flag : jnp.ndarray, weights : jnp.ndarray, u : jnp.ndarray, v : jnp.ndarray, w : jnp.ndarray, A0s : jnp.ndarray, A1s : jnp.ndarray,
-                            chan_freqs : jnp.ndarray, ra : float, dec : float, ra0 : float, dec0 : float,
-                            slicePol=(0,1,2,3), Jones=Optional[dict])-> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    # Per-pol weights, zero where flagged, channel-major for the channel loop
+    W = jnp.where(flag, jnp.float32(0), weights[:, :, None])  # (nrow, nch, npol) float32
+    VW = jnp.transpose(vis * W, (1, 0, 2))                    # (nch, nrow, npol) complex64
+    W = jnp.transpose(W, (1, 0, 2))                           # (nch, nrow, npol) float32
+
+    uvw_dot = u[None, :] * l[:, None] + v[None, :] * m[:, None] + w[None, :] * (n[:, None] - 1.)  # (ndir, nrow) float64
+
+    def phase(fc):
+        # Phase in turns, range-reduced in float64 so the float32 sin/cos is
+        # accurate even for phases of thousands of radians
+        turns = uvw_dot * (fc / C)
+        turns = turns - jnp.round(turns)
+        ang = (-2. * np.pi * turns).astype(jnp.float32)
+        return jax.lax.complex(jnp.cos(ang), jnp.sin(ang))    # (ndir, nrow) complex64
+
+    if J is None:
+        def one_chan(x):
+            fc, VWc = x
+            return jnp.matmul(phase(fc), VWc)                 # (ndir, npol)
+        ds = jax.lax.map(one_chan, (chan_freqs, VW))          # (nch, ndir, npol)
+        ws = jnp.broadcast_to(jnp.sum(W, axis=1)[:, None, :], (nch, ndir, npol))
+        w2s = jnp.broadcast_to(jnp.sum(W**2, axis=1)[:, None, :], (nch, ndir, npol))
+    else:
+        def one_chan(x):
+            fc, Jc, VWc, Wc = x                               # Jc (ndir, nAnt)
+            J0 = Jc[:, A0s]                                   # (ndir, nrow)
+            J1 = Jc[:, A1s]
+            A = (jnp.abs(J0) * jnp.abs(J1))**2                # (ndir, nrow) float32
+            ds = jnp.matmul(phase(fc) * (J0.conj() * J1), VWc)
+            ws = jnp.matmul(A, Wc)
+            w2s = jnp.matmul(A**2, Wc**2)
+            return ds, ws, w2s
+        ds, ws, w2s = jax.lax.map(one_chan, (chan_freqs, J, VW, W))
+
+    # (nch, ndir, npol) -> (ndir, nch, npol)
+    return [jnp.transpose(x, (1, 0, 2)) for x in (ds, ws, w2s)]
+
+
+def phase_and_sum_directions(vis, flag, weights, u, v, w, chan_freqs, l, m, n, J=None, A0s=None, A1s=None):
     """
-    Phase visibilities to a direction, apply optional Jones corrections, and sum.
+    Phase visibilities to every direction, apply optional Jones corrections, and sum.
 
     Parameters
     ----------
     vis : array_like, shape (nrow, nch, npol), complex
-        Visibilities for selected time rows.
+        Visibilities for selected time rows (zero where flagged).
     flag : array_like, shape (nrow, nch, npol), bool
         Flag array (True => flagged).
-    weights : array_like, shape (nrow, nch) or (nrow, nch, 1)
+    weights : array_like, shape (nrow, nch)
         Weights (scalar per visibility, broadcasted to pols).
-    u, v, w : array_like, shape (nrow,) or (nrow,1,1)
+    u, v, w : array_like, shape (nrow,)
         Baseline coordinates in metres.
-    A0s, A1s : array_like, shape (nrow,)
-        Antenna indices per visibility row (used for Jones lookups if provided).
     chan_freqs : array_like, shape (nch,), float
         Channel centre frequencies in Hz.
-    ra, dec : float
-        Target direction (radians).
-    ra0, dec0 : float
-        Phase centre (radians).
-    slicePol : slice or sequence
-        Polarisation mapping (like self.slicePol).
-    Jones : tuple of arrays with J0 and J1
-        tuple (J0, J1, ch_mask) : J0,J1 are arrays broadcastable to
-        (nrow, n_ch_mask, 1) and ch_mask selects channels they apply to.
+    l, m, n : array_like, shape (ndir,)
+        Direction cosines of the directions to phase to.
+    J : array_like, shape (nch, ndir, nAnt), complex, or None
+        Diagonal Jones term per channel, direction and antenna
+        (see t_idx_jones.jones_diag_for_time).
+    A0s, A1s : array_like, shape (nrow,)
+        Antenna indices per visibility row (only used with J).
 
     Returns
     -------
-    ds : ndarray (nch, noutpol) complex (numpy)
-    ws : ndarray (nch, noutpol) float  (numpy)
-    w2s: ndarray (nch, noutpol) float  (numpy)
+    ds : ndarray (ndir, nch, npol) complex64
+    ws : ndarray (ndir, nch, npol) float32
+    w2s: ndarray (ndir, nch, npol) float32
     """
     nrow, nch, npol = vis.shape
+    nrow_pad = -(-nrow // ROW_BLOCK) * ROW_BLOCK
 
-    # build per-pol weights array
-    W = jnp.zeros((nrow, nch, npol), dtype=jnp.float32)
-    # broadcast the (nrow,nch) weights to each pol
-    for i_p in range(npol):
-        W = W.at[:, :, i_p].set(weights)
+    def pad(a, val=0):
+        a = np.asarray(a)
+        if nrow_pad == nrow: return a
+        return np.concatenate([a, np.full((nrow_pad - nrow,) + a.shape[1:], val, a.dtype)])
 
-    # zero weights where flagged
-    W = jnp.where(flag, 0.0, W)
-
-    # weight the visibilities (flagged ones have zero weight), as the numpy version does
-    dcorr = jnp.asarray(vis) * W
-
-    # compute l,m,n
-    l, m = radec2lm(ra, dec, ra0, dec0)
-    n = jnp.sqrt(jnp.clip(1.0 - l * l - m * m))
-
-    # compute phasing
-    phase = _compute_phase(chan_freqs, u, v, w, l, m, n)
-
-    if Jones is not None:
-        J0, J1, ch_mask = Jones
-
-        dcorr = dcorr.at[:, ch_mask, :].set(J0.conj() * dcorr[:, ch_mask, :] * J1)
-        W = W.at[:, ch_mask, :].set(W[:, ch_mask, :] * (jnp.abs(J0) * jnp.abs(J1)) ** 2)
-
-    # Apply phase and sum across rows
-    dcorr = dcorr * phase
-    ds = jnp.sum(dcorr, axis=0)    # (nch, npol)
-    ws = jnp.sum(W, axis=0)
-    w2s = jnp.sum(W ** 2, axis=0)
-
-    # Apply requested polarisation mapping
-    if isinstance(slicePol, slice):
-        ds_out = ds[:, slicePol]
-        ws_out = ws[:, slicePol]
-        w2s_out = w2s[:, slicePol]
+    # padded rows are flagged with zero weight, so they add nothing to the sums
+    args = (pad(np.asarray(vis, np.complex64)),
+            pad(np.asarray(flag, bool), True),
+            pad(np.asarray(weights, np.float32)),
+            pad(np.asarray(u, np.float64).ravel()),
+            pad(np.asarray(v, np.float64).ravel()),
+            pad(np.asarray(w, np.float64).ravel()),
+            np.asarray(chan_freqs, np.float64).ravel(),
+            np.asarray(l, np.float64), np.asarray(m, np.float64), np.asarray(n, np.float64))
+    if J is None:
+        Jargs = (None, None, None)
     else:
-        # assume slicePol is sequence of indices
-        idx = list(slicePol)
-        ds_out = ds[:, idx]
-        ws_out = ws[:, idx]
-        w2s_out = w2s[:, idx]
-
-    return ds_out, ws_out, w2s_out
+        Jargs = (np.asarray(J, np.complex64),
+                 pad(np.asarray(A0s, np.int32).ravel()),
+                 pad(np.asarray(A1s, np.int32).ravel()))
+    ds, ws, w2s = _phase_and_sum(*args, *Jargs)
+    return np.asarray(ds), np.asarray(ws), np.asarray(w2s)
