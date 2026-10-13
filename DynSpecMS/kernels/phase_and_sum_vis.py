@@ -15,6 +15,10 @@ Usage sketch:
                                         Jones=None)
 """
 from __future__ import division
+import jax
+# 64-bit is needed for the phases: with JAX's default float32, u, v, w and the
+# frequencies lose enough precision to bias the sums at the 1e-3 level
+jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 from jax import jit
 JAX_AVAILABLE = True
@@ -116,7 +120,8 @@ def phase_and_sum_direction(vis : jnp.ndarray, flag : jnp.ndarray, weights : jnp
     # zero weights where flagged
     W = jnp.where(flag, 0.0, W)
 
-    dcorr = jnp.asarray(vis)
+    # weight the visibilities (flagged ones have zero weight), as the numpy version does
+    dcorr = jnp.asarray(vis) * W
 
     # compute l,m,n
     l, m = radec2lm(ra, dec, ra0, dec0)
