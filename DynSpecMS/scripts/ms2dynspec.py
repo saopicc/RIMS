@@ -38,14 +38,6 @@ import os
 import argparse
 from DDFacet.Other import Multiprocessing
 
-
-
-try:
-    from daskms import xds_from_table as dasktable
-    HAS_DASK=True
-except:
-    HAS_DASK=False
-    
 from pyrap.tables import table
 
 from astropy.table import Table    
@@ -177,20 +169,15 @@ def ms2dynspec(args=None, messages=[]):
     if args.SplitNonContiguous:
         DT={}
         for MSName in MSList:
-            if HAS_DASK:
-                t = dasktable(MSName)
-                print(type(t[0]["TIME"].values))
-                Times=np.unique((t[0]["TIME"].values))
-            else:
-                t = table(MSName,ack=False)
-                Times=np.unique(t.getcol("TIME"))
-                
+            t = table(MSName,ack=False,readonly=True)
+            Times=np.unique(t.getcol("TIME"))
+            t.close()
+
             T=(Times.min(),Times.max())
             if T not in DT.keys():
                 DT[T]=[MSName]
             else:
                 DT[T].append(MSName)
-            del t
 
         if len(DT)>1:
             log.print(ModColor.Str("FOUND %i time periods"%len(DT)))
@@ -202,13 +189,10 @@ def ms2dynspec(args=None, messages=[]):
     field_ras=[]
     field_decs=[]
     for MSName in MSList:
-        if HAS_DASK:
-            tField = dasktable(f"{MSName}::FIELD")
-            ra0, dec0 = np.ravel(tField[0]["PHASE_DIR"].values)
-        else:
-            tField = table(f"{MSName}::FIELD",ack=False)
-            ra0, dec0 = np.ravel(tField.getcol("PHASE_DIR").ravel())
-            
+        tField = table(f"{MSName}::FIELD",ack=False,readonly=True)
+        ra0, dec0 = np.ravel(tField.getcol("PHASE_DIR"))
+        tField.close()
+
         if ra0<0.: ra0+=2.*np.pi
         field_ras.append(ra0)
         field_decs.append(dec0)

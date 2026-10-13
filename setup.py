@@ -6,9 +6,7 @@ setup(
     packages=find_packages(include=['DynSpecMS', 'DynSpecMS.*']),
     include_package_data=True,
     install_requires=[
-        'dask[array]',
-        'dask-ms',
-        'xarray',
+        'python-casacore',
         'psutil',
         'numpy',
         'matplotlib',
