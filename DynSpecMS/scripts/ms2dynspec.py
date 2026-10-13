@@ -46,7 +46,9 @@ try:
 except:
     HAS_DASK=False
     
-from pyrap.tables import table    
+from pyrap.tables import table
+
+from astropy.table import Table    
 import numpy as np
 import os
 from DDFacet.Other import MyPickle
@@ -67,53 +69,6 @@ from DDFacet.Other import progressbar
 # #    warnings.filterwarnings('error')
 # # ##############################
 # =========================================================================
-
-def read_sources_from_ecsv(file_path):
-    with open(file_path, 'r') as f:
-        lines = f.readlines()
-    
-    # Find the header line containing "id did cid pid x y pos.ra pos.dec"
-    header_index = None
-    for i, line in enumerate(lines):
-        if line.startswith("id did cid pid x y pos.ra pos.dec"):
-            header_index = i
-            break
-    
-    if header_index is None:
-        raise ValueError("Header line not found in the file.")
-    
-    header = lines[header_index].strip().split()
-    source_lines = lines[header_index + 1:]
-    
-    sources = []
-    for line in source_lines:
-        parts = line.strip().split()
-        source_dict = {header[i]: parts[i] for i in range(len(header))}
-        sources.append(source_dict)
-    return sources
-
-def compose_srclist_from_ecsv(file_path, source_id=None):
-    source_dicts = read_sources_from_ecsv(file_path)
-    unique_sources = {}
-    for source_dict in source_dicts:
-        id = source_dict['id']
-        ra = float(source_dict['pos.ra'])
-        dec = float(source_dict['pos.dec'])
-        src_type = source_dict['stokes']
-        unique_sources[id] = (id, ra, dec, src_type)
-
-    if source_id:
-        filtered_sources = {id: source for id, source in unique_sources.items() if fnmatch.fnmatch(id.split(':')[1], source_id)}
-    else:
-        filtered_sources = unique_sources
-    
-    super_name = id.split(':')[0]
-    srclist_path = f'{super_name}_srclist.txt'
-    with open(srclist_path, 'w') as f:
-        for source in filtered_sources.values():
-            f.write(','.join(map(str, source)) + '\n')
-    
-    return srclist_path
 
 def angSep(ra1, dec1, ra2, dec2):
     """ Find the angular separation of two sources (ra# dec# in deg) in deg
@@ -304,7 +259,7 @@ def ms2dynspec(args=None, messages=[]):
                                SolsName=args.sols,
                                TChunkHours=args.TChunkHours,
                                ColWeights=args.WeightCol,
-                               UVRange=args.uv,
+                               UVRange=[args.uv_min, args.uv_max],
                                FileCoords=args.srclist,
                                Radius=args.rad,
                                NOff=args.noff,
@@ -367,7 +322,8 @@ def main():
     parser.add_argument("--imageI", type=str, default=None, help="Survey image to plot", required=False)
     parser.add_argument("--imageV", type=str, default=None, help="Survey image to plot", required=False)
     parser.add_argument("--BaseDirSpecs", type=str, default=None, help="Path to the precomputed specs", required=False)
-    parser.add_argument("--uv", type=str, default=[1., 1000.], help="UV range in km [UVmin, UVmax]", required=False)
+    parser.add_argument("--uv-min", type=float, default=1.0, help="UV minimum in km", required=False)
+    parser.add_argument("--uv-max", type=float, default=1000.0, help="UV maximum in km", required=False)
     parser.add_argument("--SolsDir", type=str, default="", help="Base directory for the DDE solutions", required=False)
     parser.add_argument("--CutGainsMinMax", type=str, default="None", help="Cut Jones min,max", required=False)
     parser.add_argument("--SplitNonContiguous", type=int, default=1, help="Split non time-contiguous MSs", required=False)
@@ -390,9 +346,6 @@ def main():
     parser.add_argument("--NMaxTargets", type=int, default=0, help="Read the code", required=False)
     
     args = parser.parse_args()
-
-    if args.srclist.endswith('unified.ecsv') and os.path.isfile(args.srclist):
-        args.srclist = compose_srclist_from_ecsv(args.srclist)
 
     MyPickle.Save(args, SaveFile)
 

@@ -176,7 +176,8 @@ class ClassSaveResults(object):
             stokes_labels = [f"{i+1}={s}" for i, s in enumerate(self.DynSpecMS.stokes_list)]
         else:
             stokes_labels = ['1=I', '2=Q', '3=U', '4=V']
-        prihdr.set('CTYPE3', 'Stokes parameter', ', '.join(stokes_labels))
+        prihdr.set('CTYPE3', 'STOKES', 'Stokes parameter')
+        prihdr.set('STOKES', ', '.join(stokes_labels), 'Array index to Stokes mapping')
         prihdr.set('CRPIX3', 1., 'Reference')
         prihdr.set('CRVAL3', 1., 'frequence at the reference pixel')
         prihdr.set('CDELT3', 1., 'Delta stokes')

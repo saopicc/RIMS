@@ -17,7 +17,6 @@ import numpy as np
 from astropy.time import Time
 from DDFacet.Other import ClassTimeIt
 from astropy import constants as const
-from DDFacet.Other import AsyncProcessPool
 from .dynspecms_version import version
 import glob
 from astropy.io import fits
@@ -30,7 +29,6 @@ import DDFacet.Other.MyPickle
 import Polygon
 from Polygon.Utils import convexHull
 #import DynSpecMS.testLibBeam
-#from killMS.Data import ClassJonesDomains
 import DDFacet.Other.ClassJonesDomains
 import psutil
 from . import ClassGiveCatalog
@@ -807,7 +805,7 @@ class ClassDynSpecMS(object):
         u, v, w = t.getcol("UVW",ROW0,NROW).T
         t.close()
         d = np.sqrt(u**2 + v**2 + w**2)
-        uv0, uv1         = np.array(StrToList(self.UVRange)) * 1000
+        uv0, uv1         = np.array(self.UVRange) * 1000
         indUV = np.where( (d<uv0)|(d>uv1) )[0]
         flag[indUV, :, :] = 1 # flag according to UV selection
         data[flag] = 0 # put down to zeros flagged visibilities
