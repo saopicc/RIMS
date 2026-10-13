@@ -1,5 +1,6 @@
 import numpy as np
 from DDFacet.Other import logger
+from DDFacet.Other import ModColor
 from SkyModel.Sky import ModRegFile
 log=logger.getLogger("DynSpecMS")
 from astropy.io import fits
@@ -202,20 +203,27 @@ class ClassGiveCatalog():
         self.PosArray.dec*=np.pi/180.
 
         Radius=self.Radius
+        # getattr: options unpickled from an older last_dynspec.obj won't have it
+        NoRadCut=getattr(self.options,"no_target_rad_cut",False)
         self.NOrig=self.PosArray.Name.shape[0]
         Dist=AngDist(self.ra0,self.PosArray.ra,self.dec0,self.PosArray.dec)
-        
-        # Log excluded targets
+
+        # Log targets outside the radius (excluded unless --no-target-rad-cut)
         ind_out = np.where(Dist >= (Radius*np.pi/180))[0]
         for i_out in ind_out:
             name_str = self.PosArray.Name[i_out] if hasattr(self.PosArray, 'Name') else "Target"
             if isinstance(name_str, bytes):
                 name_str = name_str.decode('utf-8', errors='ignore')
             dist_deg = Dist[i_out] * 180 / np.pi
-            log.print(f"Skipping {name_str}: distance from phase center ({dist_deg:.3f} deg) > radius ({Radius} deg)")
+            if NoRadCut:
+                log.print(ModColor.Str(f"Keeping {name_str}: distance from phase center ({dist_deg:.3f} deg) > radius ({Radius} deg). "
+                                       f"Off targets are only drawn within the radius, so its excess variance estimate may be unreliable",col="yellow"))
+            else:
+                log.print(f"Skipping {name_str}: distance from phase center ({dist_deg:.3f} deg) > radius ({Radius} deg)")
 
-        ind=np.where(Dist<(Radius*np.pi/180))[0]
-        self.PosArray=self.PosArray[ind]
+        if not NoRadCut:
+            ind=np.where(Dist<(Radius*np.pi/180))[0]
+            self.PosArray=self.PosArray[ind]
         
         print("Created an array with %i records" % self.PosArray.size, file=log)
 
