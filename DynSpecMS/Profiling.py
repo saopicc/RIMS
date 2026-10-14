@@ -40,6 +40,15 @@ except ImportError:
     _nvtx = None
     ENABLED = False
 
+if ENABLED:
+    # nvtx caches domains, and their registered message strings, per process. Under nsys, handles
+    # registered before a fork record nothing in the forked child (AsyncProcessPool workers), so
+    # drop the cache in each child; the range objects below are also made once per process.
+    import importlib
+    _domain_cache = getattr(importlib.import_module("nvtx.nvtx"), "_get_domain_cached", None)
+    if _domain_cache is not None:
+        os.register_at_fork(after_in_child=_domain_cache.cache_clear)
+
 
 def annotate(name=None, color=None, category=None):
     """ Decorator wrapping the function in an NVTX range.
@@ -49,12 +58,16 @@ def annotate(name=None, color=None, category=None):
     def decorator(func):
         if not ENABLED:
             return func
-        attr = _nvtx.annotate(message=name or func.__qualname__,
-                              color=color or COLORS.get(category),
-                              domain=DOMAIN)
+        message = name or func.__qualname__
+        color_ = color or COLORS.get(category)
+        attrs = {}  # pid -> range object, see the fork note above
 
         @functools.wraps(func)  # keeps __name__, needed by AsyncProcessPool.runJob
         def wrapper(*args, **kwargs):
+            pid = os.getpid()
+            attr = attrs.get(pid)
+            if attr is None:
+                attr = attrs[pid] = _nvtx.annotate(message=message, color=color_, domain=DOMAIN)
             with attr:
                 return func(*args, **kwargs)
         return wrapper
