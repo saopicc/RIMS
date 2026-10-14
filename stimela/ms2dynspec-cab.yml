@@ -125,6 +125,10 @@ cabs:
         dtype: int
         info: "Save PDF"
         required: false
+      OutputZarr:
+        dtype: int
+        info: "Write a single RIMS-Spec.zarr instead of the TARGET/OFF fits folders"
+        required: false
       SourceCatOff:
         dtype: str
         info: "Read the code"

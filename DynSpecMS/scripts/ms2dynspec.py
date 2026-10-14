@@ -35,6 +35,7 @@ from DynSpecMS import ClassGiveCatalog
 """
 
 import os
+import time
 import argparse
 from DDFacet.Other import Multiprocessing
 
@@ -283,12 +284,18 @@ def ms2dynspec(args=None, messages=[]):
         
             if D.Mode=="Spec": D.StackAll()
         
-            SaveMachine=ClassSaveResults.ClassSaveResults(D,DIRNAME=DIRNAME)
+            OutputZarr=bool(getattr(args,"OutputZarr",0))
+            SaveMachine=ClassSaveResults.ClassSaveResults(D,DIRNAME=DIRNAME,OutputZarr=OutputZarr)
             
             save_run_metadata(args, SaveMachine.DIRNAME)
             
             if D.Mode=="Spec":
-                SaveMachine.WriteFits()
+                T0=time.time()
+                if OutputZarr:
+                    SaveMachine.WriteZarr()
+                else:
+                    SaveMachine.WriteFits()
+                log.print("Dynamic spectra written in %.1f s"%(time.time()-T0))
                 SaveMachine.SaveCatalog()
                 if args.SavePDF:
                     SaveMachine.PlotSpec()
@@ -339,6 +346,7 @@ def main():
     parser.add_argument("--BeamNBand", type=int, default=1, help="Number of channels in the Beam Jones matrix", required=False)
     parser.add_argument("--OutDirName", type=str, default="MSName", help="Name of the output directory name", required=False)
     parser.add_argument("--SavePDF", type=int, default=0, help="Save PDF", required=False)
+    parser.add_argument("--OutputZarr", type=int, default=0, help="Write a single RIMS-Spec.zarr (targets, off positions, Var_A, weights) instead of the TARGET/OFF fits folders", required=False)
     parser.add_argument("--SourceCatOff", type=str, default="", help="Read the code", required=False)
     parser.add_argument("--SourceCatOff_FluxMean", type=float, default=0, help="Read the code", required=False)
     parser.add_argument("--SourceCatOff_dFluxMean", type=float, default=0, help="Read the code", required=False)

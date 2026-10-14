@@ -25,9 +25,12 @@ warnings.simplefilter('ignore', category=VerifyWarning)
 def GiveMAD(X):
     return np.median(np.abs(X-np.median(X)))
 
+ZarrName="RIMS-Spec.zarr"
+
 class ClassSaveResults(object):
-    def __init__(self, DynSpecMS, DIRNAME=None):
+    def __init__(self, DynSpecMS, DIRNAME=None, OutputZarr=False):
         self.DynSpecMS=DynSpecMS
+        self.OutputZarr=OutputZarr
         
         # Respect the DIRNAME handed down from the ms2dynspec cleanly
         if DIRNAME is None or DIRNAME=="MSName":
@@ -57,10 +60,13 @@ class ClassSaveResults(object):
         self.CatFlux=self.CatFlux.view(np.recarray)
         
         os.system("rm -rf %s"%self.DIRNAME)
-        os.system(f"mkdir -p {os.path.join(self.DIRNAME,'TARGET')}")
-        os.system(f"mkdir -p {os.path.join(self.DIRNAME,'OFF')}")
-        os.system(f"mkdir -p {os.path.join(self.DIRNAME,'TARGET_W')}")
-        os.system(f"mkdir -p {os.path.join(self.DIRNAME,'OFF_W')}")
+        if self.OutputZarr:
+            os.system(f"mkdir -p {self.DIRNAME}")
+        else:
+            os.system(f"mkdir -p {os.path.join(self.DIRNAME,'TARGET')}")
+            os.system(f"mkdir -p {os.path.join(self.DIRNAME,'OFF')}")
+            os.system(f"mkdir -p {os.path.join(self.DIRNAME,'TARGET_W')}")
+            os.system(f"mkdir -p {os.path.join(self.DIRNAME,'OFF_W')}")
         #os.system("mkdir -p %s/PNG"%self.DIRNAME)
 
     def tarDirectory(self):
@@ -70,7 +76,7 @@ class ClassSaveResults(object):
         os.system(ss)
 
 
-    def WriteFits(self):
+    def FillCatFlux(self):
         self.CatFlux.Name[:]=self.DynSpecMS.PosArray.Name[:]
         self.CatFlux.Type[:]=self.DynSpecMS.PosArray.Type[:]
         self.CatFlux.ra[:]=self.DynSpecMS.PosArray.ra[:]
@@ -78,6 +84,55 @@ class ClassSaveResults(object):
         if self.DynSpecMS.DoJonesCorr_kMS:
             self.CatFlux.IDFacet[:]=self.DynSpecMS.PosArray.iFacet[:]
             self.CatFlux.IDTessel[:]=self.DynSpecMS.PosArray.iTessel[:]
+
+    def GiveStokesList(self):
+        if hasattr(self.DynSpecMS, 'stokes_list'):
+            return list(self.DynSpecMS.stokes_list)
+        return ['I', 'Q', 'U', 'V']
+
+    def GiveDeltaT(self):
+        return (Time(self.DynSpecMS.timesGrid[1]/(24*3600.), format='mjd', scale='utc') - Time(self.DynSpecMS.timesGrid[0]/(24*3600.), format='mjd', scale='utc')).sec
+
+    def GiveCommonMeta(self):
+        """ Observation-level metadata shared by every direction: {key: (value, comment)}
+        Used for both the FITS headers and the zarr global attributes
+        """
+        return {'DATE-CRE': (Time.now().iso.split()[0], 'Date of file generation'),
+                'OBSID':    (self.DynSpecMS.OutName, 'Observation ID'),
+                'CHAN-WID': (self.DynSpecMS.ChanWidth, 'Frequency channel width'),
+                'FRQ-MIN':  (self.DynSpecMS.fMin, 'Minimal frequency'),
+                'FRQ-MAX':  (self.DynSpecMS.fMax, 'Maximal frequency'),
+                'OBS-STAR': (self.DynSpecMS.tStart, 'Observation start date'),
+                'OBS-STOP': (self.DynSpecMS.tStop, 'Observation end date'),
+                'TEL_NAME': (self.DynSpecMS.TELESCOPE_NAME, 'Telescope Name'),
+                'PROJECT':  (self.DynSpecMS.PROJECT, 'Project ID'),
+                'OBSERVER': (self.DynSpecMS.OBSERVER, 'Observer'),
+                'ORIGIN':   ('DynSpecMS '+version(), 'Created by')}
+
+    def GiveSourceLabels(self):
+        """ Catalogue name for targets, OFF_<k> for off positions, made unique """
+        Labels=[]
+        iOff=0
+        for iDir in range(self.DynSpecMS.NDir):
+            if self.DynSpecMS.PosArray.Type[iDir]==b"Off":
+                Label="OFF_%i"%iOff
+                iOff+=1
+            else:
+                Label=self.DynSpecMS.PosArray.Name[iDir]
+                if not isinstance(Label,str):
+                    Label=Label.decode('utf-8')
+            Labels.append(Label)
+        Seen={}
+        for i,Label in enumerate(Labels):
+            if Label in Seen:
+                Seen[Label]+=1
+                Labels[i]="%s_%i"%(Label,Seen[Label])
+            else:
+                Seen[Label]=0
+        return Labels
+
+    def WriteFits(self):
+        self.FillCatFlux()
             
         pBAR = ProgressBar(Title="Saving fits")        
         NJobs=self.DynSpecMS.NDir #Selected
@@ -90,7 +145,74 @@ class ClassSaveResults(object):
             self.WriteFitsThisDir(iDir,Weight="W2")
             iDone+=1
             pBAR.render(iDone, NJobs)
-            
+
+    def WriteZarr(self):
+        """ Store all dynamic spectra (targets and off positions) in a single zarr store
+        """
+        import json
+        import xarray as xr
+        import dask.array as da
+
+        self.FillCatFlux()
+        D=self.DynSpecMS
+        ZarrPath=os.path.join(self.DIRNAME,ZarrName)
+        print("Saving dynamic spectra in %s"%ZarrPath, file=log)
+
+        NDir,NChan,NTimes,_=D.GOut.shape
+        Labels=self.GiveSourceLabels()
+        for iDir,Label in enumerate(Labels):
+            self.CatFlux.FileName[iDir]="%s::%s"%(ZarrPath,Label)
+
+        # Views on the existing grids, chunked per direction, so that nothing is copied in memory
+        # GOut is (dir, freq, time, stokes) -> (dir, stokes, freq, time) as in the fits cubes
+        Targets=da.from_array(np.moveaxis(D.GOut.real,3,1),chunks=(1,1,NChan,NTimes))
+        W=da.from_array(D.DicoGrids["GridWeight"][..., 0].real,chunks=(1,NChan,NTimes))
+        W2=da.from_array(D.DicoGrids["GridWeight2"][..., 0].real,chunks=(1,NChan,NTimes))
+        def GiveVarA(w,w2):
+            with np.errstate(divide='ignore',invalid='ignore'):
+                return np.where(w!=0,w2/w**2,1.)
+        Var_A=da.map_blocks(GiveVarA,W,W2,dtype=np.float64)
+
+        def Str(x):
+            return x if isinstance(x,str) else x.decode('utf-8')
+        Names=[Str(n) for n in D.PosArray.Name]
+        Types=[Str(t) for t in D.PosArray.Type]
+        Coords={"source": ("source", np.array(Labels)),
+                "name":     ("source", np.array(Names)),
+                "src_type": ("source", np.array(Types)),
+                "is_off":   ("source", np.array([t=="Off" for t in Types])),
+                "ra":       ("source", np.array(D.PosArray.ra,np.float64), {"units": "rad"}),
+                "dec":      ("source", np.array(D.PosArray.dec,np.float64), {"units": "rad"}),
+                "stokes":   ("stokes", np.array(self.GiveStokesList())),
+                "freq":     ("freq", D.fMin+np.arange(NChan)*D.ChanWidth, {"units": "Hz"}),
+                "time":     ("time", D.timesGrid-D.timesGrid[0], {"units": "s", "long_name": "Time since OBS-STAR"}),
+                "time_mjd_s": ("time", np.array(D.timesGrid), {"units": "s", "long_name": "MJD seconds"})}
+        if "iFacet" in D.PosArray.dtype.fields.keys():
+            Coords["facet"]=("source", np.array(D.PosArray.iFacet))
+            Coords["tessel"]=("source", np.array(D.PosArray.iTessel))
+
+        DataVars={"Targets": (("source","stokes","freq","time"), Targets,
+                              {"long_name": "Dynamic spectra of targets and off positions", "units": "Jy"}),
+                  "Var_A":   (("source","freq","time"), Var_A,
+                              {"long_name": "Analytical variance", "definition": "W2 / W**2 (1 where W == 0)"}),
+                  "Weights": (("source","freq","time"), W,
+                              {"long_name": "Sum of visibility weights (W)"})}
+
+        def ToNative(x):
+            return x.item() if isinstance(x,np.generic) else x
+        Attrs={k: ToNative(v) for k,(v,_) in self.GiveCommonMeta().items()}
+        Attrs.update({"CDELT1": self.GiveDeltaT(),
+                      "RA0_RAD": ToNative(D.ra0), "DEC0_RAD": ToNative(D.dec0),
+                      "RADIUS_DEG": ToNative(D.Radius)})
+        MetaFile=os.path.join(self.DIRNAME,"run_metadata.json")
+        if os.path.isfile(MetaFile):
+            with open(MetaFile) as f:
+                Attrs["run_metadata"]=json.dumps(json.load(f))
+
+        ds=xr.Dataset(DataVars,coords=Coords,attrs=Attrs)
+        ds.to_zarr(ZarrPath,mode="w",zarr_format=3,consolidated=True)
+        print("  ... wrote %i directions (%i targets, %i off)"%(NDir,np.count_nonzero(~ds.is_off.values),np.count_nonzero(ds.is_off.values)), file=log)
+
     def SaveCatalog(self):
         FileName = "%s/%s.npy"%(self.DIRNAME,"Catalog")
         print("Saving flux catalogs in %s"%FileName, file=log)
@@ -163,7 +285,7 @@ class ClassSaveResults(object):
         prihdr.set('CTYPE1', 'Time', 'Time')
         prihdr.set('CRPIX1', 1., 'Reference')
         prihdr.set('CRVAL1', 0., 'Time at the reference pixel (sec since OBS-STAR)')
-        deltaT = (Time(self.DynSpecMS.timesGrid[1]/(24*3600.), format='mjd', scale='utc') - Time(self.DynSpecMS.timesGrid[0]/(24*3600.), format='mjd', scale='utc')).sec
+        deltaT = self.GiveDeltaT()
         prihdr.set('CDELT1', deltaT, 'Delta time (sec)')
         prihdr.set('CUNIT1', 'Time', 'unit')
         prihdr.set('CTYPE2', 'Frequency', 'Frequency')
@@ -171,29 +293,20 @@ class ClassSaveResults(object):
         prihdr.set('CRVAL2', self.DynSpecMS.fMin*1e-6, 'Frequency at the reference pixel (MHz)')
         prihdr.set('CDELT2', self.DynSpecMS.ChanWidth*1e-6, 'Delta freq (MHz)')
         prihdr.set('CUNIT2', 'MHz', 'unit')
-        stokes_labels = []
-        if hasattr(self.DynSpecMS, 'stokes_list'):
-            stokes_labels = [f"{i+1}={s}" for i, s in enumerate(self.DynSpecMS.stokes_list)]
-        else:
-            stokes_labels = ['1=I', '2=Q', '3=U', '4=V']
+        stokes_labels = [f"{i+1}={s}" for i, s in enumerate(self.GiveStokesList())]
         prihdr.set('CTYPE3', 'STOKES', 'Stokes parameter')
         prihdr.set('STOKES', ', '.join(stokes_labels), 'Array index to Stokes mapping')
         prihdr.set('CRPIX3', 1., 'Reference')
         prihdr.set('CRVAL3', 1., 'frequence at the reference pixel')
         prihdr.set('CDELT3', 1., 'Delta stokes')
         prihdr.set('CUNIT3', '', 'unit')
-        prihdr.set('DATE-CRE', Time.now().iso.split()[0], 'Date of file generation')
-        prihdr.set('OBSID', self.DynSpecMS.OutName, 'Observation ID')
-        prihdr.set('CHAN-WID', self.DynSpecMS.ChanWidth, 'Frequency channel width')
-        prihdr.set('FRQ-MIN', self.DynSpecMS.fMin, 'Minimal frequency')
-        prihdr.set('FRQ-MAX', self.DynSpecMS.fMax, 'Maximal frequency')
-        prihdr.set('OBS-STAR', self.DynSpecMS.tStart, 'Observation start date')
-        prihdr.set('OBS-STOP', self.DynSpecMS.tStop, 'Observation end date')
+        Meta = self.GiveCommonMeta()
+        for key in ['DATE-CRE', 'OBSID', 'CHAN-WID', 'FRQ-MIN', 'FRQ-MAX', 'OBS-STAR', 'OBS-STOP']:
+            prihdr.set(key, *Meta[key])
         prihdr.set('RA_RAD', ra, 'Pixel right ascension')
         prihdr.set('DEC_RAD', dec, 'Pixel declination')
-        prihdr.set('TEL_NAME', self.DynSpecMS.TELESCOPE_NAME, 'Telescope Name')
-        prihdr.set('PROJECT', self.DynSpecMS.PROJECT, 'Project ID')
-        prihdr.set('OBSERVER', self.DynSpecMS.OBSERVER, 'Observer')
+        for key in ['TEL_NAME', 'PROJECT', 'OBSERVER']:
+            prihdr.set(key, *Meta[key])
         
         name=self.DynSpecMS.PosArray.Name[iDir]
         if not isinstance(name,str):
@@ -206,7 +319,7 @@ class ClassSaveResults(object):
             ThisType+="_%s"%Weight
         prihdr.set('SRC-TYPE', ThisType, 'Type of the source in the source list')
         
-        prihdr.set('ORIGIN', 'DynSpecMS '+version(),'Created by')
+        prihdr.set('ORIGIN', *Meta['ORIGIN'])
         if "iFacet" in self.DynSpecMS.PosArray.dtype.fields.keys():
             iFacet=self.DynSpecMS.PosArray.iFacet[iDir]
             iTessel=self.DynSpecMS.PosArray.iTessel[iDir]

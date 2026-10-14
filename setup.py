@@ -9,6 +9,7 @@ setup(
         'dask[array]',
         'dask-ms',
         'xarray',
+        'zarr>=3',
         'psutil',
         'numpy',
         'matplotlib',

@@ -242,6 +242,11 @@ def process_dynspec_directory(
         print(f"Warning: No run_metadata.json found in {root_dir}")
 
     subdirs_to_check = ["TARGET", "TARGET_W", "OFF", "OFF_W"]
+
+    if os.path.isdir(os.path.join(root_dir, "RIMS-Spec.zarr")) and \
+       not any(os.path.isdir(os.path.join(root_dir, subdir)) for subdir in subdirs_to_check):
+        raise SystemExit(f"{root_dir} contains RIMS-Spec.zarr output (rims run --OutputZarr 1), "
+                         "which cannot be published yet. Rerun with --OutputZarr 0 to produce fits files.")
     
     for subdir in subdirs_to_check:
         target_path = os.path.join(root_dir, subdir)
