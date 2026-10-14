@@ -29,7 +29,7 @@ rims run --ms <ms location> --data <predicted visibility column> --model <model 
 Notes:
 
 - If you want to creat _Dynamic Spectra_ from residual visibilities, you can specify the model (--model) column and the tool with automatically subtract the model from the data (--data) column.
-- Your target in the source list (--srclist) must be within the radius (--rad) specified from _Phase Center_. 
+- Your target in the source list (--srclist) must be within the radius (--rad) specified from _Phase Center_, unless you pass `--no-target-rad-cut`. With that flag all targets are processed, but off targets are still drawn from within --rad, so excess variance estimates for targets outside it may be unreliable.
 
 ### Creating a source file:
 A source file may either be in [ECSV](https://docs.astropy.org/en/stable/io/ascii/ecsv.html) format or a simple `csv` format of the following structure:
