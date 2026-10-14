@@ -7,6 +7,9 @@ setup(
     include_package_data=True,
     install_requires=[
         'python-casacore',
+        'dask[array]',
+        'xarray',
+        'zarr>=3',
         'psutil',
         'numpy',
         'matplotlib',
@@ -21,6 +24,9 @@ setup(
         'kronicle_sdk'
         # other dependencies
     ],
+    extras_require={
+        'profiling': ['nvtx'],  # NVTX ranges for Nsight Systems, see profiling/run_nsys.sh
+    },
         entry_points={
         'console_scripts': [
             'rims=DynSpecMS.scripts.cli:main',
