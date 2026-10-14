@@ -17,6 +17,7 @@ import matplotlib.pyplot as pylab
 from DDFacet.Other.progressbar import ProgressBar
 from pyrap.images import image
 from .dynspecms_version import version
+from .Profiling import annotate
 import DDFacet.Other.MyPickle
 import warnings
 from astropy.io.fits.verify import VerifyWarning
@@ -28,6 +29,7 @@ def GiveMAD(X):
 ZarrName="RIMS-Spec.zarr"
 
 class ClassSaveResults(object):
+    @annotate(category="output")
     def __init__(self, DynSpecMS, DIRNAME=None, OutputZarr=False):
         self.DynSpecMS=DynSpecMS
         self.OutputZarr=OutputZarr
@@ -69,6 +71,7 @@ class ClassSaveResults(object):
             os.system(f"mkdir -p {os.path.join(self.DIRNAME,'OFF_W')}")
         #os.system("mkdir -p %s/PNG"%self.DIRNAME)
 
+    @annotate(category="output")
     def tarDirectory(self):
         print("Taring the result directory", file=log)
         ss="tar -zcvf %s.tgz %s > /dev/null 2>&1"%(self.DIRNAME,self.DIRNAME)
@@ -131,6 +134,7 @@ class ClassSaveResults(object):
                 Seen[Label]=0
         return Labels
 
+    @annotate(category="output")
     def WriteFits(self):
         self.FillCatFlux()
             
@@ -146,6 +150,7 @@ class ClassSaveResults(object):
             iDone+=1
             pBAR.render(iDone, NJobs)
 
+    @annotate(category="output")
     def WriteZarr(self):
         """ Store all dynamic spectra (targets and off positions) in a single zarr store
         """
@@ -213,6 +218,7 @@ class ClassSaveResults(object):
         ds.to_zarr(ZarrPath,mode="w",zarr_format=3,consolidated=True)
         print("  ... wrote %i directions (%i targets, %i off)"%(NDir,np.count_nonzero(~ds.is_off.values),np.count_nonzero(ds.is_off.values)), file=log)
 
+    @annotate(category="output")
     def SaveCatalog(self):
         FileName = "%s/%s.npy"%(self.DIRNAME,"Catalog")
         print("Saving flux catalogs in %s"%FileName, file=log)
@@ -230,6 +236,7 @@ class ClassSaveResults(object):
             
         return SubDir
 
+    @annotate(category="output")
     def radecToReg(self):
         FName="%s/%s.reg"%(self.DIRNAME,self.DynSpecMS.OutName)
         ra,dec=self.DynSpecMS.PosArray.ra,self.DynSpecMS.PosArray.dec
@@ -264,6 +271,7 @@ class ClassSaveResults(object):
         f.close()
 
     
+    @annotate(category="output")
     def WriteFitsThisDir(self,iDir,Weight=False):
         """ Store the dynamic spectrum in a FITS file
         """
@@ -344,6 +352,7 @@ class ClassSaveResults(object):
         hdu.writeto(fitsname, overwrite=True)
 
 
+    @annotate(category="output")
     def PlotSpec(self,Prefix=""):
         # Pdf file of target positions
         pdfname = "%s/%s_TARGET%s.pdf"%(self.DIRNAME,self.DynSpecMS.OutName,Prefix)
@@ -398,6 +407,7 @@ class ClassSaveResults(object):
         #         pBAR.render(iDone, NPages)
 
                 
+    @annotate(category="output")
     def PlotSpecSingleDir(self, iDir=0, BoxArcSec=300.):
         label = ["I", "Q", "U", "V"]
 

@@ -57,6 +57,7 @@ from DynSpecMS import logo
 logo.PrintLogo(__version__)
 from DynSpecMS.ClassDynSpecMS import ClassDynSpecMS
 from DynSpecMS import ClassSaveResults
+from DynSpecMS.Profiling import annotate
 from DDFacet.Data.ClassMS import expandMSList
 from DDFacet.Other import ModColor
 from DDFacet.Other import progressbar
@@ -164,6 +165,7 @@ def save_run_metadata(args, out_dir):
         log.print(f"Failed to save run metadata: {e}")
 
 
+@annotate(category="setup")
 def ms2dynspec(args=None, messages=[]):
     if args is None:
         args = MyPickle.Load(SaveFile)

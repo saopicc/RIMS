@@ -32,6 +32,7 @@ from Polygon.Utils import convexHull
 import DDFacet.Other.ClassJonesDomains
 import psutil
 from . import ClassGiveCatalog
+from .Profiling import annotate, nvtx_range
 
 def print_memory_info():
     mem_info = psutil.virtual_memory()
@@ -72,6 +73,7 @@ def StrToList(s):
     return Ls
 
 class ClassDynSpecMS(object):
+    @annotate(category="setup")
     def __init__(self,
                  ListMSName=None,
                  ColName="DATA",
@@ -213,6 +215,7 @@ class ClassDynSpecMS(object):
                 self.PosArray.Type[iDir]=PosArrayTarget.Type[iS]
                 self.PosArray.Name[iDir]=PosArrayTarget.Name[iS]
                 
+    @annotate(category="setup")
     def InitFromCatalog(self):
 
         FileCoords=self.FileCoords
@@ -356,6 +359,7 @@ class ClassDynSpecMS(object):
         
 
         
+    @annotate(category="setup")
     def GiveOffPosArray(self,NOff):
         print("Making random off catalog with %i directions"%NOff, file=log)
         CatOff=np.zeros((NOff,),self.PosArray.dtype)
@@ -513,6 +517,7 @@ class ClassDynSpecMS(object):
                     
         return CatOff
 
+    @annotate(category="io")
     def ReadMSInfos(self):
         DicoMSInfos = {}
 
@@ -718,6 +723,7 @@ class ClassDynSpecMS(object):
         self.LJob=LJob
 
     
+    @annotate(category="io")
     def LoadMS(self,iJob):
         iMS,iChunk=self.LJob[iJob]
         T0,T1=self.T0s[iChunk],self.T1s[iChunk]
@@ -834,6 +840,7 @@ class ClassDynSpecMS(object):
         if self.DoJonesCorr_kMS or self.DoJonesCorr_Beam:
             self.setJones(DicoDATA)
 
+    @annotate(category="jones")
     def setJones(self,DicoDATA):
         from DDFacet.Data import ClassJones
         from DDFacet.Data import ClassMS
@@ -997,6 +1004,7 @@ class ClassDynSpecMS(object):
     #                 self.Stack_SingleTimeDir(iTime,iDir)
     #     self.Finalise()
 
+    @annotate(category="compute")
     def StackAll(self):
         # import DynSpecMS.testLibBeam
         
@@ -1020,6 +1028,7 @@ class ClassDynSpecMS(object):
        
         self.Finalise()
 
+    @annotate(category="compute")
     def processJob(self,iJob):
         SERIAL=True
         SERIAL=False
@@ -1037,7 +1046,8 @@ class ClassDynSpecMS(object):
             
         
         # print(rep)
-        rep=self.APP.awaitJobResults("LoadMS_%i"%(iJob))
+        with nvtx_range("await LoadMS", category="wait"):
+            rep=self.APP.awaitJobResults("LoadMS_%i"%(iJob))
         if rep=="NotRead": 
             self.delShm(iJob)
             return
@@ -1051,10 +1061,12 @@ class ClassDynSpecMS(object):
                        self.Stack_SingleTimeAllDir,
                        args=(iJob,iTime,),serial=SERIAL)
             
-        self.APP.awaitJobResults("Stack_SingleTime:%i_*"%iJob, progress="Append MS %i"%iMS)
+        with nvtx_range("await Stack_SingleTime", category="wait"):
+            self.APP.awaitJobResults("Stack_SingleTime:%i_*"%iJob, progress="Append MS %i"%iMS)
         
         self.delShm(iJob)
 
+    @annotate(category="setup")
     def delShm(self,iJob):
         ShDict_dat = shared_dict.attach("DATA_%i"%(iJob))
         ShDict_dat.delete()
@@ -1062,6 +1074,7 @@ class ClassDynSpecMS(object):
         ShDict_dico.delete()
         
         
+    @annotate(category="setup")
     def killWorkers(self):
         print("Killing workers", file=log)
         self.APP.terminate()
@@ -1072,6 +1085,7 @@ class ClassDynSpecMS(object):
 
 
 
+    @annotate(category="compute")
     def Finalise(self):
         G=self.DicoGrids["GridLinPol"]
         W=self.DicoGrids["GridWeight"].copy()
@@ -1109,6 +1123,7 @@ class ClassDynSpecMS(object):
         
     #     self.Stack_SingleTimeDir(iTime)
         
+    @annotate(category="compute")
     def Stack_SingleTimeAllDir(self,iJob,iTime):
         iMS,iChunk=self.LJob[iJob]
         DicoDATA=shared_dict.attach("DATA_%i"%(iJob))
