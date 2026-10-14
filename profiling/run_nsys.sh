@@ -26,6 +26,8 @@ fi
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 BRANCH=$(git -C "$REPO" rev-parse --abbrev-ref HEAD)
 COMMIT=$(git -C "$REPO" rev-parse --short HEAD)
+# Run the checked-out code, not a (possibly stale, non-editable) installed copy of DynSpecMS
+export PYTHONPATH="$REPO${PYTHONPATH:+:$PYTHONPATH}"
 OUT="${NSYS_OUTDIR:-$PWD}/rims_${BRANCH}_${COMMIT}_$(date +%Y%m%d-%H%M%S)"
 
 # CPU sampling needs perf_event_paranoid <= 2, otherwise only NVTX + OS runtime traces are collected
