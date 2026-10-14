@@ -4,7 +4,7 @@
 # Usage (from the directory you would normally run rims in):
 #   /path/to/RIMS/profiling/run_nsys.sh <rims run arguments...>
 #
-# Prerequisites: `nsys` on PATH, and `pip install nvtx` (or `pip install -e .[profiling]`)
+# Prerequisites: `nsys` on PATH (or NSYS=/path/to/nsys), and `pip install nvtx` (or `pip install -e .[profiling]`)
 # in the environment providing `rims`, otherwise the RIMS NVTX ranges are absent.
 #
 # Output: rims_<branch>_<commit>_<date>.nsys-rep in $NSYS_OUTDIR (default: cwd).
@@ -14,8 +14,9 @@
 # gives reports whose NVTX ranges have the same names, so nvtx_sum tables compare directly.
 set -euo pipefail
 
-if ! command -v nsys >/dev/null; then
-    echo "nsys not found on PATH" >&2
+NSYS=${NSYS:-nsys}  # set NSYS=/path/to/nsys if it is not on PATH
+if ! command -v "$NSYS" >/dev/null; then
+    echo "nsys not found (set NSYS=/path/to/nsys)" >&2
     exit 1
 fi
 if ! python -c "import nvtx" 2>/dev/null; then
@@ -27,14 +28,21 @@ BRANCH=$(git -C "$REPO" rev-parse --abbrev-ref HEAD)
 COMMIT=$(git -C "$REPO" rev-parse --short HEAD)
 OUT="${NSYS_OUTDIR:-$PWD}/rims_${BRANCH}_${COMMIT}_$(date +%Y%m%d-%H%M%S)"
 
+# CPU sampling needs perf_event_paranoid <= 2, otherwise only NVTX + OS runtime traces are collected
+SAMPLE=process-tree
+if [ "$(cat /proc/sys/kernel/perf_event_paranoid)" -gt 2 ]; then
+    echo "WARNING: kernel.perf_event_paranoid > 2, CPU sampling and context switch tracing disabled" >&2
+    SAMPLE=none
+fi
+
 # --trace-fork-before-exec: DDFacet's AsyncProcessPool forks its workers without exec,
 #   these are only followed with this flag
 # --sample/--cpuctxsw process-tree: CPU IP sampling and thread scheduling across all workers
 # osrt: OS runtime calls (file I/O, waits, sleeps), to separate I/O from compute
-nsys profile \
+"$NSYS" profile \
     --trace=nvtx,osrt \
-    --sample=process-tree \
-    --cpuctxsw=process-tree \
+    --sample=$SAMPLE \
+    --cpuctxsw=$SAMPLE \
     --trace-fork-before-exec=true \
     --stats=false \
     --output="$OUT" \
