@@ -55,6 +55,28 @@ The output folder should countain the following files/folders:
 ```
 Where the OFF and OFF_W directories contain the off target and off target weights fits files respectively, and the TARGET and TARGET_W directories contain the target and target weights fits files respectively.
 
+#### Zarr output
+With `--OutputZarr 1` the fits folders are replaced by a single [zarr](https://zarr.dev) store:
+```
+├── <dataset-id>.reg
+├── Catalog.npy
+├── run_metadata.json
+└── RIMS-Spec.zarr
+```
+`RIMS-Spec.zarr` contains the following variables:
+- `Targets` `(source, stokes, freq, time)`: dynamic spectra of all targets and off positions
+- `Var_A` `(source, freq, time)`: analytical variance `W2 / W**2` (1 where `W == 0`)
+- `Weights` `(source, freq, time)`: sum of the visibility weights `W`
+
+The `source` coordinate holds the catalogue name for targets and `OFF_0, OFF_1, ...` for off positions. The `name`, `src_type`, `is_off`, `ra` and `dec` coordinates are indexed by `source`. `freq` is in Hz, and `time` is in seconds since `OBS-STAR`. The observation-level fits header keys are stored as global attributes.
+```python
+import xarray as xr
+ds = xr.open_zarr("RIMS-Spec.zarr")
+on  = ds.Targets.sel(source="47Tuc_C", stokes="I")
+off = ds.Targets.isel(source=ds.is_off.values).sel(stokes="I")  # .values: per-source coords are lazy after open_zarr
+```
+`rims publish` currently only supports the fits output.
+
 ### RIMS publish
 Should you wish to contribute to the global "RIMS online" project, we encourage you to upload your generated dynamic spectra. To do so, 
 

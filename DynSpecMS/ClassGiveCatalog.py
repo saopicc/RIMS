@@ -6,6 +6,7 @@ log=logger.getLogger("DynSpecMS")
 from astropy.io import fits
 from astropy.table import Table
 import random
+from .Profiling import annotate
 
 
 def AngDist(ra0,ra1,dec0,dec1):
@@ -30,6 +31,7 @@ class ClassGiveCatalog():
         self.FileCoords=FileCoords
 
         
+    @annotate(category="setup")
     def giveCat(self,SubSet=None):
         FileCoords=self.FileCoords
         dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')]
