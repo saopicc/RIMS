@@ -27,6 +27,7 @@ setup(
     ],
     extras_require={
         'profiling': ['nvtx'],  # NVTX ranges for Nsight Systems, see profiling/run_nsys.sh
+        'test': ['pytest'],  # python -m pytest tests
     },
         entry_points={
         'console_scripts': [
