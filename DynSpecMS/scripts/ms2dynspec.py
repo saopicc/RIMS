@@ -39,7 +39,7 @@ import time
 import argparse
 from DDFacet.Other import Multiprocessing
 
-from pyrap.tables import table
+from DynSpecMS import MSReader
 
 from astropy.table import Table    
 import numpy as np
@@ -169,12 +169,13 @@ def ms2dynspec(args=None, messages=[]):
         MSList=expandMSList(args.ms)
         MSList=[mstuple[0] for mstuple in MSList]
 
+    # autocorrelations are only read if the uv-cut keeps them (same as ClassDynSpecMS)
+    AutoCorrs=args.uv_min<=0
+
     if args.SplitNonContiguous:
         DT={}
         for MSName in MSList:
-            t = table(MSName,ack=False,readonly=True)
-            Times=np.unique(t.getcol("TIME"))
-            t.close()
+            Times=MSReader.ms_times(MSName,AutoCorrs)
 
             T=(Times.min(),Times.max())
             if T not in DT.keys():
@@ -192,9 +193,7 @@ def ms2dynspec(args=None, messages=[]):
     field_ras=[]
     field_decs=[]
     for MSName in MSList:
-        tField = table(f"{MSName}::FIELD",ack=False,readonly=True)
-        ra0, dec0 = np.ravel(tField.getcol("PHASE_DIR"))
-        tField.close()
+        ra0, dec0 = MSReader.ms_phase_dir(MSName,AutoCorrs)
 
         if ra0<0.: ra0+=2.*np.pi
         field_ras.append(ra0)

@@ -6,7 +6,8 @@ setup(
     packages=find_packages(include=['DynSpecMS', 'DynSpecMS.*']),
     include_package_data=True,
     install_requires=[
-        'python-casacore',
+        'xarray-ms',  # all MS reads (arcae)
+        'python-casacore',  # DDFacet beam/ClassMS and pyrap.images
         'dask[array]',
         'xarray',
         'zarr>=3',

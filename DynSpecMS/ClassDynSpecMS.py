@@ -4,7 +4,6 @@ from __future__ import absolute_import
 from builtins import str
 from builtins import range
 from builtins import object
-from pyrap.tables import table
 import sys
 from DDFacet.Other import logger
 log=logger.getLogger("DynSpecMS")
@@ -32,6 +31,7 @@ from Polygon.Utils import convexHull
 import DDFacet.Other.ClassJonesDomains
 import psutil
 from . import ClassGiveCatalog
+from . import MSReader
 from DynSpecMS.kernels.phase_and_sum_vis import phase_and_sum_directions
 from DynSpecMS.kernels.t_idx_jones import jones_diag_for_time
 from .Profiling import annotate, nvtx_range
@@ -522,29 +522,20 @@ class ClassDynSpecMS(object):
     @annotate(category="io")
     def ReadMSInfos(self):
         DicoMSInfos = {}
+        # autocorrelations are only read if the uv-cut keeps them
+        self.AutoCorrs = self.UVRange[0] <= 0
 
         MSName=self.ListMSName[0]
-        tf0 = table("%s::SPECTRAL_WINDOW"%self.ListMSName[0], ack=False,  readonly=True)
-        self.ChanWidth = abs(tf0.getcol("CHAN_WIDTH").ravel()[0])
-        tf0.close()
+        Infos0 = MSReader.ms_metadata(MSName, self.AutoCorrs)
+        self.ChanWidth = Infos0["ChanWidth"][0]
 
-        t0  = table(MSName, ack=False, readonly=True)
-        times = np.unique(t0.getcol("TIME"))
-        dt=times[1:]-times[:-1]
-        if np.any(dt<0): raise RuntimeError('Data not in time order')
-        t0.close()
-
-        tField = table("%s::FIELD"%MSName, ack=False)
         if self.ra0 is None:
-            self.ra0, self.dec0 = tField.getcol("PHASE_DIR").ravel() # radians!
+            self.ra0, self.dec0 = Infos0["ra0dec0"] # radians!
             if self.ra0<0.: self.ra0+=2.*np.pi
-        tField.close()
 
-        tObs = table("%s::OBSERVATION"%MSName, ack=False, readonly=True)
-        self.TELESCOPE_NAME=tObs.getcol("TELESCOPE_NAME")[0]
-        self.OBSERVER=tObs.getcol("OBSERVER")[0]
-        self.PROJECT=tObs.getcol("PROJECT")[0]
-        tObs.close()
+        self.TELESCOPE_NAME=Infos0["TELESCOPE_NAME"]
+        self.OBSERVER=Infos0["OBSERVER"]
+        self.PROJECT=Infos0["PROJECT"]
 
         self.CoordMachine = ModCoord.ClassCoordConv(self.ra0, self.dec0)
 
@@ -555,16 +546,17 @@ class ClassDynSpecMS(object):
         tmin, tmax = None, None
         for iMS, MSName in enumerate(self.ListMSName):
             try:
-                t = table(MSName, ack=False)
-            except (FileNotFoundError, RuntimeError) as e:
+                MSReader.open_ms(MSName, self.AutoCorrs)
+            except Exception as e:
                 s = str(e)
                 pBAR.render(iMS+1, self.nMS)
                 print("\n" + ModColor.Str("Problem reading %s: %s" % (MSName, s)))
                 DicoMSInfos[iMS] = {"Readable": False,
                                     "Exception": s}
                 continue
+            Infos = MSReader.ms_metadata(MSName, self.AutoCorrs)
 
-            if self.ColName not in t.colnames():
+            if MSReader.variable_name(self.ColName) not in Infos["Variables"]:
                 msg = "Missing Data colname %s" % self.ColName
                 pBAR.render(iMS+1, self.nMS)
                 print("\n" + ModColor.Str("Problem reading %s: %s" % (MSName, msg)))
@@ -572,7 +564,7 @@ class ClassDynSpecMS(object):
                                     "Exception": msg}
                 continue
 
-            if self.ColWeights and (self.ColWeights not in t.colnames()):
+            if self.ColWeights and (MSReader.variable_name(self.ColWeights) not in Infos["Variables"]):
                 msg = "Missing Weights colname %s" % self.ColWeights
                 pBAR.render(iMS+1, self.nMS)
                 print("\n" + ModColor.Str("Problem reading %s: %s" % (MSName, msg)))
@@ -580,38 +572,32 @@ class ClassDynSpecMS(object):
                                     "Exception": msg}
                 continue
 
-            if self.ModelName and (self.ModelName not in t.colnames()):
+            if self.ModelName and (MSReader.variable_name(self.ModelName) not in Infos["Variables"]):
                 msg = "Missing Model colname %s" % self.ModelName
                 pBAR.render(iMS+1, self.nMS)
                 print("\n" + ModColor.Str("Problem reading %s: %s" % (MSName, msg)))
                 DicoMSInfos[iMS] = {"Readable": False,
                                     "Exception": msg}
                 continue
-            
-            tField = table("%s::FIELD"%MSName, ack=False)
-            ThisRA0,ThisDEC0 = tField.getcol("PHASE_DIR").ravel() # radians!
+
+            ThisRA0,ThisDEC0 = Infos["ra0dec0"] # radians!
             if ThisRA0<0.: ThisRA0+=2.*np.pi
             if (ThisRA0!=self.ra0) or (ThisDEC0!=self.dec0):
                 log.print(ModColor.Str("MS %s has a different phase center - it's ok just saying"%MSName))
                 log.print(ModColor.Str("MS %s has a different phase center - it's ok just saying"%MSName))
                 log.print(ModColor.Str("MS %s has a different phase center - it's ok just saying"%MSName))
-            tField.close()
-            
-            tf = table("%s::SPECTRAL_WINDOW"%MSName, ack=False)
-            ThisTimes = np.unique(t.getcol("TIME"))
-            dtBin_=np.unique(t.getcol("INTERVAL"))
-            if dtBin_.size>1: stop
-            dtBin = dtBin_.flat[0]
-            
-            
+
+            ThisTimes = Infos["times"]
+            dtBin = Infos["dtBin"]
+
+
             # if not np.allclose(ThisTimes, self.times):
             #     raise ValueError("should have the same times")
 
 
-            tp = table("%s::POLARIZATION"%MSName, ack=False)
-            npol=tp.getcol("NUM_CORR").flat[0]
-            CorrType=tp.getcol("CORR_TYPE").ravel().tolist()
-            
+            CorrType=Infos["CorrType"]
+            npol=len(CorrType)
+
 # Remove duplicates while preserving order (e.g., "IQI" -> ["I", "Q"])
             raw_stokes = list(self.options.stokes.upper()) if hasattr(self.options, 'stokes') else ["I", "Q", "U", "V"]
             self.stokes_list = list(dict.fromkeys([s for s in raw_stokes if s in "IQUV"]))
@@ -637,9 +623,7 @@ class ClassDynSpecMS(object):
             # For the JAX kernel, it will now process a densely packed array of either 2 or 4 pols
             self.kernel_pol_indices = tuple(range(self.npol_grid))
 
-            tp.close()
-
-            chFreq=tf.getcol("CHAN_FREQ").ravel()
+            chFreq=Infos["ChanFreq"]
             if chFreq[-1]<chFreq[0]:
                 #log.print(ModColor.Str("Channels are reversed, ok I can deal with that..."))
                 chSlice=slice(None,None,-1)
@@ -657,8 +641,8 @@ class ClassDynSpecMS(object):
                 tmax=np.max([tmax,ThisTimes.max()])
                 
             DicoMSInfos[iMS] = {"MSName": MSName,
-                                "ChanFreq":   tf.getcol("CHAN_FREQ").ravel()[chSlice],  # Hz
-                                "ChanWidth":  np.abs(tf.getcol("CHAN_WIDTH").ravel()), # Hz
+                                "ChanFreq":   chFreq[chSlice],  # Hz
+                                "ChanWidth":  Infos["ChanWidth"], # Hz
                                 "ra0dec0":  (ThisRA0,ThisDEC0) ,
                                 "times":      ThisTimes,
                                 "dtBin":      dtBin,
@@ -682,8 +666,6 @@ class ClassDynSpecMS(object):
         self.tmax=tmax
                 
 
-        t.close()
-        tf.close()
         self.DicoMSInfos = DicoMSInfos
         self.FreqsAll    = np.array([DicoMSInfos[iMS]["ChanFreq"] for iMS in list(DicoMSInfos.keys()) if DicoMSInfos[iMS]["Readable"]])
         self.Freq_minmax = np.min(self.FreqsAll), np.max(self.FreqsAll)
@@ -737,106 +719,33 @@ class ClassDynSpecMS(object):
         print("Reading [%i/%i] %s:%s"%(iMS+1, self.nMS, self.ListMSName[iMS],self.ColName), file=log)
 
         MSName=self.ListMSName[iMS]
-        
-        t = table(MSName, ack=False)
-
-        times  = t.getcol("TIME")
         t0=self.tmin
-        
-        ind=np.where((times>=(T0+t0))&(times<(T1+t0)))[0]
-        if ind.size==0:
-            print("No Data in requested interval %f -> %f h time interval"%(T0/3600,T1/3600), file=log)
-            return "NotRead"
-        NROW=ind.size
-        ROW0=ind[0]
 
-        if ROW0!=0 or NROW!=t.nrows():
+        if self.T0s.size>1:
             print("  Reading chunk in %.3f -> %.3f h"%(T0/3600,T1/3600), file=log)
-        
-        nch  = self.DicoMSInfos[iMS]["ChanFreq"].size
-        npol  = self.DicoMSInfos[iMS]["npol"]
-
-        #chSlice=self.DicoMSInfos[iMS]["chSlice"]
-        RevertChans=self.DicoMSInfos[iMS]["RevertChans"]
-        
-        data = np.zeros((NROW,nch,npol),np.complex64)
-        t.getcolnp(self.ColName,data,ROW0,NROW)
-        if RevertChans: data=data[:,::-1,:]
-
-        data = data[:, :, self.ms_pol_indices] # keep only the pols we need
-        
         if self.ModelName:
             print("  Substracting %s from %s"%(self.ModelName,self.ColName), file=log)
-            model=np.zeros((NROW,nch,npol),np.complex64)
-            t.getcolnp(self.ModelName,model,ROW0,NROW)
-            if RevertChans: model=model[:,::-1,:]
-            model = model[:, :, self.ms_pol_indices] # Slice model
-            data-=model
-            del(model)
-
-        
-        
         if self.ColWeights:
             print("  Reading weight column %s"%(self.ColWeights), file=log)
-            sW=t.getcol(self.ColWeights,0,1).shape
-            if len(sW)==3:
-                weights=np.zeros((NROW,nch,sW[-1]),np.float32)
-                t.getcolnp(self.ColWeights,weights,ROW0,NROW)
-                weights=np.mean(weights,axis=-1)
-            else:
-                weights=np.zeros((NROW,nch),np.float32)
-                t.getcolnp(self.ColWeights,weights,ROW0,NROW)
-            
-            
-            if RevertChans: weights=weights[:,::-1]
-        else:
-            nrow,nch,_=data.shape
-            weights=np.ones((nrow,nch),np.float32)
 
-        flag=np.zeros((NROW,nch,npol),bool)
-        t.getcolnp("FLAG",flag,ROW0,NROW)
-        if RevertChans: flag=flag[:,::-1]
-        flag = flag[:, :, self.ms_pol_indices] # Slice flag
-            
+        # (time, baseline) rows with the model subtracted, weights averaged
+        # over correlations, uv-cut applied and flagged visibilities zeroed
+        DicoDATA = MSReader.load_chunk("DATA_%i"%(iJob), MSName, T0+t0, T1+t0,
+                                       self.ColName,
+                                       ModelName=self.ModelName,
+                                       ColWeights=self.ColWeights,
+                                       PolIndices=self.ms_pol_indices,
+                                       RevertChans=self.DicoMSInfos[iMS]["RevertChans"],
+                                       UVRange=self.UVRange,
+                                       NThreads=(self.NCPU or psutil.cpu_count(logical=False)-2))
+        if DicoDATA is None:
+            print("No Data in requested interval %f -> %f h time interval"%(T0/3600,T1/3600), file=log)
+            return "NotRead"
 
-        # data[:,:,:]=0
-        # data[:,0:300,0]=1
-        # flag.fill(0)
-        # weights.fill(1)
-        
-
-        times  = t.getcol("TIME",ROW0,NROW)
-        A0, A1 = t.getcol("ANTENNA1",ROW0,NROW), t.getcol("ANTENNA2",ROW0,NROW)
-
-        u, v, w = t.getcol("UVW",ROW0,NROW).T
-        t.close()
-        d = np.sqrt(u**2 + v**2 + w**2)
-        uv0, uv1         = np.array(self.UVRange) * 1000
-        indUV = np.where( (d<uv0)|(d>uv1) )[0]
-        flag[indUV, :, :] = 1 # flag according to UV selection
-        data[flag] = 0 # put down to zeros flagged visibilities
-
-        f0, f1           = self.Freq_minmax
-
-        # Considering another position than the phase center
-        u0 = u.reshape( (-1, 1, 1) )
-        v0 = v.reshape( (-1, 1, 1) )
-        w0 = w.reshape( (-1, 1, 1) )
-        DicoDATA = shared_dict.create("DATA_%i"%(iJob))
         DicoDATA["iMS"]=iMS
         DicoDATA["iChunk"]=iChunk
         DicoDATA["iJob"]=iJob
         DicoDATA["T0T1"]=(T0,T1)
-        DicoDATA["data"]=data
-        DicoDATA["weights"]=weights
-        DicoDATA["flag"]=flag
-        DicoDATA["times"]=times
-        DicoDATA["A0"]=A0
-        DicoDATA["A1"]=A1
-        DicoDATA["u"]=u0
-        DicoDATA["v"]=v0
-        DicoDATA["w"]=w0
-        DicoDATA["uniq_times"]=np.unique(DicoDATA["times"])
 
             
         if self.DoJonesCorr_kMS or self.DoJonesCorr_Beam:
