@@ -1,13 +1,12 @@
 import numpy as np
 from DDFacet.Other import logger
+from DDFacet.Other import ModColor
 from SkyModel.Sky import ModRegFile
 log=logger.getLogger("DynSpecMS")
 from astropy.io import fits
-from astropy.wcs import WCS
+from astropy.table import Table
 import random
-from astropy.io import ascii
-import astropy.coordinates as coord
-import astropy.units as u
+from .Profiling import annotate
 
 
 def AngDist(ra0,ra1,dec0,dec1):
@@ -32,6 +31,7 @@ class ClassGiveCatalog():
         self.FileCoords=FileCoords
 
         
+    @annotate(category="setup")
     def giveCat(self,SubSet=None):
         FileCoords=self.FileCoords
         dtype=[('Name','S200'),("ra",np.float64),("dec",np.float64),('Type','S200')]
@@ -145,14 +145,47 @@ class ClassGiveCatalog():
             self.PosArray=np.asarray(l,dtype=dtype)
             self.DoProperMotionCorr=True
 
-        elif FileCoords is not None:
-            tbl = ascii.read(FileCoords)
-            ra = coord.Angle(tbl["ra"], unit=u.hour)
-            dec = coord.Angle(tbl["dec"], unit=u.degree)
-            self.PosArray=np.zeros((len(tbl),),dtype=dtype)
-            self.PosArray["ra"]=ra.degree
-            self.PosArray["dec"]=dec.degree
-            self.PosArray["Name"][:]=tbl["Name"][:]
+        elif FileCoords is not None and FileCoords.endswith('.ecsv'):
+            log.print(f"Reading ecsv file directly: {FileCoords}")
+            t = Table.read(FileCoords, format='ascii.ecsv')
+            valid_cols = [c.lower() for c in t.colnames]
+            
+            if 'name' in valid_cols: name_col = t.colnames[valid_cols.index('name')]
+            elif 'id' in valid_cols: name_col = t.colnames[valid_cols.index('id')]
+            else: name_col = None
+            
+            pos_is_skycoord = False
+            if 'pos' in valid_cols:
+                pos_col = t.colnames[valid_cols.index('pos')]
+                pos_is_skycoord = True
+            else:
+                if 'pos.ra' in valid_cols: ra_col = t.colnames[valid_cols.index('pos.ra')]
+                elif 'ra' in valid_cols: ra_col = t.colnames[valid_cols.index('ra')]
+                else: ra_col = None
+                
+                if 'pos.dec' in valid_cols: dec_col = t.colnames[valid_cols.index('pos.dec')]
+                elif 'dec' in valid_cols: dec_col = t.colnames[valid_cols.index('dec')]
+                else: dec_col = None
+                
+            if 'type' in valid_cols: type_col = t.colnames[valid_cols.index('type')]
+            elif 'stokes' in valid_cols: type_col = t.colnames[valid_cols.index('stokes')]
+            else: type_col = None
+
+            l = []
+            for row in t:
+                name_val = str(row[name_col]).strip() if name_col else "Target"
+                if pos_is_skycoord:
+                    ra_val = float(row[pos_col].ra.deg)
+                    dec_val = float(row[pos_col].dec.deg)
+                else:
+                    ra_val = float(row[ra_col]) if ra_col else 0.0
+                    dec_val = float(row[dec_col]) if dec_col else 0.0
+                type_val = str(row[type_col]).strip() if type_col else "Target"
+                
+                l.append((name_val, ra_val, dec_val, type_val))
+                
+            self.PosArray = np.asarray(l, dtype=dtype)
+
         else:
             
             #FileCoords="Transient_LOTTS.csv"
@@ -172,10 +205,27 @@ class ClassGiveCatalog():
         self.PosArray.dec*=np.pi/180.
 
         Radius=self.Radius
+        # getattr: options unpickled from an older last_dynspec.obj won't have it
+        NoRadCut=getattr(self.options,"no_target_rad_cut",False)
         self.NOrig=self.PosArray.Name.shape[0]
         Dist=AngDist(self.ra0,self.PosArray.ra,self.dec0,self.PosArray.dec)
-        ind=np.where(Dist<(Radius*np.pi/180))[0]
-        self.PosArray=self.PosArray[ind]
+
+        # Log targets outside the radius (excluded unless --no-target-rad-cut)
+        ind_out = np.where(Dist >= (Radius*np.pi/180))[0]
+        for i_out in ind_out:
+            name_str = self.PosArray.Name[i_out] if hasattr(self.PosArray, 'Name') else "Target"
+            if isinstance(name_str, bytes):
+                name_str = name_str.decode('utf-8', errors='ignore')
+            dist_deg = Dist[i_out] * 180 / np.pi
+            if NoRadCut:
+                log.print(ModColor.Str(f"Keeping {name_str}: distance from phase center ({dist_deg:.3f} deg) > radius ({Radius} deg). "
+                                       f"Off targets are only drawn within the radius, so its excess variance estimate may be unreliable",col="yellow"))
+            else:
+                log.print(f"Skipping {name_str}: distance from phase center ({dist_deg:.3f} deg) > radius ({Radius} deg)")
+
+        if not NoRadCut:
+            ind=np.where(Dist<(Radius*np.pi/180))[0]
+            self.PosArray=self.PosArray[ind]
         
         print("Created an array with %i records" % self.PosArray.size, file=log)
 

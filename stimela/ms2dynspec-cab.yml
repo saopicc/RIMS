@@ -40,6 +40,10 @@ cabs:
         dtype: float 
         info: "Radius of the field"
         required: false
+      no-target-rad-cut:
+        dtype: bool
+        info: "Process all targets irrespective of rad. Off targets are still drawn from within rad, so excess variance estimates for targets outside it may be unreliable"
+        required: false
       noff:
         dtype: int
         info: "Number of off sources. -1 means twice as much as there are sources in the catalog" 
@@ -124,6 +128,10 @@ cabs:
       SavePDF:
         dtype: int
         info: "Save PDF"
+        required: false
+      OutputZarr:
+        dtype: int
+        info: "Write a single RIMS-Spec.zarr instead of the TARGET/OFF fits folders"
         required: false
       SourceCatOff:
         dtype: str

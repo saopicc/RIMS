@@ -7,10 +7,16 @@ def version():
     path = os.path.dirname(os.path.abspath(__file__))
     os.chdir(path)
     try:
-        result=subprocess.check_output('git describe --tags', shell=True,universal_newlines=True).rstrip()
-    except:
-        result='unknown'
-    os.chdir(prevdir)
+        result = subprocess.check_output(
+            'git describe --tags', 
+            shell=True,
+            universal_newlines=True,
+            stderr=subprocess.DEVNULL
+        ).rstrip()
+    except Exception:
+        result = 'unknown'
+    finally:
+        os.chdir(prevdir)
     return result
 
 if __name__=='__main__':

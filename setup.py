@@ -6,23 +6,40 @@ setup(
     packages=find_packages(include=['DynSpecMS', 'DynSpecMS.*']),
     include_package_data=True,
     install_requires=[
-        'dask[array]<=2023.5.0',
-        'dask-ms==0.2.21',
-        'xarray==2024.7.0',
-        'psutil<=5.9.3'
+        'xarray-ms',  # all MS reads (arcae)
+        'python-casacore',  # DDFacet beam/ClassMS and pyrap.images
+        'dask[array]',
+        'xarray',
+        'zarr>=3',
+        'psutil',
+        'numpy',
+        'matplotlib',
+        'astropy',
+        'future',
+        'scipy',
+        'jax',
+        'jaxlib',
+        'pydantic>=2.0.0',
+        'pydantic[email]',
+        'requests',
+        'kronicle_sdk'
         # other dependencies
     ],
-    entry_points={
+    extras_require={
+        'profiling': ['nvtx'],  # NVTX ranges for Nsight Systems, see profiling/run_nsys.sh
+        'test': ['pytest'],  # python -m pytest tests
+    },
+        entry_points={
         'console_scripts': [
-            'ms2dynspec=DynSpecMS.scripts.ms2dynspec:main', 
+            'rims=DynSpecMS.scripts.cli:main',
         ],
     },
-    author='Cyril Tasse',
+    author='Cyril Tasse and the RIMS team',
     author_email='cyril.tasse@obspm.fr',
     description='Extract Dynamic Spectra from Measurement Sets',
     long_description=open('README.md').read(),
     long_description_content_type='text/markdown',
-    url='https://github.com/cyriltasse/DynSpecMS',
+    url='https://github.com/saopicc/RIMS',
     classifiers=[
         'Programming Language :: Python :: 3',
     ],

@@ -3,8 +3,8 @@ RIMS (standing for Radio Interferometric Multiplexed Spectroscopy, see [here](ht
 
 ### Installation
 #### Requirements:
-- Ubuntu 20.04
-- Python3.9 virtual environment
+- Ubuntu 20.04 or 22.04
+- <= Python3.12 virtual environment
 - DDFacet installed to virtual environment
 - Casa5 installation
 
@@ -14,19 +14,22 @@ git clone https://github.com/saopicc/RIMS.git
 pip install ./RIMS
 ```
 
+### RIMS run
+For a given Measurement set and list of targets you're interested in, generate dynamic spectra for every individual target.
+
 ### Usage
 View help:
 ```
-ms2dynspec --help
+rims run --help
 ```
 Run job:
 ```
-ms2dynspec --ms <ms location> --data <predicted visibility column> --model <model visibilty column> --srclist <src list location> --rad <radius from which to sample off targets> --noff <number of off targets> --DDFParset <path to parset file for beam correction> --CacheDir <temp directory to write cache> --OutDirName <output directory name>
+rims run --ms <ms location> --data <predicted visibility column> --model <model visibilty column> --srclist <src list location> --rad <radius from which to sample off targets> --noff <number of off targets> --DDFParset <path to parset file for beam correction> --CacheDir <temp directory to write cache> --OutDirName <output directory name>
 ```
 Notes:
 
 - If you want to creat _Dynamic Spectra_ from residual visibilities, you can specify the model (--model) column and the tool with automatically subtract the model from the data (--data) column.
-- Your target in the source list (--srclist) must be within the radius (--rad) specified from _Phase Center_. 
+- Your target in the source list (--srclist) must be within the radius (--rad) specified from _Phase Center_, unless you pass `--no-target-rad-cut`. With that flag all targets are processed, but off targets are still drawn from within --rad, so excess variance estimates for targets outside it may be unreliable.
 
 ### Creating a source file:
 A source file may either be in [ECSV](https://docs.astropy.org/en/stable/io/ascii/ecsv.html) format or a simple `csv` format of the following structure:
@@ -42,14 +45,78 @@ or in fits table format
 ### Output:
 The output folder should countain the following files/folders:
 ```
-├── 1541903773.reg
+├── <dataset-id>.reg
 ├── Catalog.npy
+├── run_metadata.json
 ├── OFF
 ├── OFF_W
 ├── TARGET
 └── TARGET_W
 ```
 Where the OFF and OFF_W directories contain the off target and off target weights fits files respectively, and the TARGET and TARGET_W directories contain the target and target weights fits files respectively.
+
+#### Zarr output
+With `--OutputZarr 1` the fits folders are replaced by a single [zarr](https://zarr.dev) store:
+```
+├── <dataset-id>.reg
+├── Catalog.npy
+├── run_metadata.json
+└── RIMS-Spec.zarr
+```
+`RIMS-Spec.zarr` contains the following variables:
+- `Targets` `(source, stokes, freq, time)`: dynamic spectra of all targets and off positions
+- `Var_A` `(source, freq, time)`: analytical variance `W2 / W**2` (1 where `W == 0`)
+- `Weights` `(source, freq, time)`: sum of the visibility weights `W`
+
+The `source` coordinate holds the catalogue name for targets and `OFF_0, OFF_1, ...` for off positions. The `name`, `src_type`, `is_off`, `ra` and `dec` coordinates are indexed by `source`. `freq` is in Hz, and `time` is in seconds since `OBS-STAR`. The observation-level fits header keys are stored as global attributes.
+```python
+import xarray as xr
+ds = xr.open_zarr("RIMS-Spec.zarr")
+on  = ds.Targets.sel(source="47Tuc_C", stokes="I")
+off = ds.Targets.isel(source=ds.is_off.values).sel(stokes="I")  # .values: per-source coords are lazy after open_zarr
+```
+`rims publish` currently only supports the fits output.
+
+### RIMS publish
+Should you wish to contribute to the global "RIMS online" project, we encourage you to upload your generated dynamic spectra. To do so, 
+
+### Usage
+View help:
+```
+rims publish --help
+```
+Run job:
+```
+rims publish <path to 'rims run' output> ---server-conf <path to server.ini> --publisher-conf <path to details.ini>
+```
+
+Where the contents of the server conf file looks like:
+```
+[upload]
+host=<url for server host>
+token=<upload token for user for server host>
+
+[kronicle]
+host=https://kronicle.aqmo.org
+username=<kronicle provided username>
+password=<kronicle provided password>
+```
+
+And the contents of your details conf file looks like:
+```
+[publishing_details]
+visibility=<private or public>
+embargo_months=<up to 24, ignored if visibility=public>
+publishing_info=<optional path to a bibtex.tex entry for publication reference>
+publisher_name=<name of the individual running rims publish>
+publisher_email=<email of the individual running rims publish>
+publisher_orcid=<orcid ID of the individual running rims publish>
+maintainer_name=<name of the individual/team responsible for generating the rims products being uploaded>
+maintainer_email=<email of the individual/team responsible for generating the rims products being uploaded>
+maintainer_orcid=<orcid ID of the individual/team responsible for generating the rims products being uploaded>
+```
+
+For details on locally creating an upload server to host your dynamic spectra products, visit [rims-upload-server](https://github.com/mhardcastle/rims-upload-server). Otherwise, contact authors for a server to which you may upload your dynamic spectra.
 
 ### Licensing:
 MIT License

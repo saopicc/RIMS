@@ -33,9 +33,6 @@ from DDFacet.Other import MyPickle
 from DDFacet.Other import ModColor
 log=MyLogger.getLogger("ClassInterpol")
 IdSharedMem=str(int(os.getpid()))+"."
-from pyrap.tables import table
-from killMS.Other.ClassTimeIt import ClassTimeIt
-from killMS.Other.least_squares import least_squares
 import copy
 import astropy.io.fits as pyfits
 import glob
